@@ -136,7 +136,8 @@ func (this *defaultWorker) sleep() {
 		return // more work to do
 	}
 
-	wait, _ := context.WithTimeout(this.softContext, this.bufferTimeout)
+	wait, cancel := context.WithTimeout(this.softContext, this.bufferTimeout)
+	defer cancel()
 	<-wait.Done()
 }
 func isContextAlive(ctx context.Context) bool {
