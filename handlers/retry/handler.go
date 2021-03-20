@@ -63,7 +63,7 @@ func (this handler) sleep(ctx context.Context, err interface{}) {
 	if _, contains := this.immediate[err]; contains {
 		return
 	}
-	timeoutCtx, timeoutCancel = context.WithTimeout(ctx, this.timeout)
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, this.timeout)
 	defer timeoutCancel()
 	<-timeoutCtx.Done()
 }
