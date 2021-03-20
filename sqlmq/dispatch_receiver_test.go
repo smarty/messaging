@@ -124,7 +124,9 @@ func (this *DispatchReceiverFixture) TestWhenCommittingWithoutAnyDispatches_Comm
 }
 func (this *DispatchReceiverFixture) TestWhenCommittingIndicatesDone_ItShouldReturnContextDeadlineExceeded() {
 	this.commitError = sql.ErrTxDone
-	this.ctx, _ = context.WithTimeout(context.Background(), time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	this.ctx = ctx
+	defer cancel()
 	this.initializeDispatchWriter()
 
 	time.Sleep(time.Millisecond * 5)

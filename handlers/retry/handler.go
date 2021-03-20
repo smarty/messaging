@@ -63,8 +63,9 @@ func (this handler) sleep(ctx context.Context, err interface{}) {
 	if _, contains := this.immediate[err]; contains {
 		return
 	}
-	ctx, _ = context.WithTimeout(ctx, this.timeout)
-	<-ctx.Done()
+	timeoutCtx, timeoutCancel = context.WithTimeout(ctx, this.timeout)
+	defer timeoutCancel()
+	<-timeoutCtx.Done()
 }
 
 func isAlive(ctx context.Context) bool {
