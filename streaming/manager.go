@@ -64,7 +64,8 @@ func (this defaultManager) sleep(duration time.Duration) {
 		return
 	}
 
-	sleeper, _ := context.WithTimeout(this.softContext, duration)
+	sleeper, cancel := context.WithTimeout(this.softContext, duration)
+	defer cancel()
 	<-sleeper.Done()
 }
 

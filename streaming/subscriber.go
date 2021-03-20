@@ -82,7 +82,8 @@ func (this defaultSubscriber) shutdown(stream io.Closer) {
 		closeResource(stream) // for example, the stream might have an error or the broker might have shut it down/terminated
 	case <-this.softContext.Done():
 		closeResource(stream) // now stop the stream from bringing in messages and give workers some time to conclude.
-		deadline, _ := context.WithTimeout(this.hardContext, this.subscription.shutdownTimeout)
+		deadline, cancel := context.WithTimeout(this.hardContext, this.subscription.shutdownTimeout)
+		defer cancel()
 		select {
 		case <-this.workersDone:
 			return // no need to wait for full deadline, workers have finished

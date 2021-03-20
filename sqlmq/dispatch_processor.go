@@ -145,7 +145,8 @@ func (this *dispatchProcessor) isAlive() bool {
 	}
 }
 func (this *dispatchProcessor) sleep() {
-	ctx, _ := context.WithTimeout(this.ctx, this.retryWait)
+	ctx, cancel := context.WithTimeout(this.ctx, this.retryWait)
+	defer cancel()
 	<-ctx.Done()
 }
 func (this *dispatchProcessor) cleanup() {
