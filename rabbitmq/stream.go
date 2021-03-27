@@ -45,6 +45,7 @@ func (this *defaultStream) processDelivery(source amqp.Delivery, target *messagi
 		return io.EOF
 	}
 
+	target.Upstream = source
 	target.DeliveryID = source.DeliveryTag
 	target.SourceID = parseUint64(source.AppId)
 	target.MessageID = parseUint64(source.MessageId)

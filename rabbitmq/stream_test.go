@@ -51,7 +51,7 @@ func (this *StreamFixture) TestWhenCloseInvokedMultipleTimes_OnlyCancelConsumerO
 }
 
 func (this *StreamFixture) TestWhenReading_ReadFromConsumerBufferChannel() {
-	this.deliveries <- amqp.Delivery{
+	raw := amqp.Delivery{
 		ContentType:     "content-type",
 		ContentEncoding: "content-encoding",
 		DeliveryMode:    amqp.Persistent,
@@ -71,12 +71,14 @@ func (this *StreamFixture) TestWhenReading_ReadFromConsumerBufferChannel() {
 			"header30": false,
 		},
 	}
+	this.deliveries <- raw
 
 	var delivery messaging.Delivery
 	err := this.stream.Read(context.Background(), &delivery)
 
 	this.So(err, should.BeNil)
 	this.So(delivery, should.Resemble, messaging.Delivery{
+		Upstream:        raw,
 		DeliveryID:      6,
 		SourceID:        5,
 		MessageID:       3,

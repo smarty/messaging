@@ -86,6 +86,7 @@ type Dispatch struct {
 	Message         interface{}
 }
 type Delivery struct {
+	Upstream        interface{} // the raw, upstream message provided by the messaging infrastructure
 	DeliveryID      uint64
 	SourceID        uint64
 	MessageID       uint64
