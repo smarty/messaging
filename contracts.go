@@ -34,23 +34,34 @@ type StreamConfig struct {
 	ExclusiveStream bool
 
 	// The number of messages that will be buffered in local memory from the messaging infrastructure.
+	// If not specified, the provider-specific default value is used.
 	BufferCapacity uint16
 
-	// The name of the stream to be read. For RabbitMQ, this is the name of the queue, with Kafka, it's the name of the
-	// topic.
+	// The maximum number of bytes allowed per message. Messages containing more bytes than this will be truncated.
+	// If not specified, the provider-specific default value is used.
+	MaxMessageBytes uint32
+
+	// The name of the stream to be read. For RabbitMQ, this is the name of the queue. With Kafka, this is the name of a
+	// topic for an individual consumer that is not part of a consumer group.
 	StreamName string
 
+	// For Kafka, the name of the consumer group. When this value is specified, other values such as Topics must now be
+	// specified while other values such as Partition and Sequence are ignored.
+	GroupName string
+
 	// If supported by the underlying messaging infrastructure, the topics to which the stream should subscribe. In the
-	// case of RabbitMQ, the names of the exchanges to which the stream should subscribe. In cases like Kafka, this
-	// value is ignored and the StreamName above becomes the topic.
+	// case of RabbitMQ, the names of the exchanges to which the stream should subscribe. In the case of Kafka, this
+	// value is used when a consumer group GroupName is specified, otherwise, it is ignored.
 	Topics []string
 
 	// If supported by the underlying messaging infrastructure, the partition which should be read from. In cases like
-	// RabbitMQ, this value is ignored. With Kafka, this value is used to subscribe to the appropriate partition.
+	// RabbitMQ, this value is ignored. With Kafka, this value is used to subscribe to the appropriate partition for an
+	// individual consumer that is not part of a consumer group.
 	Partition uint64
 
 	// If supported by the underlying messaging infrastructure, the sequence at which messages should be read from
-	// the topic. In RabbitMQ, this value is ignored. With Kafka, this value is the starting index on the topic.
+	// the topic. In RabbitMQ, this value is ignored. With Kafka, this value is the starting index on the topic of an
+	// individual consumer that is not part of a consumer group.
 	Sequence uint64
 }
 type Stream interface {
