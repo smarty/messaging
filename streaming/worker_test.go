@@ -143,6 +143,24 @@ func (this *WorkerFixture) TestWhenStreamingToHandler_BatchOfMessagesPushedToHan
 	this.So(this.acknowledgeCount, should.Equal, 1)
 	this.So(this.acknowledgeDeliveries, should.Resemble, deliveries)
 }
+func (this *WorkerFixture) TestWhenStreamingToHandler_DoNotPushDeliveriesWithBlankMessageToHandlers() {
+	this.readError = io.EOF
+	deliveries := []messaging.Delivery{{Message: 1}, {Message: 2}, { /* delivery nil/blank message */ }}
+	for _, delivery := range deliveries {
+		this.channelBuffer <- delivery
+	}
+
+	this.worker.Listen()
+
+	this.So(this.handleCtx, should.Equal, this.hardContext)
+	this.So(this.handleCount, should.Equal, 1)
+	this.So(this.handleMessages, should.Resemble, []interface{}{1, 2})
+
+	this.So(this.acknowledgeContext, should.Equal, this.hardContext)
+	this.So(this.acknowledgeCount, should.Equal, 1)
+	this.So(this.acknowledgeDeliveries, should.Resemble, deliveries)
+}
+
 func (this *WorkerFixture) TestWhenMoreDeliveriesExistThanBatchMax_DeliverInBatchesOfMaxSpecifiedSize() {
 	this.subscription.batchCapacity = 2
 	this.subscription.bufferCapacity = 5

@@ -31,6 +31,7 @@ type logger interface {
 }
 
 var (
+	ErrMessageTypeNotAllowed       = errors.New("message type not allowed") // for topics that have lots of types we don't care about
 	ErrSerializationFailure        = errors.New("serialization failure")
 	ErrUnknownContentType          = errors.New("the content type provided was not understood")
 	ErrMessageTypeNotFound         = errors.New("the message type provided was not understood")

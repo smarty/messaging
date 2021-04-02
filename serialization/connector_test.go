@@ -156,7 +156,7 @@ func (this *ConnectorFixture) TestCommittingCommitWriter_UnderlyingCommitCalled(
 
 	this.So(err, should.Equal, this.commitError)
 }
-func (this *ConnectorFixture) CTestRollingBackCommitWriter_UnderlyingRollbackCalled() {
+func (this *ConnectorFixture) TestRollingBackCommitWriter_UnderlyingRollbackCalled() {
 	this.rollbackError = errors.New("")
 	this.commitError = errors.New("")
 	connection, _ := this.connector.Connect(this.originalContext)
@@ -215,6 +215,18 @@ func (this *ConnectorFixture) TestWhenReadingFromStream_DecodeDelivery() {
 	err := stream.Read(this.originalContext, &delivery)
 
 	this.So(err, should.Equal, this.decodeError)
+	this.So(delivery.MessageID, should.Equal, 42)
+}
+func (this *ConnectorFixture) TestWhenReadingFromStream_DecodeDeliveryOfDisallowedType_NoError() {
+	this.decodeError = ErrMessageTypeNotAllowed
+	connection, _ := this.connector.Connect(this.originalContext)
+	reader, _ := connection.Reader(this.originalContext)
+	stream, _ := reader.Stream(this.originalContext, messaging.StreamConfig{})
+	var delivery messaging.Delivery
+
+	err := stream.Read(this.originalContext, &delivery)
+
+	this.So(err, should.BeNil)
 	this.So(delivery.MessageID, should.Equal, 42)
 }
 

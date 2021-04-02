@@ -16,8 +16,9 @@ func New(connector messaging.Connector, options ...option) messaging.Connector {
 }
 
 type configuration struct {
-	WriteTypes map[reflect.Type]string
-	ReadTypes  map[string]reflect.Type
+	AllowedTypes map[string]struct{} // nil/empty = all message types allowed
+	ReadTypes    map[string]reflect.Type
+	WriteTypes   map[reflect.Type]string
 
 	IgnoreUnknownMessageTypes   bool
 	IgnoreUnknownContentTypes   bool
@@ -56,6 +57,9 @@ func (singleton) Decoder(value DeliveryDecoder) option {
 }
 func (singleton) Encoder(value DispatchEncoder) option {
 	return func(this *configuration) { this.Encoder = value }
+}
+func (singleton) AllowedTypes(value map[string]struct{}) option {
+	return func(this *configuration) { this.AllowedTypes = value }
 }
 func (singleton) ReadTypes(value map[string]reflect.Type) option {
 	return func(this *configuration) { this.ReadTypes = value }

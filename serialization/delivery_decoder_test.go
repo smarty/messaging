@@ -38,8 +38,7 @@ func (this *DeliveryDecoderFixture) Setup() {
 	this.newDecoder()
 }
 func (this *DeliveryDecoderFixture) newDecoder() {
-	Options.apply(
-		Options.ReadTypes(this.readTypes),
+	Options.apply(Options.ReadTypes(this.readTypes),
 		Options.IgnoreUnknownMessageTypes(this.config.IgnoreUnknownMessageTypes),
 		Options.IgnoreUnknownContentTypes(this.config.IgnoreUnknownContentTypes),
 		Options.IgnoreDeserializationErrors(this.config.IgnoreDeserializationErrors),
@@ -161,6 +160,22 @@ func (this *DeliveryDecoderFixture) TestWhenDeserializationFails_IgnoreDeseriali
 	this.So(err, should.BeNil)
 	this.So(this.delivery.Message, should.BeNil)
 	this.So(this.deserializeCalls, should.Equal, 1)
+}
+
+func (this *DeliveryDecoderFixture) TestWhenMessageTypeNotAllowed_ReturnError() {
+	this.config.AllowedTypes = map[string]struct{}{"only-this-type-is-allowed": {}}
+	this.newDecoder()
+	this.delivery.MessageType = "found" // this type isn't allowed because it's not in the above list
+	this.delivery.ContentType = "found"
+	this.delivery.Payload = []byte("payload")
+	this.readTypes["found"] = reflect.TypeOf(0)
+	this.deserializers["found"] = this
+
+	err := this.decoder.Decode(&this.delivery)
+
+	this.So(err, should.Equal, ErrMessageTypeNotAllowed)
+	this.So(this.delivery.Message, should.BeNil)
+	this.So(this.deserializeCalls, should.Equal, 0)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

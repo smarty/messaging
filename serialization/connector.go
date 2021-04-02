@@ -84,7 +84,11 @@ func (this defaultStream) Read(ctx context.Context, delivery *messaging.Delivery
 		return err
 	}
 
-	return this.decoder.Decode(delivery)
+	if err := this.decoder.Decode(delivery); err == ErrMessageTypeNotAllowed {
+		return nil
+	} else {
+		return err
+	}
 }
 
 type defaultWriter struct {

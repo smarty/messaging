@@ -8,6 +8,7 @@ import (
 )
 
 type defaultDeliveryDecoder struct {
+	allowedMessageTypes         map[string]struct{}
 	messageTypes                map[string]reflect.Type
 	contentTypes                map[string]Deserializer
 	ignoreUnknownMessageTypes   bool
@@ -19,6 +20,7 @@ type defaultDeliveryDecoder struct {
 
 func newDeliveryDecoder(config configuration) DeliveryDecoder {
 	return defaultDeliveryDecoder{
+		allowedMessageTypes:         config.AllowedTypes,
 		messageTypes:                config.ReadTypes,
 		contentTypes:                config.Deserializers,
 		ignoreUnknownMessageTypes:   config.IgnoreUnknownMessageTypes,
@@ -37,6 +39,11 @@ func (this defaultDeliveryDecoder) Decode(delivery *messaging.Delivery) error {
 	instanceType, found := this.messageTypes[delivery.MessageType]
 	if !found {
 		return this.handleUnknownMessageType(delivery)
+	}
+
+	_, found = this.allowedMessageTypes[delivery.MessageType]
+	if !found && len(this.allowedMessageTypes) > 0 {
+		return ErrMessageTypeNotAllowed
 	}
 
 	deserializer, found := this.contentTypes[delivery.ContentType]

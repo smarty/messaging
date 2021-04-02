@@ -95,6 +95,10 @@ func (this *defaultWorker) deliverToHandler() {
 
 func (this *defaultWorker) addToBatch(delivery messaging.Delivery) {
 	this.unacknowledged = append(this.unacknowledged, delivery)
+	if delivery.Message == nil {
+		return
+	}
+
 	if this.handleDelivery {
 		this.currentBatch = append(this.currentBatch, delivery)
 	} else {
