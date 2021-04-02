@@ -29,12 +29,13 @@ type DispatchEncoderFixture struct {
 
 func (this *DispatchEncoderFixture) Setup() {
 	this.writeTypes = map[reflect.Type]string{}
-	this.newEncoder()
+	this.encoder = this.newEncoder()
 }
-func (this *DispatchEncoderFixture) newEncoder() {
+func (this *DispatchEncoderFixture) newEncoder(options ...option) DispatchEncoder {
 	config := configuration{Deserializers: map[string]Deserializer{}}
-	Options.apply(Options.WriteTypes(this.writeTypes), Options.Serializer(this))(&config)
-	this.encoder = newDispatchEncoder(config)
+	options = append(options, Options.WriteTypes(this.writeTypes), Options.Serializer(this))
+	Options.apply(options...)(&config)
+	return newDispatchEncoder(config)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -103,6 +104,17 @@ func (this *DispatchEncoderFixture) TestWhenDispatchTopicAlreadyPopulated_ItShou
 	this.So(this.dispatch.ContentType, should.Equal, this.ContentType())
 	this.So(this.dispatch.MessageType, should.Equal, "message-type")
 	this.So(this.dispatch.Topic, should.Equal, "can't touch this")
+}
+
+func (this *DispatchEncoderFixture) TestWhenConfiguredToNotCopyMessageTypeFromTopic_ItShouldIgnoreTheTopic() {
+	this.encoder = this.newEncoder(Options.TopicFromMessageType(false))
+	this.writeTypes[reflect.TypeOf("")] = "message-type"
+	this.dispatch.Message = "known type"
+
+	err := this.encoder.Encode(&this.dispatch)
+
+	this.So(err, should.BeNil)
+	this.So(this.dispatch.Topic, should.BeBlank)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

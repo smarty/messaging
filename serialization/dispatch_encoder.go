@@ -8,20 +8,22 @@ import (
 )
 
 type defaultDispatchEncoder struct {
-	messageTypes map[reflect.Type]string
-	contentType  string
-	serializer   Serializer
-	monitor      monitor
-	logger       logger
+	messageTypes         map[reflect.Type]string
+	contentType          string
+	topicFromMessageType bool
+	serializer           Serializer
+	monitor              monitor
+	logger               logger
 }
 
 func newDispatchEncoder(config configuration) DispatchEncoder {
 	return defaultDispatchEncoder{
-		messageTypes: config.WriteTypes,
-		contentType:  config.Serializer.ContentType(),
-		serializer:   config.Serializer,
-		monitor:      config.Monitor,
-		logger:       config.Logger,
+		messageTypes:         config.WriteTypes,
+		contentType:          config.Serializer.ContentType(),
+		serializer:           config.Serializer,
+		topicFromMessageType: config.TopicFromMessageType,
+		monitor:              config.Monitor,
+		logger:               config.Logger,
 	}
 }
 
@@ -49,7 +51,8 @@ func (this defaultDispatchEncoder) Encode(dispatch *messaging.Dispatch) error {
 	dispatch.ContentType = this.contentType
 	dispatch.MessageType = messageType
 	dispatch.Payload = raw
-	if dispatch.Topic == "" {
+
+	if this.topicFromMessageType && dispatch.Topic == "" {
 		dispatch.Topic = messageType
 	}
 

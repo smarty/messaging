@@ -23,6 +23,8 @@ type configuration struct {
 	IgnoreUnknownContentTypes   bool
 	IgnoreDeserializationErrors bool
 
+	TopicFromMessageType bool
+
 	Deserializers map[string]Deserializer
 	Serializer    Serializer
 
@@ -70,6 +72,9 @@ func (singleton) IgnoreUnknownContentTypes(value bool) option {
 func (singleton) IgnoreDeserializationErrors(value bool) option {
 	return func(this *configuration) { this.IgnoreDeserializationErrors = value }
 }
+func (singleton) TopicFromMessageType(value bool) option {
+	return func(this *configuration) { this.TopicFromMessageType = value }
+}
 func (singleton) Logger(value logger) option {
 	return func(this *configuration) { this.Logger = value }
 }
@@ -103,6 +108,7 @@ func (singleton) defaults(options ...option) []option {
 		Options.IgnoreUnknownMessageTypes(false),
 		Options.IgnoreUnknownContentTypes(false),
 		Options.IgnoreDeserializationErrors(false),
+		Options.TopicFromMessageType(true),
 		Options.Logger(defaultLogger),
 		Options.Monitor(defaultMonitor),
 	}, options...)
