@@ -114,11 +114,7 @@ func (this *defaultWorker) measureBufferLength() int {
 }
 func (this *defaultWorker) deliverBatch() bool {
 	this.handler.Handle(this.hardContext, this.currentBatch...)
-	if err := this.stream.Acknowledge(this.hardContext, this.unacknowledged...); err != nil {
-		return false
-	}
-
-	return true
+	return this.stream.Acknowledge(this.hardContext, this.unacknowledged...) == nil
 }
 func (this *defaultWorker) clearBatch() {
 	this.currentBatch = this.currentBatch[0:0]
