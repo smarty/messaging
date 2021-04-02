@@ -42,7 +42,7 @@ type StreamConfig struct {
 	MaxMessageBytes uint32
 
 	// The name of the stream to be read. For RabbitMQ, this is the name of the queue. With Kafka, this is the name of a
-	// topic for an individual consumer that is not part of a consumer group.
+	// topic for an individual consumer when not acting as part of a consumer group.
 	StreamName string
 
 	// For Kafka, the name of the consumer group. When this value is specified, other values such as Topics must now be
@@ -56,7 +56,7 @@ type StreamConfig struct {
 
 	// If supported by the underlying messaging infrastructure, the partition which should be read from. In cases like
 	// RabbitMQ, this value is ignored. With Kafka, this value is used to subscribe to the appropriate partition for an
-	// individual consumer that is not part of a consumer group.
+	// individual consumer when not acting as part of a consumer group.
 	Partition uint64
 
 	// If supported by the underlying messaging infrastructure, the sequence at which messages should be read from
