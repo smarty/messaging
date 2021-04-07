@@ -97,6 +97,16 @@ func (this *WriterFixture) TestWhenTopologyNotEstablished_DontPanicIfIsNotTopolo
 	this.So(err, should.Equal, this.commitError)
 }
 
+func (this *WriterFixture) TestWhenWrite_TopicMissing() {
+	count, err := this.writer.Write(context.Background(), messaging.Dispatch{})
+
+	this.So(err, should.Equal, messaging.ErrEmptyDispatchTopic)
+	this.So(count, should.Equal, 0)
+
+	this.So(this.publishExchanges, should.BeEmpty)
+	this.So(this.publishKeys, should.BeEmpty)
+	this.So(this.publishMessages, should.BeEmpty)
+}
 func (this *WriterFixture) TestWhenWrite_PublishToUnderlyingChannel() {
 	count, err := this.writer.Write(context.Background(), messaging.Dispatch{
 		SourceID:        1,
@@ -150,16 +160,18 @@ func (this *WriterFixture) TestWhenWriteTransientMessage_PublishTransientMessage
 	const durable = false
 
 	count, err := this.writer.Write(context.Background(), messaging.Dispatch{
+		Topic:   "a",
 		Durable: durable,
 	})
 
 	this.So(err, should.BeNil)
 	this.So(count, should.Equal, 1)
 
-	this.So(this.publishExchanges, should.Resemble, []string{""})
+	this.So(this.publishExchanges, should.Resemble, []string{"a"})
 	this.So(this.publishKeys, should.Resemble, []string{"0"})
 	this.So(this.publishMessages, should.Resemble, []amqp.Publishing{
 		{
+
 			MessageId:     "0",
 			CorrelationId: "0",
 			AppId:         "0",
@@ -169,13 +181,14 @@ func (this *WriterFixture) TestWhenWriteTransientMessage_PublishTransientMessage
 }
 func (this *WriterFixture) TestWhenWriteExpirationLessThanOneSecond_UseOneSecondExpiration() {
 	count, err := this.writer.Write(context.Background(), messaging.Dispatch{
+		Topic:      "a",
 		Expiration: time.Second - 1,
 	})
 
 	this.So(err, should.BeNil)
 	this.So(count, should.Equal, 1)
 
-	this.So(this.publishExchanges, should.Resemble, []string{""})
+	this.So(this.publishExchanges, should.Resemble, []string{"a"})
 	this.So(this.publishKeys, should.Resemble, []string{"0"})
 	this.So(this.publishMessages, should.Resemble, []amqp.Publishing{
 		{
@@ -191,7 +204,7 @@ func (this *WriterFixture) TestWhenWriterFailsMidwayThrough_ReturnNumberOfWrites
 	this.publishError = errors.New("")
 	this.publishCallsBeforeError = 3
 
-	count, err := this.writer.Write(context.Background(), []messaging.Dispatch{{}, {}, {}}...)
+	count, err := this.writer.Write(context.Background(), []messaging.Dispatch{{Topic: "a"}, {Topic: "a"}, {Topic: "a"}}...)
 
 	this.So(count, should.Equal, 2)
 	this.So(err, should.Equal, this.publishError)

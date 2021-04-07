@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 )
@@ -119,3 +120,7 @@ type ListenCloser interface {
 	Listener
 	io.Closer
 }
+
+var (
+	ErrEmptyDispatchTopic = errors.New("the destination topic is missing")
+)

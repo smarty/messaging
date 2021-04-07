@@ -34,6 +34,10 @@ func (this defaultWriter) Write(_ context.Context, messages ...messaging.Dispatc
 	now := this.now().UTC()
 
 	for _, message := range messages {
+		if len(message.Topic) == 0 {
+			return count, messaging.ErrEmptyDispatchTopic
+		}
+
 		count++
 		converted := toAMQPDispatch(message, now)
 		partition := strconv.FormatUint(message.Partition, 10)
