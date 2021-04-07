@@ -49,6 +49,8 @@ func (this *SubscriptionConfigFixture) TestWhenValuesAreProvided_SubscriptionSho
 		SubscriptionOptions.FullDeliveryToHandler(true),
 		SubscriptionOptions.ReconnectDelay(5),
 		SubscriptionOptions.ShutdownStrategy(ShutdownStrategyCurrentBatch, 4),
+		SubscriptionOptions.Partition(6),
+		SubscriptionOptions.Sequence(7),
 	)
 
 	this.So(subscription, should.Resemble, Subscription{
@@ -64,6 +66,8 @@ func (this *SubscriptionConfigFixture) TestWhenValuesAreProvided_SubscriptionSho
 		reconnectDelay:    5,
 		shutdownStrategy:  ShutdownStrategyCurrentBatch,
 		shutdownTimeout:   4,
+		partition:         6,
+		sequence:          7,
 	})
 }
 

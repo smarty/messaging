@@ -50,6 +50,12 @@ func (subscriptionSingleton) EstablishTopology(value bool) subscriptionOption {
 func (subscriptionSingleton) Topics(values ...string) subscriptionOption {
 	return func(this *Subscription) { this.topics = values }
 }
+func (subscriptionSingleton) Partition(value uint64) subscriptionOption {
+	return func(this *Subscription) { this.partition = value }
+}
+func (subscriptionSingleton) Sequence(value uint64) subscriptionOption {
+	return func(this *Subscription) { this.sequence = value }
+}
 func (subscriptionSingleton) FullDeliveryToHandler(value bool) subscriptionOption {
 	return func(this *Subscription) { this.handleDelivery = value }
 }

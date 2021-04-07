@@ -11,6 +11,8 @@ type Subscription struct {
 	name              string
 	queue             string
 	topics            []string
+	partition         uint64
+	sequence          uint64
 	handlers          []messaging.Handler
 	bufferCapacity    uint16
 	establishTopology bool
@@ -30,6 +32,9 @@ func (this Subscription) streamConfig() messaging.StreamConfig {
 		BufferCapacity:    this.bufferCapacity,
 		StreamName:        this.queue,
 		Topics:            this.topics,
+		GroupName:         this.name,
+		Partition:         this.partition,
+		Sequence:          this.sequence,
 	}
 }
 func (this Subscription) hardShutdown(potentialParent context.Context) (context.Context, context.CancelFunc) {
