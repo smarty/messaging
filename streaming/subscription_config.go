@@ -53,6 +53,9 @@ func (subscriptionSingleton) Topics(values ...string) subscriptionOption {
 func (subscriptionSingleton) FullDeliveryToHandler(value bool) subscriptionOption {
 	return func(this *Subscription) { this.handleDelivery = value }
 }
+func (subscriptionSingleton) FullDeliveryToContext(value bool) subscriptionOption {
+	return func(this *Subscription) { this.deliveryToContext = value }
+}
 func (subscriptionSingleton) ReconnectDelay(value time.Duration) subscriptionOption {
 	return func(this *Subscription) { this.reconnectDelay = value }
 }
@@ -95,6 +98,7 @@ func (subscriptionSingleton) defaults(options ...subscriptionOption) []subscript
 	const defaultBatchDelay = 0
 	const defaultEstablishTopology = true
 	const defaultPassFullDeliveryToHandler = false
+	const defaultPassFullDeliveryToContext = false
 	const defaultReconnectDelay = time.Second * 5
 	const defaultShutdownStrategy = ShutdownStrategyDrain
 	const defaultShutdownTimeout = time.Second * 5
@@ -105,6 +109,7 @@ func (subscriptionSingleton) defaults(options ...subscriptionOption) []subscript
 		SubscriptionOptions.BufferDelayBetweenBatches(defaultBatchDelay),
 		SubscriptionOptions.EstablishTopology(defaultEstablishTopology),
 		SubscriptionOptions.FullDeliveryToHandler(defaultPassFullDeliveryToHandler),
+		SubscriptionOptions.FullDeliveryToContext(defaultPassFullDeliveryToContext),
 		SubscriptionOptions.ReconnectDelay(defaultReconnectDelay),
 		SubscriptionOptions.ShutdownStrategy(defaultShutdownStrategy, defaultShutdownTimeout),
 	}, options...)

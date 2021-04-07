@@ -192,6 +192,22 @@ func (this *WorkerFixture) TestWhenConfigured_PassFullDeliveryToHandler() {
 	this.So(this.handleCount, should.Equal, 1)
 	this.So(this.handleMessages, should.Resemble, []interface{}{messaging.Delivery{Message: 1}})
 }
+func (this *WorkerFixture) TestWhenConfigured_PassFullDeliveryToContext() {
+	this.subscription.deliveryToContext = true
+	this.initializeWorker()
+	this.readError = io.EOF
+	this.channelBuffer <- messaging.Delivery{Message: 1}
+	this.channelBuffer <- messaging.Delivery{Message: 2}
+
+	this.worker.Listen()
+
+	this.So(this.handleCtx.Value(ContextKeyDeliveries), should.Resemble, []messaging.Delivery{
+		{Message: 1},
+		{Message: 2},
+	})
+	this.So(this.handleCount, should.Equal, 1)
+	this.So(this.handleMessages, should.Resemble, []interface{}{1, 2})
+}
 
 func (this *WorkerFixture) TestWhenAcknowledgementFails_ListeningConcludesWithoutProcessingBufferedDeliveries() {
 	this.acknowledgeError = errors.New("")

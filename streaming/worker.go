@@ -2,6 +2,7 @@ package streaming
 
 import (
 	"context"
+	"reflect"
 	"sync"
 	"time"
 
@@ -14,13 +15,14 @@ type defaultWorker struct {
 	hardContext context.Context
 	handler     messaging.Handler
 
-	channelBuffer  chan messaging.Delivery
-	currentBatch   []interface{}
-	unacknowledged []messaging.Delivery
-	handleDelivery bool
-	bufferTimeout  time.Duration
-	strategy       ShutdownStrategy
-	bufferLength   int
+	channelBuffer   chan messaging.Delivery
+	currentBatch    []interface{}
+	unacknowledged  []messaging.Delivery
+	handleDelivery  bool
+	contextDelivery bool
+	bufferTimeout   time.Duration
+	strategy        ShutdownStrategy
+	bufferLength    int
 }
 
 func newWorker(config workerConfig) messaging.Listener {
@@ -30,12 +32,13 @@ func newWorker(config workerConfig) messaging.Listener {
 		hardContext: config.HardContext,
 		handler:     config.Handler,
 
-		channelBuffer:  make(chan messaging.Delivery, config.Subscription.bufferCapacity),
-		currentBatch:   make([]interface{}, 0, config.Subscription.batchCapacity),
-		unacknowledged: make([]messaging.Delivery, 0, config.Subscription.batchCapacity),
-		handleDelivery: config.Subscription.handleDelivery,
-		bufferTimeout:  config.Subscription.bufferTimeout,
-		strategy:       config.Subscription.shutdownStrategy,
+		channelBuffer:   make(chan messaging.Delivery, config.Subscription.bufferCapacity),
+		currentBatch:    make([]interface{}, 0, config.Subscription.batchCapacity),
+		unacknowledged:  make([]messaging.Delivery, 0, config.Subscription.batchCapacity),
+		handleDelivery:  config.Subscription.handleDelivery,
+		contextDelivery: config.Subscription.deliveryToContext,
+		bufferTimeout:   config.Subscription.bufferTimeout,
+		strategy:        config.Subscription.shutdownStrategy,
 	}
 }
 
@@ -118,10 +121,17 @@ func (this *defaultWorker) measureBufferLength() int {
 }
 func (this *defaultWorker) deliverBatch() bool {
 	if len(this.currentBatch) > 0 {
-		this.handler.Handle(this.hardContext, this.currentBatch...)
+		this.handler.Handle(this.deliveryContext(), this.currentBatch...)
 	}
 
 	return this.stream.Acknowledge(this.hardContext, this.unacknowledged...) == nil
+}
+func (this *defaultWorker) deliveryContext() context.Context {
+	if this.contextDelivery {
+		return context.WithValue(this.hardContext, ContextKeyDeliveries, this.unacknowledged)
+	}
+
+	return this.hardContext
 }
 func (this *defaultWorker) clearBatch() {
 	this.currentBatch = this.currentBatch[0:0]
@@ -151,3 +161,5 @@ func isContextAlive(ctx context.Context) bool {
 		return true
 	}
 }
+
+var ContextKeyDeliveries = reflect.TypeOf([]messaging.Delivery{}).String()

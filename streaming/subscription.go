@@ -16,6 +16,7 @@ type Subscription struct {
 	establishTopology bool
 	batchCapacity     uint16
 	handleDelivery    bool
+	deliveryToContext bool
 	bufferTimeout     time.Duration // the amount of time to rest and buffer between batches (instead of going as quickly as possible)
 	reconnectDelay    time.Duration
 	shutdownTimeout   time.Duration
