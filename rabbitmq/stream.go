@@ -52,6 +52,7 @@ func (this *defaultStream) processDelivery(source amqp.Delivery, target *messagi
 	target.CorrelationID = parseUint64(source.CorrelationId)
 	target.Timestamp = source.Timestamp
 	target.Durable = source.DeliveryMode == amqp.Persistent
+	// target.Topic = this.streamID // TODO
 	target.MessageType = source.Type
 	target.ContentType = source.ContentType
 	target.ContentEncoding = source.ContentEncoding

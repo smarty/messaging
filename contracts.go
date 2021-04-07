@@ -105,6 +105,8 @@ type Delivery struct {
 	CorrelationID   uint64 // FUTURE: CausationID and UserID
 	Timestamp       time.Time
 	Durable         bool
+	Topic           string
+	Partition       uint64
 	MessageType     string
 	ContentType     string
 	ContentEncoding string
