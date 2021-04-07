@@ -88,7 +88,7 @@ type Dispatch struct {
 	Expiration      time.Duration
 	Durable         bool
 	Topic           string
-	Partition       uint64
+	Partition       uint64 // Not the partition to send to, but instead the PartitionKey to be used (by a hashing algorithm) to decide which partition to send the message to.
 	MessageType     string
 	ContentType     string
 	ContentEncoding string
