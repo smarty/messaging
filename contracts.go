@@ -81,13 +81,15 @@ type CommitWriter interface {
 }
 
 type Dispatch struct {
-	SourceID        uint64
-	MessageID       uint64
-	CorrelationID   uint64 // FUTURE: CausationID and UserID
-	Timestamp       time.Time
-	Expiration      time.Duration
-	Durable         bool
-	Topic           string
+	SourceID      uint64
+	MessageID     uint64
+	CorrelationID uint64 // FUTURE: CausationID and UserID
+	Timestamp     time.Time
+	Expiration    time.Duration
+	Durable       bool
+	Topic         string
+	PartitionKey  uint64
+	// Deprecated
 	Partition       uint64
 	MessageType     string
 	ContentType     string
