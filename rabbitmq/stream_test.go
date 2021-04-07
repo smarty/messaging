@@ -23,6 +23,7 @@ type StreamFixture struct {
 	stream          messaging.Stream
 	deliveries      chan amqp.Delivery
 	streamID        string
+	streamName      string
 	exclusiveStream bool
 	now             time.Time
 
@@ -38,7 +39,9 @@ func (this *StreamFixture) Setup() {
 	this.initializeStream()
 }
 func (this *StreamFixture) initializeStream() {
-	this.stream = newStream(this, this.deliveries, this.streamID, this.exclusiveStream,
+	this.streamID = "streamID"
+	this.streamName = "streamName"
+	this.stream = newStream(this, this.deliveries, this.streamID, this.streamName, this.exclusiveStream,
 		configuration{Logger: nop{}, Monitor: nop{}})
 }
 
@@ -85,6 +88,7 @@ func (this *StreamFixture) TestWhenReading_ReadFromConsumerBufferChannel() {
 		CorrelationID:   1,
 		Timestamp:       this.now,
 		Durable:         true,
+		Topic:           "streamName",
 		MessageType:     "message-type",
 		ContentType:     "content-type",
 		ContentEncoding: "content-encoding",

@@ -15,17 +15,19 @@ type defaultStream struct {
 	channel    adapter.Channel
 	deliveries <-chan amqp.Delivery
 	streamID   string
+	streamName string
 	batchAck   bool
 	closer     sync.Once
 	logger     logger
 	monitor    monitor
 }
 
-func newStream(channel adapter.Channel, deliveries <-chan amqp.Delivery, id string, exclusive bool, config configuration) messaging.Stream {
+func newStream(channel adapter.Channel, deliveries <-chan amqp.Delivery, id, name string, exclusive bool, config configuration) messaging.Stream {
 	return &defaultStream{
 		channel:    channel,
 		deliveries: deliveries,
 		streamID:   id,
+		streamName: name,
 		batchAck:   exclusive,
 		logger:     config.Logger,
 		monitor:    config.Monitor,
@@ -52,7 +54,7 @@ func (this *defaultStream) processDelivery(source amqp.Delivery, target *messagi
 	target.CorrelationID = parseUint64(source.CorrelationId)
 	target.Timestamp = source.Timestamp
 	target.Durable = source.DeliveryMode == amqp.Persistent
-	// target.Topic = this.streamID // TODO
+	target.Topic = this.streamName
 	target.MessageType = source.Type
 	target.ContentType = source.ContentType
 	target.ContentEncoding = source.ContentEncoding

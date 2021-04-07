@@ -57,7 +57,7 @@ func (this *defaultReader) Stream(_ context.Context, settings messaging.StreamCo
 	}
 
 	this.logger.Printf("[INFO] Consumer opened for queue [%s], awaiting messages...", settings.StreamName)
-	stream := newStream(this.inner, deliveries, streamID, settings.ExclusiveStream, this.config)
+	stream := newStream(this.inner, deliveries, streamID, settings.StreamName, settings.ExclusiveStream, this.config)
 	this.counter++
 	this.streams = append(this.streams, stream)
 	this.hasExclusiveStream = this.hasExclusiveStream || settings.ExclusiveStream
