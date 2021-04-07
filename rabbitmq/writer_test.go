@@ -146,56 +146,6 @@ func (this *WriterFixture) TestWhenWrite_PublishToUnderlyingChannel() {
 		},
 	})
 }
-func (this *WriterFixture) TestWhenWriteUsingPartitionKey_PublishToUnderlyingChannel() {
-	count, err := this.writer.Write(context.Background(), messaging.Dispatch{
-		SourceID:        1,
-		MessageID:       2,
-		CorrelationID:   3,
-		Timestamp:       time.Time{},
-		Expiration:      time.Minute,
-		Durable:         true,
-		Topic:           "topic",
-		Partition:       5,
-		PartitionKey:    6, // prefers partition key
-		MessageType:     "message-type",
-		ContentType:     "content-type",
-		ContentEncoding: "content-encoding",
-		Payload:         []byte("payload"),
-		Headers: map[string]interface{}{
-			"header10": "value10",
-			"header20": int64(20),
-			"header30": false,
-		},
-	})
-
-	this.So(err, should.BeNil)
-	this.So(count, should.Equal, 1)
-
-	this.So(this.publishExchanges, should.Resemble, []string{"topic"})
-	this.So(this.publishKeys, should.Resemble, []string{"6"})
-	this.So(this.publishMessages, should.Resemble, []amqp.Publishing{
-		{
-			ContentType:     "content-type",
-			ContentEncoding: "content-encoding",
-			DeliveryMode:    amqp.Persistent,
-			Priority:        0,
-			CorrelationId:   "3",
-			ReplyTo:         "",
-			Expiration:      "60",
-			MessageId:       "2",
-			Timestamp:       time.Time{},
-			Type:            "message-type",
-			UserId:          "",
-			AppId:           "1",
-			Body:            []byte("payload"),
-			Headers: map[string]interface{}{
-				"header10": "value10",
-				"header20": int64(20),
-				"header30": false,
-			},
-		},
-	})
-}
 func (this *WriterFixture) TestWhenWriteTransientMessage_PublishTransientMessageToUnderlyingChannel() {
 	const durable = false
 
