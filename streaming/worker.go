@@ -95,7 +95,7 @@ func (this *defaultWorker) deliverToHandler() {
 
 func (this *defaultWorker) addToBatch(delivery messaging.Delivery) {
 	this.unacknowledged = append(this.unacknowledged, delivery)
-	if delivery.Message == nil {
+	if delivery.Message == nil && !this.handleDelivery {
 		return
 	}
 
@@ -117,7 +117,10 @@ func (this *defaultWorker) measureBufferLength() int {
 	return this.bufferLength
 }
 func (this *defaultWorker) deliverBatch() bool {
-	this.handler.Handle(this.hardContext, this.currentBatch...)
+	if len(this.currentBatch) > 0 {
+		this.handler.Handle(this.hardContext, this.currentBatch...)
+	}
+
 	return this.stream.Acknowledge(this.hardContext, this.unacknowledged...) == nil
 }
 func (this *defaultWorker) clearBatch() {
