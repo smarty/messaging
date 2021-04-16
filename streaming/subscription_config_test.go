@@ -45,7 +45,7 @@ func (this *SubscriptionConfigFixture) TestWhenValuesAreProvided_SubscriptionSho
 		streamConfigs: []messaging.StreamConfig{
 			{
 				EstablishTopology: true,
-				ExclusiveStream:   false,
+				ExclusiveStream:   true,
 				BufferCapacity:    1,
 				MaxMessageBytes:   1024 * 1024,
 				StreamName:        "queue",

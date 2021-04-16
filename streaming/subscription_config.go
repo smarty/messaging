@@ -73,6 +73,10 @@ func (subscriptionSingleton) apply(options ...subscriptionOption) subscriptionOp
 			this.bufferCapacity = uint16(length)
 		}
 
+		for i := range this.streamConfigs {
+			this.streamConfigs[i].ExclusiveStream = len(this.handlers) <= 1
+		}
+
 		if len(this.handlers) == 0 {
 			panic("no workers configured")
 		}

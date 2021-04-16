@@ -137,7 +137,7 @@ func (this *defaultWorker) deliverBatch() bool {
 		this.handler.Handle(this.deliveryContext(), this.currentBatch...)
 	}
 
-	if len(this.streams) > 0 {
+	if len(this.streams) > 1 {
 		return true // FUTURE: potentially allow for acknowledgement of deliveries to multiple streams
 	}
 
