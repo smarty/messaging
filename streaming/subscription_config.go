@@ -7,7 +7,7 @@ import (
 	"github.com/smartystreets/messaging/v3"
 )
 
-func NewSubscription(options ...subscriptionOption) Subscription {
+func newSubscription(options ...subscriptionOption) Subscription {
 	this := Subscription{}
 	SubscriptionOptions.apply(options...)(&this)
 	return this
@@ -18,8 +18,8 @@ var SubscriptionOptions subscriptionSingleton
 type subscriptionSingleton struct{}
 type subscriptionOption func(*Subscription)
 
-func (subscriptionSingleton) AddStream(value messaging.StreamConfig) subscriptionOption {
-	return func(this *Subscription) { this.streamConfigs = append(this.streamConfigs, value) }
+func (subscriptionSingleton) AddStream(value ...streamOption) subscriptionOption {
+	return func(this *Subscription) { this.streamConfigs = append(this.streamConfigs, newStream(value...)) }
 }
 func (subscriptionSingleton) AddWorkers(values ...messaging.Handler) subscriptionOption {
 	return func(this *Subscription) { this.handlers = append(this.handlers, values...) }
@@ -92,8 +92,9 @@ func (subscriptionSingleton) defaults(options ...subscriptionOption) []subscript
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func NewStreamConfig() messaging.StreamConfig {
-	return messaging.StreamConfig{}
+func newStream(options ...streamOption) (this messaging.StreamConfig) {
+	StreamOptions.apply(options...)(&this)
+	return this
 }
 
 var StreamOptions streamSingleton

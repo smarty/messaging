@@ -28,7 +28,7 @@ type ConfigFixture struct {
 
 func (this *ConfigFixture) Setup() {
 	this.ctx, this.shutdown = context.WithCancel(context.Background())
-	this.manager = New(this, Options.Subscriptions(NewSubscription(SubscriptionOptions.AddWorkers(this))))
+	this.manager = New(this, Options.Subscriptions(SubscriptionOptions.AddWorkers(this)))
 }
 
 func (this *ConfigFixture) TestWhenManagerListens_UnderlyingWorkerStarted() {

@@ -29,8 +29,8 @@ type option func(*config)
 func (singleton) Logger(value logger) option {
 	return func(this *config) { this.logger = value }
 }
-func (singleton) Subscriptions(values ...Subscription) option {
-	return func(this *config) { this.subscriptions = append(this.subscriptions, values...) }
+func (singleton) Subscriptions(values ...subscriptionOption) option {
+	return func(this *config) { this.subscriptions = append(this.subscriptions, newSubscription(values...)) }
 }
 
 func (singleton) apply(options ...option) option {
