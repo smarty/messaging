@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/smartystreets/messaging/v3"
-	"github.com/smartystreets/messaging/v3/sqlmq/adapter"
+	"github.com/smartystreets/messaging/v4"
+	"github.com/smartystreets/messaging/v4/sqlmq/adapter"
 )
 
 type dispatchStore struct {

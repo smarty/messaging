@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/smartystreets/messaging/v3"
+	"github.com/smartystreets/messaging/v4"
 )
 
 type subscriberFactory func(context.Context, Subscription) messaging.Listener

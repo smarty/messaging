@@ -5,8 +5,8 @@ import (
 	"net/url"
 	"sync"
 
-	"github.com/smartystreets/messaging/v3"
-	"github.com/smartystreets/messaging/v3/rabbitmq/adapter"
+	"github.com/smartystreets/messaging/v4"
+	"github.com/smartystreets/messaging/v4/rabbitmq/adapter"
 )
 
 type defaultConnector struct {

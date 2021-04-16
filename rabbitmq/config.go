@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/smartystreets/messaging/v3"
-	"github.com/smartystreets/messaging/v3/rabbitmq/adapter"
+	"github.com/smartystreets/messaging/v4"
+	"github.com/smartystreets/messaging/v4/rabbitmq/adapter"
 )
 
 func New(options ...option) messaging.Connector {

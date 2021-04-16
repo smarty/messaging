@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/smartystreets/messaging/v3"
+	"github.com/smartystreets/messaging/v4"
 )
 
 func newSubscription(options ...subscriptionOption) Subscription {

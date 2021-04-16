@@ -1,4 +1,4 @@
-module github.com/smartystreets/messaging/v3
+module github.com/smartystreets/messaging/v4
 
 go 1.13
 

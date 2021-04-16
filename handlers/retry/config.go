@@ -3,7 +3,7 @@ package retry
 import (
 	"time"
 
-	"github.com/smartystreets/messaging/v3"
+	"github.com/smartystreets/messaging/v4"
 )
 
 func New(inner messaging.Handler, options ...option) messaging.Handler {
