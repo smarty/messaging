@@ -2,7 +2,6 @@ package streaming
 
 import (
 	"context"
-	"io"
 	"sync"
 
 	"github.com/smartystreets/messaging/v3"
@@ -44,15 +43,20 @@ func (this defaultSubscriber) Listen() {
 	}
 	defer closeResource(reader)
 
-	stream, err := reader.Stream(this.softContext, this.subscription.streamConfig())
-	if err != nil {
-		return
+	var streams []messaging.Stream
+	for _, streamConfig := range this.subscription.streamConfigs {
+		if stream, err := reader.Stream(this.softContext, streamConfig); err == nil {
+			streams = append(streams, stream)
+		} else {
+			closeStreams(streams)
+			return
+		}
 	}
 
-	go this.listen(stream)
-	this.shutdown(stream)
+	go this.listen(streams)
+	this.shutdown(streams)
 }
-func (this defaultSubscriber) listen(stream messaging.Stream) {
+func (this defaultSubscriber) listen(streams []messaging.Stream) {
 	defer close(this.workersDone)
 
 	var waiter sync.WaitGroup
@@ -62,13 +66,13 @@ func (this defaultSubscriber) listen(stream messaging.Stream) {
 	for i := range this.subscription.handlers {
 		go func(index int) {
 			defer waiter.Done()
-			this.consume(index, stream)
+			this.consume(index, streams)
 		}(i)
 	}
 }
-func (this defaultSubscriber) consume(index int, stream messaging.Stream) {
+func (this defaultSubscriber) consume(index int, streams []messaging.Stream) {
 	worker := this.factory(workerConfig{
-		Stream:       stream,
+		Streams:      streams,
 		Subscription: this.subscription,
 		Handler:      this.subscription.handlers[index],
 		SoftContext:  this.softContext,
@@ -76,12 +80,12 @@ func (this defaultSubscriber) consume(index int, stream messaging.Stream) {
 	})
 	worker.Listen()
 }
-func (this defaultSubscriber) shutdown(stream io.Closer) {
+func (this defaultSubscriber) shutdown(streams []messaging.Stream) {
 	select {
 	case <-this.workersDone: // for some reason, workers have concluded before we expected
-		closeResource(stream) // for example, the stream might have an error or the broker might have shut it down/terminated
+		closeStreams(streams) // for example, the stream might have an error or the broker might have shut it down/terminated
 	case <-this.softContext.Done():
-		closeResource(stream) // now stop the stream from bringing in messages and give workers some time to conclude.
+		closeStreams(streams) // now stop the stream from bringing in messages and give workers some time to conclude.
 		deadline, cancel := context.WithTimeout(this.hardContext, this.subscription.shutdownTimeout)
 		defer cancel()
 		select {
@@ -91,5 +95,10 @@ func (this defaultSubscriber) shutdown(stream io.Closer) {
 			this.hardShutdown() // tell workers to stop, they're taking too long
 			<-this.workersDone
 		}
+	}
+}
+func closeStreams(streams []messaging.Stream) {
+	for _, stream := range streams {
+		closeResource(stream)
 	}
 }

@@ -2,7 +2,6 @@ package streaming
 
 import (
 	"context"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -38,8 +37,7 @@ type ManagerFixture struct {
 func (this *ManagerFixture) Setup() {
 	const enoughSubscribersToExposeConcurrency = 64
 	for i := 0; i < enoughSubscribersToExposeConcurrency; i++ {
-		name := strconv.FormatInt(int64(i), 10)
-		this.subscriptions = append(this.subscriptions, Subscription{name: name})
+		this.subscriptions = append(this.subscriptions, Subscription{})
 	}
 	this.initializeManager()
 }

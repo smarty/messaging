@@ -8,14 +8,9 @@ import (
 )
 
 type Subscription struct {
-	name              string
-	queue             string
-	topics            []string
-	partition         uint64
-	sequence          uint64
+	streamConfigs     []messaging.StreamConfig
 	handlers          []messaging.Handler
 	bufferCapacity    uint16
-	establishTopology bool
 	batchCapacity     uint16
 	handleDelivery    bool
 	deliveryToContext bool
@@ -25,18 +20,6 @@ type Subscription struct {
 	shutdownStrategy  ShutdownStrategy
 }
 
-func (this Subscription) streamConfig() messaging.StreamConfig {
-	return messaging.StreamConfig{
-		EstablishTopology: this.establishTopology,
-		ExclusiveStream:   len(this.handlers) <= 1,
-		BufferCapacity:    this.bufferCapacity,
-		StreamName:        this.queue,
-		Topics:            this.topics,
-		GroupName:         this.name,
-		Partition:         this.partition,
-		Sequence:          this.sequence,
-	}
-}
 func (this Subscription) hardShutdown(potentialParent context.Context) (context.Context, context.CancelFunc) {
 	if this.shutdownStrategy == ShutdownStrategyImmediate {
 		return potentialParent, func() {}

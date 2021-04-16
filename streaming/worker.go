@@ -10,10 +10,12 @@ import (
 )
 
 type defaultWorker struct {
-	stream      messaging.Stream
-	softContext context.Context
-	hardContext context.Context
-	handler     messaging.Handler
+	streams       []messaging.Stream
+	cancelStreams context.CancelFunc
+	streamContext context.Context
+	softContext   context.Context
+	hardContext   context.Context
+	handler       messaging.Handler
 
 	channelBuffer   chan messaging.Delivery
 	currentBatch    []interface{}
@@ -26,11 +28,15 @@ type defaultWorker struct {
 }
 
 func newWorker(config workerConfig) messaging.Listener {
+	streamContext, cancelStreams := context.WithCancel(config.HardContext)
+
 	return &defaultWorker{
-		stream:      config.Stream,
-		softContext: config.SoftContext,
-		hardContext: config.HardContext,
-		handler:     config.Handler,
+		streams:       config.Streams,
+		cancelStreams: cancelStreams,
+		streamContext: streamContext,
+		softContext:   config.SoftContext,
+		hardContext:   config.HardContext,
+		handler:       config.Handler,
 
 		channelBuffer:   make(chan messaging.Delivery, config.Subscription.bufferCapacity),
 		currentBatch:    make([]interface{}, 0, config.Subscription.batchCapacity),
@@ -46,23 +52,30 @@ func (this *defaultWorker) Listen() {
 	var waiter sync.WaitGroup
 	defer waiter.Wait()
 
-	waiter.Add(1)
-	go this.readFromStream(&waiter)
+	waiter.Add(len(this.streams))
+	for i := range this.streams {
+		go func(index int) { this.readFromStream(&waiter, this.streams[index]) }(i)
+	}
+	go this.awaitStreamClosure()
 	this.deliverToHandler()
 }
+func (this *defaultWorker) awaitStreamClosure() {
+	<-this.streamContext.Done()
+	close(this.channelBuffer)
+}
 
-func (this *defaultWorker) readFromStream(waiter *sync.WaitGroup) {
+func (this *defaultWorker) readFromStream(waiter *sync.WaitGroup, stream messaging.Stream) {
 	defer waiter.Done()
-	defer close(this.channelBuffer)
+	defer this.cancelStreams()
 
 	for {
 		var delivery messaging.Delivery
-		if err := this.stream.Read(this.hardContext, &delivery); err != nil {
+		if err := stream.Read(this.hardContext, &delivery); err != nil {
 			break
 		}
 
 		select {
-		case <-this.hardContext.Done():
+		case <-this.streamContext.Done():
 			break
 		case this.channelBuffer <- delivery:
 		}
@@ -124,7 +137,11 @@ func (this *defaultWorker) deliverBatch() bool {
 		this.handler.Handle(this.deliveryContext(), this.currentBatch...)
 	}
 
-	return this.stream.Acknowledge(this.hardContext, this.unacknowledged...) == nil
+	if len(this.streams) > 0 {
+		return true // FUTURE: potentially allow for acknowledgement of deliveries to multiple streams
+	}
+
+	return this.streams[0].Acknowledge(this.hardContext, this.unacknowledged...) == nil
 }
 func (this *defaultWorker) deliveryContext() context.Context {
 	if this.contextDelivery {

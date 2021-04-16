@@ -9,7 +9,7 @@ import (
 type workerFactory func(workerConfig) messaging.Listener
 
 type workerConfig struct {
-	Stream       messaging.Stream
+	Streams      []messaging.Stream
 	Subscription Subscription
 	Handler      messaging.Handler
 	SoftContext  context.Context
