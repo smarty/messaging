@@ -3,11 +3,12 @@ package streaming
 import (
 	"context"
 	"errors"
-	"github.com/smartystreets/assertions/should"
 	"io"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/smartystreets/assertions/should"
 	"github.com/smartystreets/gunit"
 	"github.com/smartystreets/messaging/v3"
 )
@@ -18,6 +19,9 @@ func TestWorkerFixture(t *testing.T) {
 
 type WorkerFixture struct {
 	*gunit.Fixture
+
+	lock    sync.Mutex
+	streams []messaging.Stream
 
 	handler       messaging.Handler
 	softContext   context.Context
@@ -49,6 +53,7 @@ type WorkerFixture struct {
 }
 
 func (this *WorkerFixture) Setup() {
+	this.streams = []messaging.Stream{this}
 	this.handler = this
 	this.softContext, this.softShutdown = context.WithCancel(context.Background())
 	this.hardContext, this.hardShutdown = context.WithCancel(context.Background())
@@ -57,7 +62,7 @@ func (this *WorkerFixture) Setup() {
 }
 func (this *WorkerFixture) initializeWorker() {
 	worker := newWorker(workerConfig{
-		Streams:      []messaging.Stream{this},
+		Streams:      this.streams,
 		Subscription: this.subscription,
 		Handler:      this.handler,
 		SoftContext:  this.softContext,
@@ -91,6 +96,18 @@ func (this *WorkerFixture) TestWhenReadingFromUnderlyingStream_AddToBufferedChan
 
 	_, open := <-this.channelBuffer
 	this.So(open, should.BeFalse) // channel closed when read completed
+}
+func (this *WorkerFixture) TestWhenSingleStreamReadFails_StopReadingFromAllStreams() {
+	this.streams = append(this.streams, this)
+	this.initializeWorker()
+	this.maxReadCount = 1
+	this.readError = io.EOF
+
+	this.worker.Listen()
+
+	this.So(this.channelBuffer, should.BeEmpty)
+	this.So(this.readContext, should.Equal, this.hardContext)
+	this.So(this.readCount, should.Equal, 3)
 }
 func (this *WorkerFixture) TestWhenReadingFromUnderlyingStream_FailOnContextClosure() {
 	this.hardShutdown()
@@ -286,6 +303,9 @@ func (this *WorkerFixture) TestWhenRequestingShutdownAndStrategyIsCurrentBatch_D
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 func (this *WorkerFixture) Read(ctx context.Context, delivery *messaging.Delivery) error {
+	this.lock.Lock()
+	defer this.lock.Unlock()
+
 	this.readCount++
 	this.readContext = ctx
 

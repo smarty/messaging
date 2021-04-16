@@ -3,11 +3,11 @@ package streaming
 import (
 	"context"
 	"errors"
-	"github.com/smartystreets/assertions/should"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/smartystreets/assertions/should"
 	"github.com/smartystreets/gunit"
 	"github.com/smartystreets/messaging/v3"
 )
