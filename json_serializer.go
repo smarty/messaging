@@ -2,13 +2,10 @@ package messaging
 
 import (
 	"encoding/json"
-
-	"github.com/smartystreets/logging"
+	"log"
 )
 
 type JSONSerializer struct {
-	logger *logging.Logger
-
 	panicFail bool
 }
 
@@ -23,9 +20,9 @@ func (this *JSONSerializer) PanicWhenSerializationFails() {
 func (this *JSONSerializer) Serialize(message interface{}) ([]byte, error) {
 	content, err := json.Marshal(message)
 	if this.panicFail && err != nil {
-		this.logger.Panic("[ERROR] Could not serialize message:", err)
+		log.Panic("[ERROR] Could not serialize message:", err)
 	} else if err != nil {
-		this.logger.Println("[ERROR] Could not serialize message:", err)
+		log.Println("[ERROR] Could not serialize message:", err)
 	}
 	return content, err
 }

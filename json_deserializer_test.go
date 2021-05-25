@@ -9,7 +9,6 @@ import (
 
 	"github.com/smartystreets/assertions/should"
 	"github.com/smartystreets/gunit"
-	"github.com/smartystreets/logging"
 )
 
 func TestJSONDeserializerFixture(t *testing.T) {
@@ -29,7 +28,6 @@ func (this *JSONDeserializerFixture) Setup() {
 		"ApplicationEvent":  reflect.TypeOf(ApplicationEvent{}),
 		"*ApplicationEvent": reflect.TypeOf(&ApplicationEvent{}),
 	})
-	this.deserializer.logger = logging.Capture()
 }
 
 func (this *JSONDeserializerFixture) Teardown() {

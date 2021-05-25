@@ -7,7 +7,6 @@ import (
 
 	"github.com/smartystreets/assertions/should"
 	"github.com/smartystreets/gunit"
-	"github.com/smartystreets/logging"
 )
 
 func TestJSONSerializerFixture(t *testing.T) {
@@ -23,7 +22,6 @@ type JSONSerializerFixture struct {
 func (this *JSONSerializerFixture) Setup() {
 	log.SetOutput(ioutil.Discard)
 	this.serializer = NewJSONSerializer()
-	this.serializer.logger = logging.Capture()
 }
 
 func (this *JSONSerializerFixture) TestSerializationSucceeds() {
