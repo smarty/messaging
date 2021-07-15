@@ -2,6 +2,7 @@ package batch
 
 import (
 	"context"
+	"io"
 
 	"github.com/smartystreets/messaging/v3"
 )
@@ -34,12 +35,10 @@ func (this *Writer) Write(ctx context.Context, dispatches ...messaging.Dispatch)
 	}
 
 	return count, err
-
 }
 func (this *Writer) write(ctx context.Context, dispatches []messaging.Dispatch) (int, error) {
-	if err := this.newWriter(ctx); err != nil {
+	if err := this.ensureWriter(ctx); err != nil {
 		return 0, err
-
 	}
 
 	if _, err := this.writer.Write(ctx, dispatches...); err != nil {
@@ -52,7 +51,7 @@ func (this *Writer) write(ctx context.Context, dispatches []messaging.Dispatch) 
 
 	return len(dispatches), nil
 }
-func (this *Writer) newWriter(ctx context.Context) (err error) {
+func (this *Writer) ensureWriter(ctx context.Context) (err error) {
 	if this.writer != nil {
 		return nil
 	}
@@ -70,13 +69,14 @@ func (this *Writer) Close() error {
 	return nil
 }
 func (this *Writer) closeHandles() {
-	if this.writer != nil {
-		_ = this.writer.Close()
-	}
-	if this.connection != nil {
-		_ = this.connection.Close()
-	}
-
+	closeResources(this.writer, this.connector)
 	this.writer = nil
 	this.connection = nil
+}
+func closeResources(resources ...io.Closer) {
+	for _, resource := range resources {
+		if resource != nil {
+			_ = resource.Close()
+		}
+	}
 }

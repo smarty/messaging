@@ -87,7 +87,7 @@ func (this *WriterFixture) TestWhenOpeningConnectionFails_ItShouldReturnUnderlyi
 
 	this.So(count, should.Equal, 0)
 	this.So(err, should.Equal, this.connectError)
-	this.So(this.closeCount, should.Equal, 0)
+	this.So(this.closeCount, should.Equal, 1)
 }
 func (this *WriterFixture) TestWhenOpeningCommitWriterFails_ItShouldCloseConnectionAndReturnUnderlyingError() {
 	this.commitWriterError = errors.New("")
