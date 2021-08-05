@@ -40,8 +40,9 @@ func (this defaultWriter) Write(_ context.Context, messages ...messaging.Dispatc
 
 		count++
 		converted := toAMQPDispatch(message, now)
-		partition := strconv.FormatUint(message.Partition, 10)
-		if err := this.inner.Publish(message.Topic, partition, converted); err != nil {
+
+		partition := formatPartition(message.Partition)
+		if err = this.inner.Publish(message.Topic, partition, converted); err != nil {
 			this.logger.Printf("[WARN] Unable to write dispatch to underlying channel [%s].", err)
 			return count - 1, err // writes are async, only channel unavailability causes errors here
 		}
@@ -50,6 +51,13 @@ func (this defaultWriter) Write(_ context.Context, messages ...messaging.Dispatc
 	}
 
 	return count, nil
+}
+func formatPartition(value uint64) string {
+	if value == 0 {
+		return ""
+	}
+
+	return strconv.FormatUint(value, 10)
 }
 func toAMQPDispatch(dispatch messaging.Dispatch, now time.Time) amqp.Publishing {
 	if dispatch.Timestamp.IsZero() {

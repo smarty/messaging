@@ -168,10 +168,9 @@ func (this *WriterFixture) TestWhenWriteTransientMessage_PublishTransientMessage
 	this.So(count, should.Equal, 1)
 
 	this.So(this.publishExchanges, should.Resemble, []string{"a"})
-	this.So(this.publishKeys, should.Resemble, []string{"0"})
+	this.So(this.publishKeys, should.Resemble, []string{""})
 	this.So(this.publishMessages, should.Resemble, []amqp.Publishing{
 		{
-
 			MessageId:     "0",
 			CorrelationId: "0",
 			AppId:         "0",
@@ -189,7 +188,7 @@ func (this *WriterFixture) TestWhenWriteExpirationLessThanOneSecond_UseOneSecond
 	this.So(count, should.Equal, 1)
 
 	this.So(this.publishExchanges, should.Resemble, []string{"a"})
-	this.So(this.publishKeys, should.Resemble, []string{"0"})
+	this.So(this.publishKeys, should.Resemble, []string{""})
 	this.So(this.publishMessages, should.Resemble, []amqp.Publishing{
 		{
 			MessageId:     "0",
