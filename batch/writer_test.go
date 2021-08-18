@@ -96,7 +96,7 @@ func (this *WriterFixture) TestWhenOpeningCommitWriterFails_ItShouldCloseConnect
 
 	this.So(count, should.Equal, 0)
 	this.So(err, should.Equal, this.commitWriterError)
-	this.So(this.closeCount, should.Equal, 1)
+	this.So(this.closeCount, should.Equal, 2)
 }
 func (this *WriterFixture) TestWhenWritingDispatchesFails_ItShouldCloseResourcesAndReturnUnderlyingError() {
 	this.writeError = errors.New("")
@@ -105,7 +105,7 @@ func (this *WriterFixture) TestWhenWritingDispatchesFails_ItShouldCloseResources
 
 	this.So(count, should.Equal, 0)
 	this.So(err, should.Equal, this.writeError)
-	this.So(this.closeCount, should.Equal, 2)
+	this.So(this.closeCount, should.Equal, 3)
 }
 func (this *WriterFixture) TestWhenCommittingWrittenDispatchesFails_ItShouldCloseResourcesAndReturnUnderlyingError() {
 	this.commitError = errors.New("")
@@ -114,7 +114,7 @@ func (this *WriterFixture) TestWhenCommittingWrittenDispatchesFails_ItShouldClos
 
 	this.So(count, should.Equal, 0)
 	this.So(err, should.Equal, this.commitError)
-	this.So(this.closeCount, should.Equal, 2)
+	this.So(this.closeCount, should.Equal, 3)
 }
 
 func (this *WriterFixture) TestWhenWritingMultipleTimes_ItShouldUseExistingConnectionAndWriter() {
@@ -134,7 +134,7 @@ func (this *WriterFixture) TestWhenClosing_ItShouldCloseUnderlyingConnectionAndW
 	err := this.writer.Close()
 
 	this.So(err, should.BeNil)
-	this.So(this.closeCount, should.Equal, 2)
+	this.So(this.closeCount, should.Equal, 3)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

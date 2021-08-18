@@ -10,12 +10,14 @@ import (
 type Writer struct {
 	connector messaging.Connector
 
-	connection messaging.Connection
-	writer     messaging.CommitWriter
+	connection          messaging.Connection
+	writer              messaging.CommitWriter
+	reuseWriteResources bool
+	closeConnector      bool
 }
 
-func NewWriter(connector messaging.Connector) messaging.Writer {
-	return &Writer{connector: connector}
+func newWriter(config configuration) messaging.Writer {
+	return &Writer{connector: config.Connector, reuseWriteResources: config.ReuseWriter, closeConnector: config.CloseConnector}
 }
 
 func (this *Writer) Write(ctx context.Context, dispatches ...messaging.Dispatch) (int, error) {
@@ -31,6 +33,8 @@ func (this *Writer) Write(ctx context.Context, dispatches ...messaging.Dispatch)
 
 	count, err := this.write(ctx, dispatches)
 	if err != nil {
+		this.closeHandles()
+	} else if !this.reuseWriteResources {
 		this.closeHandles()
 	}
 
@@ -69,14 +73,19 @@ func (this *Writer) Close() error {
 	return nil
 }
 func (this *Writer) closeHandles() {
-	closeResources(this.writer, this.connector)
+	closeResource(this.writer)
 	this.writer = nil
+
+	closeResource(this.connection)
 	this.connection = nil
+
+	if this.closeConnector {
+		closeResource(this.connector)
+		this.connector = nil
+	}
 }
-func closeResources(resources ...io.Closer) {
-	for _, resource := range resources {
-		if resource != nil {
-			_ = resource.Close()
-		}
+func closeResource(resource io.Closer) {
+	if resource != nil {
+		_ = resource.Close()
 	}
 }
