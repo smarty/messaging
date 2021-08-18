@@ -49,7 +49,10 @@ func (singleton) DataSource(driver, dataSource string) option {
 	return func(this *configuration) { this.DriverName = driver; this.DataSource = dataSource }
 }
 func (singleton) StorageHandle(value *sql.DB) option {
-	return func(this *configuration) { this.StorageHandle = adapter.New(value) }
+	return Options.StorageAdapter(adapter.New(value))
+}
+func (singleton) StorageAdapter(value adapter.Handle) option {
+	return func(this *configuration) { this.StorageHandle = value }
 }
 func (singleton) Channel(value chan messaging.Dispatch) option {
 	return func(this *configuration) { this.Channel = value }
