@@ -97,7 +97,7 @@ func (singleton) apply(options ...option) option {
 		}
 
 		if this.Sender == nil {
-			this.Sender = batch.NewWriter(this.Target)
+			this.Sender = batch.NewWriter(this.Target, batch.Options.CloseConnector(false))
 		}
 	}
 }
