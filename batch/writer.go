@@ -13,11 +13,10 @@ type Writer struct {
 	connection          messaging.Connection
 	writer              messaging.CommitWriter
 	reuseWriteResources bool
-	closeConnector      bool
 }
 
 func newWriter(config configuration) messaging.Writer {
-	return &Writer{connector: config.Connector, reuseWriteResources: config.ReuseWriter, closeConnector: config.CloseConnector}
+	return &Writer{connector: config.Connector, reuseWriteResources: config.ReuseWriter}
 }
 
 func (this *Writer) Write(ctx context.Context, dispatches ...messaging.Dispatch) (int, error) {
@@ -78,11 +77,6 @@ func (this *Writer) closeHandles() {
 
 	closeResource(this.connection)
 	this.connection = nil
-
-	if this.closeConnector {
-		closeResource(this.connector)
-		this.connector = nil
-	}
 }
 func closeResource(resource io.Closer) {
 	if resource != nil {
