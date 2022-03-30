@@ -54,20 +54,33 @@ func (this *defaultConnector) Connect(ctx context.Context) (messaging.Connection
 	return this.active[len(this.active)-1], nil
 }
 func (this *defaultConnector) configuration() (string, adapter.Config) {
-	username, password := parseAuthentication(this.broker.Address.User)
+	query := this.broker.Address.Query()
+	username, password := parseAuthentication(this.broker.Address.User, query.Get("username"), query.Get("password"))
 	return this.broker.Address.Host, adapter.Config{
 		Username:    username,
 		Password:    password,
 		VirtualHost: this.broker.Address.Path,
 	}
 }
-func parseAuthentication(info *url.Userinfo) (string, string) {
+func parseAuthentication(info *url.Userinfo, queryUsername, queryPassword string) (string, string) {
 	if info == nil {
-		return "guest", "guest"
+		return coalesce(queryUsername, "guest"), coalesce(queryPassword, "guest")
 	}
 
+	username := coalesce(info.Username(), queryUsername)
 	password, _ := info.Password()
-	return info.Username(), password
+	password = coalesce(password, queryPassword)
+
+	return username, password
+}
+func coalesce(values ...string) string {
+	for _, value := range values {
+		if len(value) > 0 {
+			return value
+		}
+	}
+
+	return ""
 }
 
 func (this *defaultConnector) Close() error {

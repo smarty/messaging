@@ -68,6 +68,28 @@ func (this *ConnectorFixture) TestWhenConnectingToBroker_UseDialedNetworkConnect
 		VirtualHost: "/my-vhost",
 	})
 }
+func (this *ConnectorFixture) TestCredentialsFromQueryString() {
+	this.brokerAddress = "amqp://localhost:5672/the-vhost?username=My-Username-1&password=My-Password-1"
+	this.initializeConnector()
+	_, _ = this.connector.Connect(this.ctx)
+
+	this.So(this.connectConfig, should.Resemble, adapter.Config{
+		Username:    "My-Username-1",
+		Password:    "My-Password-1",
+		VirtualHost: "/the-vhost",
+	})
+}
+func (this *ConnectorFixture) TestCredentialsFromQueryString_PreferUserInfo() {
+	this.brokerAddress = "amqp://username-1:password-1@localhost:5672/the-vhost?username=username-2&password=password-2"
+	this.initializeConnector()
+	_, _ = this.connector.Connect(this.ctx)
+
+	this.So(this.connectConfig, should.Resemble, adapter.Config{
+		Username:    "username-1",
+		Password:    "password-1",
+		VirtualHost: "/the-vhost",
+	})
+}
 func (this *ConnectorFixture) TestWhenNoCredentialsFound_ConnectUsingDefaultCredentials() {
 	this.brokerAddress = "amqp://localhost:5672/another-vhost"
 	this.initializeConnector()
