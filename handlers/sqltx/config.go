@@ -52,8 +52,6 @@ func (singleton) Monitor(value monitor) option {
 
 func (singleton) defaults(options ...option) []option {
 	return append([]option{
-		Options.Handle(nil),
-		Options.Callback(nil),
 		Options.ReadOnly(false),
 		Options.IsolationLevel(sql.LevelReadCommitted),
 		Options.Logger(&nop{}),
