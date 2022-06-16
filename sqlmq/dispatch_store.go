@@ -78,7 +78,7 @@ func (this dispatchStore) Load(ctx context.Context, id uint64) (results []messag
 	now := this.now().UTC()
 	for rows.Next() {
 		dispatch := messaging.Dispatch{Timestamp: now}
-		if err := rows.Scan(&dispatch.MessageID, &dispatch.MessageType, &dispatch.Payload); err != nil {
+		if err = rows.Scan(&dispatch.MessageID, &dispatch.MessageType, &dispatch.Payload); err != nil {
 			return nil, err
 		}
 
