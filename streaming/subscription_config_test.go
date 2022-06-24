@@ -46,6 +46,7 @@ func (this *SubscriptionConfigFixture) TestWhenValuesAreProvided_SubscriptionSho
 		SubscriptionOptions.BufferCapacity(2),
 		SubscriptionOptions.BufferDelayBetweenBatches(3),
 		SubscriptionOptions.EstablishTopology(true),
+		SubscriptionOptions.StreamReplication(true),
 		SubscriptionOptions.FullDeliveryToHandler(true),
 		SubscriptionOptions.ReconnectDelay(5),
 		SubscriptionOptions.ShutdownStrategy(ShutdownStrategyCurrentBatch, 4),
@@ -55,7 +56,8 @@ func (this *SubscriptionConfigFixture) TestWhenValuesAreProvided_SubscriptionSho
 
 	this.So(subscription, should.Resemble, Subscription{
 		name:              "name",
-		queue:             "queue",
+		streamName:        "queue",
+		streamReplication: true,
 		topics:            []string{"topic1", "topic2"},
 		handlers:          []messaging.Handler{nil},
 		bufferCapacity:    2,

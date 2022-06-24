@@ -54,7 +54,7 @@ type SubscriberFixture struct {
 
 func (this *SubscriberFixture) Setup() {
 	this.subscription = Subscription{
-		queue:             "queue",
+		streamName:        "queue",
 		topics:            []string{"topic1", "topic2"},
 		establishTopology: true,
 		bufferCapacity:    16,
@@ -100,7 +100,7 @@ func (this *SubscriberFixture) TestWhenOpeningStreamFails_ListenShouldReturn() {
 		EstablishTopology: true,
 		ExclusiveStream:   true, // single handler
 		BufferCapacity:    this.subscription.bufferCapacity,
-		StreamName:        this.subscription.queue,
+		StreamName:        this.subscription.streamName,
 		Topics:            this.subscription.topics,
 	})
 	this.So(this.closeCount, should.Equal, 1) // reader
@@ -206,10 +206,10 @@ func (this *SubscriberFixture) Reader(ctx context.Context) (messaging.Reader, er
 	this.readerCtx = ctx
 	return this, this.readerError
 }
-func (this *SubscriberFixture) Writer(ctx context.Context) (messaging.Writer, error) {
+func (this *SubscriberFixture) Writer(_ context.Context) (messaging.Writer, error) {
 	panic("nop")
 }
-func (this *SubscriberFixture) CommitWriter(ctx context.Context) (messaging.CommitWriter, error) {
+func (this *SubscriberFixture) CommitWriter(_ context.Context) (messaging.CommitWriter, error) {
 	panic("nop")
 }
 
@@ -222,10 +222,10 @@ func (this *SubscriberFixture) Stream(ctx context.Context, config messaging.Stre
 }
 
 // Stream
-func (this *SubscriberFixture) Read(ctx context.Context, delivery *messaging.Delivery) error {
+func (this *SubscriberFixture) Read(_ context.Context, _ *messaging.Delivery) error {
 	panic("nop")
 }
-func (this *SubscriberFixture) Acknowledge(ctx context.Context, deliveries ...messaging.Delivery) error {
+func (this *SubscriberFixture) Acknowledge(_ context.Context, _ ...messaging.Delivery) error {
 	panic("nop")
 }
 

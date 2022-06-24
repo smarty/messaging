@@ -9,7 +9,8 @@ import (
 
 type Subscription struct {
 	name              string
-	queue             string
+	streamName        string
+	streamReplication bool
 	topics            []string
 	partition         uint64
 	sequence          uint64
@@ -30,7 +31,8 @@ func (this Subscription) streamConfig() messaging.StreamConfig {
 		EstablishTopology: this.establishTopology,
 		ExclusiveStream:   len(this.handlers) <= 1,
 		BufferCapacity:    this.bufferCapacity,
-		StreamName:        this.queue,
+		StreamName:        this.streamName,
+		StreamReplication: this.streamReplication,
 		Topics:            this.topics,
 		GroupName:         this.name,
 		Partition:         this.partition,

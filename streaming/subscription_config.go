@@ -8,8 +8,8 @@ import (
 	"github.com/smartystreets/messaging/v3"
 )
 
-func NewSubscription(queue string, options ...subscriptionOption) Subscription {
-	this := Subscription{queue: queue}
+func NewSubscription(streamName string, options ...subscriptionOption) Subscription {
+	this := Subscription{streamName: streamName}
 	SubscriptionOptions.apply(options...)(&this)
 	return this
 }
@@ -46,6 +46,9 @@ func (subscriptionSingleton) BufferDelayBetweenBatches(value time.Duration) subs
 }
 func (subscriptionSingleton) EstablishTopology(value bool) subscriptionOption {
 	return func(this *Subscription) { this.establishTopology = value }
+}
+func (subscriptionSingleton) StreamReplication(value bool) subscriptionOption {
+	return func(this *Subscription) { this.streamReplication = value }
 }
 func (subscriptionSingleton) Topics(values ...string) subscriptionOption {
 	return func(this *Subscription) { this.topics = values }
@@ -114,6 +117,7 @@ func (subscriptionSingleton) defaults(options ...subscriptionOption) []subscript
 		SubscriptionOptions.BatchCapacity(defaultBatchCapacity),
 		SubscriptionOptions.BufferDelayBetweenBatches(defaultBatchDelay),
 		SubscriptionOptions.EstablishTopology(defaultEstablishTopology),
+		SubscriptionOptions.StreamReplication(false),
 		SubscriptionOptions.FullDeliveryToHandler(defaultPassFullDeliveryToHandler),
 		SubscriptionOptions.FullDeliveryToContext(defaultPassFullDeliveryToContext),
 		SubscriptionOptions.ReconnectDelay(defaultReconnectDelay),
