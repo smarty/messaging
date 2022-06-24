@@ -46,6 +46,11 @@ type StreamConfig struct {
 	// topic for an individual consumer when not acting as part of a consumer group.
 	StreamName string
 
+	// For RabbitMQ, indicates whether to use replicated or "quorum queues" which are raft-based queues with higher
+	// durability guarantees because messages are replicated to other nodes. This setting will slightly increase the
+	// per-dispatch and per-delivery latencies when writing and/or reading messages.
+	StreamReplication bool
+
 	// For Kafka, the name of the consumer group. When this value is specified, other values such as Topics must now be
 	// specified while other values such as Partition and Sequence are ignored.
 	GroupName string

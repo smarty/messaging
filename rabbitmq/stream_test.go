@@ -176,17 +176,13 @@ func (this *StreamFixture) Ack(deliveryTag uint64, multiple bool) error {
 	return this.acknowledgeError
 }
 
-func (this *StreamFixture) DeclareQueue(name string) error         { panic("nop") }
-func (this *StreamFixture) DeclareExchange(name string) error      { panic("nop") }
-func (this *StreamFixture) BindQueue(queue, exchange string) error { panic("nop") }
-func (this *StreamFixture) BufferCapacity(value uint16) error      { panic("nop") }
-func (this *StreamFixture) Consume(consumerID, queue string) (<-chan amqp.Delivery, error) {
-	panic("nop")
-}
-func (this *StreamFixture) Publish(exchange, key string, envelope amqp.Publishing) error {
-	panic("nop")
-}
-func (this *StreamFixture) Tx() error         { panic("nop") }
-func (this *StreamFixture) TxCommit() error   { panic("nop") }
-func (this *StreamFixture) TxRollback() error { panic("nop") }
-func (this *StreamFixture) Close() error      { panic("nop") }
+func (this *StreamFixture) DeclareQueue(name string, replicated bool) error   { panic("nop") }
+func (this *StreamFixture) DeclareExchange(name string) error                 { panic("nop") }
+func (this *StreamFixture) BindQueue(queue, exchange string) error            { panic("nop") }
+func (this *StreamFixture) BufferCapacity(value uint16) error                 { panic("nop") }
+func (this *StreamFixture) Consume(_, _ string) (<-chan amqp.Delivery, error) { panic("nop") }
+func (this *StreamFixture) Publish(_, _ string, _ amqp.Publishing) error      { panic("nop") }
+func (this *StreamFixture) Tx() error                                         { panic("nop") }
+func (this *StreamFixture) TxCommit() error                                   { panic("nop") }
+func (this *StreamFixture) TxRollback() error                                 { panic("nop") }
+func (this *StreamFixture) Close() error                                      { panic("nop") }

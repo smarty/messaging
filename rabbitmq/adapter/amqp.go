@@ -32,10 +32,18 @@ func (this amqpConnection) Channel() (Channel, error) {
 
 type amqpChannel struct{ *amqp.Channel }
 
-func (this amqpChannel) DeclareQueue(name string) error {
-	_, err := this.Channel.QueueDeclare(name, true, false, false, false, amqp.Table{})
+func (this amqpChannel) DeclareQueue(name string, replicated bool) error {
+	if replicated {
+		return this.declareQueue(name, "quorum")
+	} else {
+		return this.declareQueue(name, "classic")
+	}
+}
+func (this amqpChannel) declareQueue(name, style string) error {
+	_, err := this.Channel.QueueDeclare(name, true, false, false, false, amqp.Table{"x-queue-type": style})
 	return err
 }
+
 func (this amqpChannel) DeclareExchange(name string) error {
 	return this.Channel.ExchangeDeclare(name, amqp.ExchangeFanout, true, false, false, false, amqp.Table{})
 }

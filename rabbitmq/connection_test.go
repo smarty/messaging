@@ -104,33 +104,13 @@ func (this *ConnectionFixture) Close() error                      { return this.
 
 func (this *ConnectionFixture) Tx() error { this.txCalls++; return this.txError }
 
-func (this *ConnectionFixture) DeclareQueue(name string) error {
-	panic("nop")
-}
-func (this *ConnectionFixture) DeclareExchange(name string) error {
-	panic("nop")
-}
-func (this *ConnectionFixture) BindQueue(queue, exchange string) error {
-	panic("nop")
-}
-func (this *ConnectionFixture) BufferCapacity(value uint16) error {
-	panic("nop")
-}
-func (this *ConnectionFixture) Consume(consumerID, queue string) (<-chan amqp.Delivery, error) {
-	panic("nop")
-}
-func (this *ConnectionFixture) Ack(deliveryTag uint64, multiple bool) error {
-	panic("nop")
-}
-func (this *ConnectionFixture) CancelConsumer(consumerID string) error {
-	panic("nop")
-}
-func (this *ConnectionFixture) Publish(exchange, key string, envelope amqp.Publishing) error {
-	panic("nop")
-}
-func (this *ConnectionFixture) TxCommit() error {
-	panic("nop")
-}
-func (this *ConnectionFixture) TxRollback() error {
-	panic("nop")
-}
+func (this *ConnectionFixture) DeclareQueue(name string, replicated bool) error   { panic("nop") }
+func (this *ConnectionFixture) DeclareExchange(name string) error                 { panic("nop") }
+func (this *ConnectionFixture) BindQueue(queue, exchange string) error            { panic("nop") }
+func (this *ConnectionFixture) BufferCapacity(value uint16) error                 { panic("nop") }
+func (this *ConnectionFixture) Consume(_, _ string) (<-chan amqp.Delivery, error) { panic("nop") }
+func (this *ConnectionFixture) Ack(deliveryTag uint64, multiple bool) error       { panic("nop") }
+func (this *ConnectionFixture) CancelConsumer(consumerID string) error            { panic("nop") }
+func (this *ConnectionFixture) Publish(_, _ string, _ amqp.Publishing) error      { panic("nop") }
+func (this *ConnectionFixture) TxCommit() error                                   { panic("nop") }
+func (this *ConnectionFixture) TxRollback() error                                 { panic("nop") }

@@ -226,27 +226,11 @@ func (this *WriterFixture) Publish(exchange, key string, envelope amqp.Publishin
 	return nil
 }
 
-func (this *WriterFixture) DeclareQueue(name string) error {
-	panic("nop")
-}
-func (this *WriterFixture) DeclareExchange(name string) error {
-	panic("nop")
-}
-func (this *WriterFixture) BindQueue(queue, exchange string) error {
-	panic("nop")
-}
-func (this *WriterFixture) BufferCapacity(value uint16) error {
-	panic("nop")
-}
-func (this *WriterFixture) Consume(consumerID, queue string) (<-chan amqp.Delivery, error) {
-	panic("nop")
-}
-func (this *WriterFixture) Ack(deliveryTag uint64, multiple bool) error {
-	panic("nop")
-}
-func (this *WriterFixture) CancelConsumer(consumerID string) error {
-	panic("nop")
-}
-func (this *WriterFixture) Tx() error {
-	panic("nop")
-}
+func (this *WriterFixture) DeclareQueue(name string, replicated bool) error   { panic("nop") }
+func (this *WriterFixture) DeclareExchange(name string) error                 { panic("nop") }
+func (this *WriterFixture) BindQueue(queue, exchange string) error            { panic("nop") }
+func (this *WriterFixture) BufferCapacity(value uint16) error                 { panic("nop") }
+func (this *WriterFixture) Consume(_, _ string) (<-chan amqp.Delivery, error) { panic("nop") }
+func (this *WriterFixture) Ack(deliveryTag uint64, multiple bool) error       { panic("nop") }
+func (this *WriterFixture) CancelConsumer(consumerID string) error            { panic("nop") }
+func (this *WriterFixture) Tx() error                                         { panic("nop") }

@@ -174,7 +174,7 @@ func (this *ReaderFixture) TestWhenClosing_ShutDownAllStreamsAndUnderlyingChanne
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func (this *ReaderFixture) DeclareQueue(name string) error {
+func (this *ReaderFixture) DeclareQueue(name string, replicated bool) error {
 	this.declareQueueName = name
 	return this.declareQueueError
 }

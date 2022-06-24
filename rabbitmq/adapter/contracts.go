@@ -26,7 +26,7 @@ type Connection interface {
 }
 
 type Channel interface {
-	DeclareQueue(name string) error
+	DeclareQueue(name string, replicated bool) error
 	DeclareExchange(name string) error
 	BindQueue(queue, exchange string) error
 

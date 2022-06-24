@@ -68,7 +68,7 @@ func (this *defaultReader) establishTopology(config messaging.StreamConfig) erro
 		return nil
 	}
 
-	if err := this.inner.DeclareQueue(config.StreamName); err != nil {
+	if err := this.inner.DeclareQueue(config.StreamName, config.StreamReplication); err != nil {
 		this.logger.Printf("[WARN] Unable to establish topology, queue declaration failed [%s].", err)
 		return err
 	}
