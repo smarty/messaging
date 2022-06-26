@@ -43,7 +43,7 @@ type DispatchStoreFixture struct {
 func (this *DispatchStoreFixture) Setup() {
 	this.now = time.Now().UTC()
 	this.ctx = context.Background()
-	this.store = newMessageStore(this, func() time.Time { return this.now })
+	this.store = newMessageStore(this, 7, func() time.Time { return this.now })
 }
 
 func (this *DispatchStoreFixture) TestWhenNoDispatchesToWrite_DoNotPerformWriteOperation() {
@@ -78,8 +78,8 @@ func (this *DispatchStoreFixture) TestWhenStoring_WriteToUnderlyingStoreAndMarkD
 
 	this.So(writes, should.Resemble, []messaging.Dispatch{
 		{MessageID: 42, MessageType: "1", Payload: []byte("a")},
-		{MessageID: 43, MessageType: "2", Payload: []byte("b")},
-		{MessageID: 44, MessageType: "3", Payload: []byte("c")},
+		{MessageID: 49, MessageType: "2", Payload: []byte("b")},
+		{MessageID: 56, MessageType: "3", Payload: []byte("c")},
 	})
 }
 func (this *DispatchStoreFixture) TestWhenStoreWriteFails_ReturnErrorDoNotCommitOrSendToOutputChannel() {

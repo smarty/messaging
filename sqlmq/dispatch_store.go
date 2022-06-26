@@ -14,12 +14,13 @@ import (
 
 type dispatchStore struct {
 	db               adapter.ReadWriter
+	stride           uint64
 	now              func() time.Time
 	confirmStatement *strings.Builder
 }
 
-func newMessageStore(db adapter.ReadWriter, now func() time.Time) messageStore {
-	return dispatchStore{db: db, now: now, confirmStatement: &strings.Builder{}}
+func newMessageStore(db adapter.ReadWriter, stride uint64, now func() time.Time) messageStore {
+	return dispatchStore{db: db, stride: stride, now: now, confirmStatement: &strings.Builder{}}
 }
 
 func (this dispatchStore) Store(ctx context.Context, writer adapter.Writer, dispatches []messaging.Dispatch) error {
@@ -45,7 +46,7 @@ func (this dispatchStore) Store(ctx context.Context, writer adapter.Writer, disp
 	}
 
 	for i := uint64(0); i < length; i++ {
-		dispatches[i].MessageID = uint64(identity) + i
+		dispatches[i].MessageID = uint64(identity) + (i * this.stride)
 	}
 
 	return nil

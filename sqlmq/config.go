@@ -11,17 +11,18 @@ import (
 )
 
 type configuration struct {
-	Context       context.Context
-	Target        messaging.Connector
-	DriverName    string
-	DataSource    string
-	StorageHandle adapter.Handle
-	Channel       chan messaging.Dispatch
-	SQLTxOptions  sql.TxOptions
-	Now           func() time.Time
-	Sleep         time.Duration
-	Logger        logger
-	Monitor       monitor
+	Context             context.Context
+	Target              messaging.Connector
+	DriverName          string
+	DataSource          string
+	StorageHandle       adapter.Handle
+	Channel             chan messaging.Dispatch
+	SQLTxOptions        sql.TxOptions
+	AutoincrementStride uint64
+	Now                 func() time.Time
+	Sleep               time.Duration
+	Logger              logger
+	Monitor             monitor
 
 	MessageStore messageStore
 	Sender       messaging.Writer
@@ -63,6 +64,9 @@ func (singleton) ChannelBufferCapacity(value int) option {
 func (singleton) IsolationLevel(value sql.IsolationLevel) option {
 	return func(this *configuration) { this.SQLTxOptions = sql.TxOptions{Isolation: value} }
 }
+func (singleton) AutoincrementStride(value uint8) option {
+	return func(this *configuration) { this.AutoincrementStride = uint64(value) }
+}
 func (singleton) Now(value func() time.Time) option {
 	return func(this *configuration) { this.Now = value }
 }
@@ -84,8 +88,8 @@ func (singleton) Monitor(value monitor) option {
 
 func (singleton) apply(options ...option) option {
 	return func(this *configuration) {
-		for _, option := range Options.defaults(options...) {
-			option(this)
+		for _, item := range Options.defaults(options...) {
+			item(this)
 		}
 
 		if this.StorageHandle == nil {
@@ -93,7 +97,7 @@ func (singleton) apply(options ...option) option {
 		}
 
 		if this.MessageStore == nil {
-			this.MessageStore = newMessageStore(this.StorageHandle, this.Now)
+			this.MessageStore = newMessageStore(this.StorageHandle, this.AutoincrementStride, this.Now)
 		}
 
 		if this.Sender == nil {
@@ -108,11 +112,13 @@ func (singleton) defaults(options ...option) []option {
 	const defaultChannelBufferCapacity = 1024
 	const defaultIsolationLevel = sql.LevelReadCommitted
 	const defaultRetryTimeout = time.Second * 5
+	const defaultAutoincrementStride = 1
 
 	return append([]option{
 		Options.Context(defaultContext),
 		Options.ChannelBufferCapacity(defaultChannelBufferCapacity),
 		Options.IsolationLevel(defaultIsolationLevel),
+		Options.AutoincrementStride(defaultAutoincrementStride),
 		Options.Now(time.Now),
 		Options.RetryTimeout(defaultRetryTimeout),
 		Options.Logger(defaultLogger),
