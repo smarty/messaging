@@ -65,7 +65,13 @@ func (singleton) IsolationLevel(value sql.IsolationLevel) option {
 	return func(this *configuration) { this.SQLTxOptions = sql.TxOptions{Isolation: value} }
 }
 func (singleton) AutoincrementStride(value uint8) option {
-	return func(this *configuration) { this.AutoincrementStride = uint64(value) }
+	return func(this *configuration) {
+		if value == 0 {
+			value = 1
+		}
+
+		this.AutoincrementStride = uint64(value)
+	}
 }
 func (singleton) Now(value func() time.Time) option {
 	return func(this *configuration) { this.Now = value }
