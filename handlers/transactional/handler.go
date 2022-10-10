@@ -38,9 +38,9 @@ func (this handler) Handle(ctx context.Context, messages ...interface{}) {
 
 	this.monitor.TransactionStarted(nil)
 	txCtx.Writer = writer
-	handler := this.factory(txCtx.State())
-	handler.Handle(ctx, messages...)
-	if err := writer.Commit(); err != nil {
+	newHandler := this.factory(txCtx.State())
+	newHandler.Handle(ctx, messages...)
+	if err = writer.Commit(); err != nil {
 		this.logger.Printf("[%s] Unable to commit transaction [%s].", logSeverity(err), err)
 		this.monitor.TransactionCommitted(err)
 		panic(err)
