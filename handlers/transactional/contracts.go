@@ -7,16 +7,6 @@ import (
 	"github.com/smartystreets/messaging/v3"
 )
 
-func New(connector messaging.Connector, factory handlerFunc, options ...option) messaging.Handler {
-	this := handler{connector: connector, factory: factory}
-
-	for _, option := range Options.defaults(options...) {
-		option(&this)
-	}
-
-	return this
-}
-
 type monitor interface {
 	TransactionStarted(error)
 	TransactionCommitted(error)

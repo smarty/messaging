@@ -1,5 +1,17 @@
 package transactional
 
+import "github.com/smartystreets/messaging/v3"
+
+func New(connector messaging.Connector, factory handlerFunc, options ...option) messaging.Handler {
+	this := handler{connector: connector, factory: factory}
+
+	for _, item := range Options.defaults(options...) {
+		item(&this)
+	}
+
+	return this
+}
+
 var Options singleton
 
 type singleton struct{}

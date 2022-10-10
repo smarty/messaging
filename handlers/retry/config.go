@@ -9,8 +9,8 @@ import (
 func New(inner messaging.Handler, options ...option) messaging.Handler {
 	this := handler{Handler: inner, immediate: map[interface{}]struct{}{}}
 
-	for _, option := range Options.defaults(options...) {
-		option(&this)
+	for _, item := range Options.defaults(options...) {
+		item(&this)
 	}
 
 	return this
