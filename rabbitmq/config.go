@@ -63,8 +63,8 @@ func (singleton) Now(value func() time.Time) option {
 }
 func (singleton) apply(options ...option) option {
 	return func(this *configuration) {
-		for _, option := range Options.defaults(options...) {
-			option(this)
+		for _, item := range Options.defaults(options...) {
+			item(this)
 		}
 
 		this.Endpoint = brokerEndpoint{Address: this.Address, TLSConfig: this.TLSConfig}
@@ -85,9 +85,8 @@ func (singleton) defaults(options ...option) []option {
 	var defaultLogger = nop{}
 	var defaultMonitor = nop{}
 	var defaultTLS = &tls.Config{
-		MinVersion:               tls.VersionTLS12,
-		PreferServerCipherSuites: true,
-		SessionTicketsDisabled:   true,
+		MinVersion:             tls.VersionTLS12,
+		SessionTicketsDisabled: true,
 		CipherSuites: []uint16{
 			tls.TLS_FALLBACK_SCSV,
 
