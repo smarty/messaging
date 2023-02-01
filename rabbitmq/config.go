@@ -70,12 +70,16 @@ func (singleton) apply(options ...option) option {
 		this.Endpoint = brokerEndpoint{Address: this.Address, TLSConfig: this.TLSConfig}
 
 		if this.TLSClient == nil {
-			this.TLSClient = this.defaultTLSClient
+			this.TLSClient = func(conn net.Conn, config *tls.Config) tlsConn {
+				return tls.Client(conn, config)
+			}
 		}
 
 		if this.Dialer == nil {
-			this.Dialer = this.defaultDialer()
+			this.Dialer = &net.Dialer{}
 		}
+
+		this.Dialer = newTLSDialer(this.Dialer, *this)
 	}
 }
 func (singleton) defaults(options ...option) []option {
@@ -110,12 +114,7 @@ func (singleton) defaults(options ...option) []option {
 	}, options...)
 }
 
-func (this configuration) defaultTLSClient(conn net.Conn, config *tls.Config) tlsConn {
-	return tls.Client(conn, config)
-}
-func (this configuration) defaultDialer() netDialer {
-	return newTLSDialer(&net.Dialer{}, this)
-}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type nop struct{}
 
