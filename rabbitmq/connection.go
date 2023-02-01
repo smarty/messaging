@@ -47,7 +47,7 @@ func (this *defaultConnection) writer(transactional bool) (messaging.CommitWrite
 		return newWriter(channel, this.config), nil
 	}
 
-	if err := channel.Tx(); err != nil {
+	if err = channel.Tx(); err != nil {
 		_ = channel.Close()
 		return nil, err
 	}

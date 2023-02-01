@@ -41,7 +41,7 @@ func (this *defaultConnector) Connect(ctx context.Context) (messaging.Connection
 		encryption = "encrypted"
 	}
 
-	this.logger.Printf("[INFO] Establishing [%s] AMQP connection with user [%s] to [%s] using virtual host [%s]...", encryption, config.Username, this.broker.Address, config.VirtualHost)
+	this.logger.Printf("[INFO] Establishing [%s] AMQP connection with user [%s] to [%s://%s] using virtual host [%s]...", encryption, config.Username, this.broker.Address.Scheme, hostAddress, config.VirtualHost)
 	socket, err := this.dialer.DialContext(ctx, "tcp", hostAddress)
 	if err != nil {
 		this.logger.Printf("[WARN] Unable to connect [%s].", err)
@@ -56,7 +56,7 @@ func (this *defaultConnector) Connect(ctx context.Context) (messaging.Connection
 		return nil, err
 	}
 
-	this.logger.Printf("[INFO] Established [%s] AMQP connection with user [%s] to [%s] using virtual host [%s].", encryption, config.Username, this.broker.Address, config.VirtualHost)
+	this.logger.Printf("[INFO] Established [%s] AMQP connection with user [%s] to [%s://%s] using virtual host [%s].", encryption, config.Username, this.broker.Address.Scheme, hostAddress, config.VirtualHost)
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 	this.active = append(this.active, newConnection(amqpConnection, this.config))
