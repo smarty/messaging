@@ -19,7 +19,6 @@ type defaultConnection struct {
 func newConnection(inner adapter.Connection, config configuration) messaging.Connection {
 	// NOTE: using pointer type to allow for pointer equality check
 	config.Monitor.ConnectionOpened(nil)
-	config.Logger.Printf("[INFO] Connection established to AMQP broker [%s].", config.Address.Host)
 	return &defaultConnection{inner: inner, config: config, logger: config.Logger, monitor: config.Monitor}
 }
 func (this *defaultConnection) Reader(_ context.Context) (messaging.Reader, error) {
