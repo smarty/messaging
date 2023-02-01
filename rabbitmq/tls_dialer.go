@@ -41,11 +41,11 @@ func (this tlsDialer) DialContext(ctx context.Context, network, address string) 
 		this.endpoint.TLSConfig.ServerName, _, _ = net.SplitHostPort(this.endpoint.Address.Host)
 	}
 
-	tlsConn := this.client(conn, this.endpoint.TLSConfig)
-	if err = tlsConn.Handshake(); err != nil {
+	tlsConnection := this.client(conn, this.endpoint.TLSConfig)
+	if err = tlsConnection.Handshake(); err != nil {
 		_ = conn.Close()
 		return nil, err
 	}
 
-	return tlsConn, nil
+	return tlsConnection, nil
 }
