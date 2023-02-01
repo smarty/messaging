@@ -65,7 +65,7 @@ func (this *ConnectorFixture) TestWhenConnectingToBroker_UseDialedNetworkConnect
 	this.So(this.connectConfig, should.Resemble, adapter.Config{
 		Username:    "my-username",
 		Password:    "my-password",
-		VirtualHost: "/my-vhost",
+		VirtualHost: "my-vhost",
 	})
 }
 func (this *ConnectorFixture) TestCredentialsFromQueryString() {
@@ -76,7 +76,7 @@ func (this *ConnectorFixture) TestCredentialsFromQueryString() {
 	this.So(this.connectConfig, should.Resemble, adapter.Config{
 		Username:    "My-Username-1",
 		Password:    "My-Password-1",
-		VirtualHost: "/the-vhost",
+		VirtualHost: "the-vhost",
 	})
 }
 func (this *ConnectorFixture) TestCredentialsFromQueryString_PreferUserInfo() {
@@ -87,7 +87,7 @@ func (this *ConnectorFixture) TestCredentialsFromQueryString_PreferUserInfo() {
 	this.So(this.connectConfig, should.Resemble, adapter.Config{
 		Username:    "username-1",
 		Password:    "password-1",
-		VirtualHost: "/the-vhost",
+		VirtualHost: "the-vhost",
 	})
 }
 func (this *ConnectorFixture) TestWhenNoCredentialsFound_ConnectUsingDefaultCredentials() {
@@ -108,7 +108,7 @@ func (this *ConnectorFixture) TestWhenNoCredentialsFound_ConnectUsingDefaultCred
 	this.So(this.connectConfig, should.Resemble, adapter.Config{
 		Username:    "guest",
 		Password:    "guest",
-		VirtualHost: "/another-vhost",
+		VirtualHost: "another-vhost",
 	})
 }
 

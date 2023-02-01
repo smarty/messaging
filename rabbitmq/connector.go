@@ -3,6 +3,7 @@ package rabbitmq
 import (
 	"context"
 	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/smartystreets/messaging/v3"
@@ -59,7 +60,7 @@ func (this *defaultConnector) configuration() (string, adapter.Config) {
 	return this.broker.Address.Host, adapter.Config{
 		Username:    username,
 		Password:    password,
-		VirtualHost: this.broker.Address.Path,
+		VirtualHost: parseVirtualHost(this.broker.Address.Path),
 	}
 }
 func parseAuthentication(info *url.Userinfo, queryUsername, queryPassword string) (string, string) {
@@ -72,6 +73,14 @@ func parseAuthentication(info *url.Userinfo, queryUsername, queryPassword string
 	password = coalesce(password, queryPassword)
 
 	return username, password
+}
+func parseVirtualHost(value string) string {
+	value = strings.TrimPrefix(value, "/")
+	if len(value) == 0 {
+		return "/"
+	}
+
+	return value
 }
 func coalesce(values ...string) string {
 	for _, value := range values {
