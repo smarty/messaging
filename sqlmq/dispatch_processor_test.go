@@ -80,7 +80,7 @@ func (this *DispatchProcessorFixture) TestWhenClose_ShutDownChannelAndAllowListe
 	this.So(this.closeCount, should.Equal, 1)
 	this.So(open, should.BeFalse)
 }
-func (this *DispatchProcessorFixture) SkipTestWhenDispatchesArePending_ItShouldPublishThemAndConfirmDispatch() {
+func (this *DispatchProcessorFixture) TestWhenDispatchesArePending_ItShouldPublishThemAndConfirmDispatch() {
 	expected := []messaging.Dispatch{{MessageID: 1}, {MessageID: 2}, {MessageID: 3}}
 	for _, item := range expected {
 		this.channel <- item
@@ -96,7 +96,7 @@ func (this *DispatchProcessorFixture) SkipTestWhenDispatchesArePending_ItShouldP
 	this.So(this.confirmContext, should.NotBeNil)
 	this.So(this.confirmDispatches, should.Resemble, expected)
 }
-func (this *DispatchProcessorFixture) SkipTestWhenWritingToSenderFails_TryAgain() {
+func (this *DispatchProcessorFixture) TestWhenWritingToSenderFails_TryAgain() {
 	this.writeError = errors.New("")
 	this.writeFailureUntil = 1 // 0th attempt fails, subsequent attempts pass
 
@@ -115,7 +115,7 @@ func (this *DispatchProcessorFixture) SkipTestWhenWritingToSenderFails_TryAgain(
 	this.So(this.confirmContext, should.NotBeNil)
 	this.So(this.confirmDispatches, should.Resemble, expected)
 }
-func (this *DispatchProcessorFixture) SkipTestWhenConfirmDispatchFails_TryAgainWithoutWritingToSenderTwice() {
+func (this *DispatchProcessorFixture) TestWhenConfirmDispatchFails_TryAgainWithoutWritingToSenderTwice() {
 	this.confirmError = errors.New("")
 	this.confirmFailureUntil = 1 // 0th attempt fails, subsequent attempts pass
 
@@ -134,7 +134,7 @@ func (this *DispatchProcessorFixture) SkipTestWhenConfirmDispatchFails_TryAgainW
 	this.So(this.confirmContext, should.NotBeNil)
 	this.So(this.confirmDispatches, should.Resemble, append(expected, expected...))
 }
-func (this *DispatchProcessorFixture) SkipTestWhenClosingDuringSleepRetry_SleepIsCutShort() {
+func (this *DispatchProcessorFixture) TestWhenClosingDuringSleepRetry_SleepIsCutShort() {
 	this.sleepTimeout = time.Minute
 	this.initializeDispatchProcessor()
 
@@ -148,7 +148,7 @@ func (this *DispatchProcessorFixture) SkipTestWhenClosingDuringSleepRetry_SleepI
 	this.So(completed, should.BeLessThan, time.Millisecond*10)
 }
 
-func (this *DispatchProcessorFixture) SkipTestWhenListening_ReadPendingDispatchesFromStorage() {
+func (this *DispatchProcessorFixture) TestWhenListening_ReadPendingDispatchesFromStorage() {
 	expected := []messaging.Dispatch{{MessageID: 1}, {MessageID: 2}, {MessageID: 3}}
 	this.loadResult = expected
 
