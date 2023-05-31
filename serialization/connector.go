@@ -39,14 +39,14 @@ func (this *defaultConnection) Reader(ctx context.Context) (messaging.Reader, er
 		return newReader(reader, this.config), nil
 	}
 }
-func (this defaultConnection) Writer(ctx context.Context) (messaging.Writer, error) {
+func (this *defaultConnection) Writer(ctx context.Context) (messaging.Writer, error) {
 	if writer, err := this.Connection.Writer(ctx); err != nil {
 		return nil, err
 	} else {
 		return newWriter(writer.(messaging.CommitWriter), this.config), nil
 	}
 }
-func (this defaultConnection) CommitWriter(ctx context.Context) (messaging.CommitWriter, error) {
+func (this *defaultConnection) CommitWriter(ctx context.Context) (messaging.CommitWriter, error) {
 	if commitWriter, err := this.Connection.CommitWriter(ctx); err != nil {
 		return nil, err
 	} else {
