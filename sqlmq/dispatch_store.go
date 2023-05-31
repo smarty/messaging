@@ -51,9 +51,9 @@ func (this dispatchStore) Store(ctx context.Context, writer adapter.Writer, disp
 
 	return nil
 }
-func (this dispatchStore) buildExecArgs(dispatches []messaging.Dispatch) (string, []interface{}) {
+func (this dispatchStore) buildExecArgs(dispatches []messaging.Dispatch) (string, []any) {
 	builder := &strings.Builder{}
-	args := make([]interface{}, 0, len(dispatches)*2)
+	args := make([]any, 0, len(dispatches)*2)
 
 	_, _ = builder.WriteString("INSERT INTO Messages (type, payload) VALUES ")
 	for i, dispatch := range dispatches {

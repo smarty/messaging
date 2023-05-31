@@ -134,7 +134,7 @@ func (singleton) defaults(options ...option) []option {
 
 type nop struct{}
 
-func (nop) Printf(_ string, _ ...interface{}) {}
+func (nop) Printf(_ string, _ ...any) {}
 
 func (nop) MessageReceived(_ int)  {}
 func (nop) MessageStored(_ int)    {}

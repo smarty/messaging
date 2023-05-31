@@ -16,7 +16,7 @@ type defaultWorker struct {
 	handler     messaging.Handler
 
 	channelBuffer   chan messaging.Delivery
-	currentBatch    []interface{}
+	currentBatch    []any
 	unacknowledged  []messaging.Delivery
 	handleDelivery  bool
 	contextDelivery bool
@@ -33,7 +33,7 @@ func newWorker(config workerConfig) messaging.Listener {
 		handler:     config.Handler,
 
 		channelBuffer:   make(chan messaging.Delivery, config.Subscription.bufferCapacity),
-		currentBatch:    make([]interface{}, 0, config.Subscription.batchCapacity),
+		currentBatch:    make([]any, 0, config.Subscription.batchCapacity),
 		unacknowledged:  make([]messaging.Delivery, 0, config.Subscription.batchCapacity),
 		handleDelivery:  config.Subscription.handleDelivery,
 		contextDelivery: config.Subscription.deliveryToContext,

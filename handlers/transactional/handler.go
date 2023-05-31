@@ -15,7 +15,7 @@ type handler struct {
 	logger    logger
 }
 
-func (this handler) Handle(ctx context.Context, messages ...interface{}) {
+func (this handler) Handle(ctx context.Context, messages ...any) {
 	if ctx == nil {
 		panic(errNilContext)
 	}
@@ -48,7 +48,7 @@ func (this handler) Handle(ctx context.Context, messages ...interface{}) {
 
 	this.monitor.TransactionCommitted(nil)
 }
-func (this handler) finally(ctx *transactionalContext, err interface{}) {
+func (this handler) finally(ctx *transactionalContext, err any) {
 	defer closeResource(ctx)
 	if err == nil {
 		return

@@ -121,7 +121,7 @@ func (this *WriterFixture) TestWhenWrite_PublishToUnderlyingChannel() {
 		ContentType:     "content-type",
 		ContentEncoding: "content-encoding",
 		Payload:         []byte("payload"),
-		Headers: map[string]interface{}{
+		Headers: map[string]any{
 			"header10": "value10",
 			"header20": int64(20),
 			"header30": false,
@@ -148,7 +148,7 @@ func (this *WriterFixture) TestWhenWrite_PublishToUnderlyingChannel() {
 			UserId:          "",
 			AppId:           "1",
 			Body:            []byte("payload"),
-			Headers: map[string]interface{}{
+			Headers: map[string]any{
 				"header10": "value10",
 				"header20": int64(20),
 				"header30": false,

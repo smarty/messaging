@@ -168,13 +168,13 @@ func (this *DispatchReceiverFixture) Confirm(ctx context.Context, dispatches []m
 	panic("nop")
 }
 
-func (this *DispatchReceiverFixture) ExecContext(ctx context.Context, statement string, args ...interface{}) (sql.Result, error) {
+func (this *DispatchReceiverFixture) ExecContext(ctx context.Context, statement string, args ...any) (sql.Result, error) {
 	panic("nop")
 }
-func (this *DispatchReceiverFixture) QueryContext(ctx context.Context, statement string, args ...interface{}) (adapter.QueryResult, error) {
+func (this *DispatchReceiverFixture) QueryContext(ctx context.Context, statement string, args ...any) (adapter.QueryResult, error) {
 	panic("nop")
 }
-func (this *DispatchReceiverFixture) QueryRowContext(ctx context.Context, statement string, args ...interface{}) adapter.RowScanner {
+func (this *DispatchReceiverFixture) QueryRowContext(ctx context.Context, statement string, args ...any) adapter.RowScanner {
 	panic("nop")
 }
 func (this *DispatchReceiverFixture) TxHandle() *sql.Tx {

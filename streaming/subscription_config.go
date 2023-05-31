@@ -127,9 +127,9 @@ func (subscriptionSingleton) defaults(options ...subscriptionOption) []subscript
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-type legacyHandler interface{ Handle(messages ...interface{}) }
+type legacyHandler interface{ Handle(messages ...any) }
 type legacyAdapter struct{ inner legacyHandler }
 
-func (this legacyAdapter) Handle(_ context.Context, messages ...interface{}) {
+func (this legacyAdapter) Handle(_ context.Context, messages ...any) {
 	this.inner.Handle(messages...)
 }

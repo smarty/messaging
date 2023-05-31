@@ -24,22 +24,22 @@ type Fixture struct {
 
 	expectedContext       context.Context
 	shutdown              context.CancelFunc
-	expectedMessages      []interface{}
+	expectedMessages      []any
 	receivedContext       context.Context
-	receivedMessages      []interface{}
+	receivedMessages      []any
 	handleError           error
 	handleCalls           int
 	noErrorAfterAttempt   int
 	shutdownAfterAttempt  int
 	loggedMessages        []string
 	monitoredAttemptCount int
-	monitoredErrors       []interface{}
+	monitoredErrors       []any
 }
 
 func (this *Fixture) Setup() {
 	this.expectedContext = context.WithValue(context.Background(), reflect.TypeOf(this), this)
 	this.expectedContext, this.shutdown = context.WithCancel(this.expectedContext)
-	this.expectedMessages = []interface{}{1, 2, 3}
+	this.expectedMessages = []any{1, 2, 3}
 	this.handler = New(this,
 		Options.Logger(this),
 		Options.Monitor(this),
@@ -85,7 +85,7 @@ func (this *Fixture) SkipTestSleepBetweenRetries() {
 
 	this.So(start, should.HappenWithin, time.Millisecond*5, time.Now().UTC())
 	this.So(this.monitoredAttemptCount, should.Equal, 1)
-	this.So(this.monitoredErrors, should.Resemble, []interface{}{this.handleError, nil})
+	this.So(this.monitoredErrors, should.Resemble, []any{this.handleError, nil})
 	this.So(this.loggedMessages[0], should.ContainSubstring, "debug.Stack")
 }
 func (this *Fixture) TestPanicOnTooManyFailedAttempts() {
@@ -101,7 +101,7 @@ func (this *Fixture) TestPanicOnTooManyFailedAttempts() {
 
 	this.So(this.handleCalls, should.Equal, 2)
 	this.So(this.monitoredAttemptCount, should.Equal, 1)
-	this.So(this.monitoredErrors, should.Resemble, []interface{}{this.handleError, this.handleError})
+	this.So(this.monitoredErrors, should.Resemble, []any{this.handleError, this.handleError})
 }
 func (this *Fixture) TestNoMoreRetriesOnCancelledContext() {
 	this.handleError = errors.New("failed")
@@ -143,7 +143,7 @@ func (this *Fixture) TestWhenRecoveryGivesSpecifiedError_DoNotSleepAndRetryImmed
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func (this *Fixture) Handle(ctx context.Context, messages ...interface{}) {
+func (this *Fixture) Handle(ctx context.Context, messages ...any) {
 	this.handleCalls++
 	this.receivedContext = ctx
 	this.receivedMessages = append(this.receivedMessages, messages...)
@@ -161,11 +161,11 @@ func (this *Fixture) Handle(ctx context.Context, messages ...interface{}) {
 	}
 }
 
-func (this *Fixture) Printf(format string, args ...interface{}) {
+func (this *Fixture) Printf(format string, args ...any) {
 	this.loggedMessages = append(this.loggedMessages, fmt.Sprintf(format, args...))
 }
 
-func (this *Fixture) HandleAttempted(attempt int, err interface{}) {
+func (this *Fixture) HandleAttempted(attempt int, err any) {
 	this.monitoredAttemptCount = attempt
 	this.monitoredErrors = append(this.monitoredErrors, err)
 }

@@ -16,7 +16,7 @@ func TestSubscriptionConfigFixture(t *testing.T) {
 type SubscriptionConfigFixture struct {
 	*gunit.Fixture
 
-	legacyHandleMessages []interface{}
+	legacyHandleMessages []any
 }
 
 func (this *SubscriptionConfigFixture) Setup() {
@@ -31,9 +31,9 @@ func (this *SubscriptionConfigFixture) TestWhenLegacyHandlerIsProvided_HandlerSh
 
 	subscription.handlers[0].Handle(context.Background(), 0, 1, 2)
 
-	this.So(this.legacyHandleMessages, should.Resemble, []interface{}{0, 1, 2})
+	this.So(this.legacyHandleMessages, should.Resemble, []any{0, 1, 2})
 }
-func (this *SubscriptionConfigFixture) Handle(messages ...interface{}) {
+func (this *SubscriptionConfigFixture) Handle(messages ...any) {
 	this.legacyHandleMessages = messages
 }
 

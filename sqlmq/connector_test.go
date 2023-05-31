@@ -108,13 +108,13 @@ func (this *ConnectorFixture) TestWhenOpeningCommitWriterWithTxStateOnCallingCon
 
 func (this *ConnectorFixture) Close() error { return this.closeError }
 
-func (this *ConnectorFixture) QueryContext(ctx context.Context, statement string, args ...interface{}) (adapter.QueryResult, error) {
+func (this *ConnectorFixture) QueryContext(ctx context.Context, statement string, args ...any) (adapter.QueryResult, error) {
 	panic("nop")
 }
-func (this *ConnectorFixture) QueryRowContext(ctx context.Context, statement string, args ...interface{}) adapter.RowScanner {
+func (this *ConnectorFixture) QueryRowContext(ctx context.Context, statement string, args ...any) adapter.RowScanner {
 	panic("nop")
 }
-func (this *ConnectorFixture) ExecContext(ctx context.Context, statement string, args ...interface{}) (sql.Result, error) {
+func (this *ConnectorFixture) ExecContext(ctx context.Context, statement string, args ...any) (sql.Result, error) {
 	panic("nop")
 }
 func (this *ConnectorFixture) BeginTx(ctx context.Context, options *sql.TxOptions) (adapter.Transaction, error) {

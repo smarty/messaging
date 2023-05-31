@@ -21,7 +21,7 @@ type monitor interface {
 	TransactionRolledBack(error)
 }
 type logger interface {
-	Printf(format string, args ...interface{})
+	Printf(format string, args ...any)
 }
 
 var (

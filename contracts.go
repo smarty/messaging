@@ -8,7 +8,7 @@ import (
 )
 
 type Handler interface {
-	Handle(ctx context.Context, messages ...interface{})
+	Handle(ctx context.Context, messages ...any)
 }
 
 type Connector interface {
@@ -99,11 +99,11 @@ type Dispatch struct {
 	ContentType     string
 	ContentEncoding string
 	Payload         []byte
-	Headers         map[string]interface{}
-	Message         interface{}
+	Headers         map[string]any
+	Message         any
 }
 type Delivery struct {
-	Upstream        interface{} // the raw, upstream message provided by the messaging infrastructure
+	Upstream        any // the raw, upstream message provided by the messaging infrastructure
 	DeliveryID      uint64
 	SourceID        uint64
 	MessageID       uint64
@@ -116,8 +116,8 @@ type Delivery struct {
 	ContentType     string
 	ContentEncoding string
 	Payload         []byte
-	Headers         map[string]interface{}
-	Message         interface{}
+	Headers         map[string]any
+	Message         any
 }
 
 type Listener interface {

@@ -8,11 +8,11 @@ import (
 
 type Serializer interface {
 	ContentType() string
-	Serialize(instance interface{}) ([]byte, error)
+	Serialize(instance any) ([]byte, error)
 }
 type Deserializer interface {
 	ContentType() string
-	Deserialize(source []byte, instance interface{}) error
+	Deserialize(source []byte, instance any) error
 }
 
 type DeliveryDecoder interface {
@@ -27,7 +27,7 @@ type monitor interface {
 	MessageDecoded(error)
 }
 type logger interface {
-	Printf(format string, args ...interface{})
+	Printf(format string, args ...any)
 }
 
 var (

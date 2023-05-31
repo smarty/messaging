@@ -19,7 +19,7 @@ type Fixture struct {
 	*gunit.Fixture
 
 	ctx      context.Context
-	messages []interface{}
+	messages []any
 	handler  messaging.Handler
 	sqlTx    *sql.Tx
 
@@ -43,7 +43,7 @@ type Fixture struct {
 	factoryError error
 
 	handleContext  context.Context
-	handleMessages []interface{}
+	handleMessages []any
 	handleError    error
 
 	monitor              *FakeMonitor
@@ -55,7 +55,7 @@ type Fixture struct {
 
 func (this *Fixture) Setup() {
 	this.ctx = context.Background()
-	this.messages = []interface{}{1, 2, 3}
+	this.messages = []any{1, 2, 3}
 	this.sqlTx = &sql.Tx{}
 	this.monitor = &FakeMonitor{fixture: this}
 	this.handler = New(this, this.factory, Options.Monitor(this.monitor), Options.Logger(nop{}))
@@ -183,7 +183,7 @@ func (this *Fixture) factory(state State) messaging.Handler {
 	}
 	return this
 }
-func (this *Fixture) Handle(ctx context.Context, messages ...interface{}) {
+func (this *Fixture) Handle(ctx context.Context, messages ...any) {
 	this.handleContext = ctx
 	this.handleMessages = messages
 	if this.handleError != nil {

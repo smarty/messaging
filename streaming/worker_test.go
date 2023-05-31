@@ -45,7 +45,7 @@ type WorkerFixture struct {
 	handleTimestamp time.Time
 	handleCount     int
 	handleCtx       context.Context
-	handleMessages  []interface{}
+	handleMessages  []any
 }
 
 func (this *WorkerFixture) Setup() {
@@ -120,7 +120,7 @@ func (this *WorkerFixture) TestWhenOnlySingleDeliveryAvailable_SendTheBatchWitho
 
 	this.So(this.handleCtx, should.Equal, this.hardContext)
 	this.So(this.handleCount, should.Equal, 1)
-	this.So(this.handleMessages, should.Resemble, []interface{}{1})
+	this.So(this.handleMessages, should.Resemble, []any{1})
 
 	this.So(this.acknowledgeContext, should.Equal, this.hardContext)
 	this.So(this.acknowledgeCount, should.Equal, 1)
@@ -137,7 +137,7 @@ func (this *WorkerFixture) TestWhenStreamingToHandler_BatchOfMessagesPushedToHan
 
 	this.So(this.handleCtx, should.Equal, this.hardContext)
 	this.So(this.handleCount, should.Equal, 1)
-	this.So(this.handleMessages, should.Resemble, []interface{}{1, 2, 3})
+	this.So(this.handleMessages, should.Resemble, []any{1, 2, 3})
 
 	this.So(this.acknowledgeContext, should.Equal, this.hardContext)
 	this.So(this.acknowledgeCount, should.Equal, 1)
@@ -154,7 +154,7 @@ func (this *WorkerFixture) TestWhenStreamingToHandler_DoNotPushDeliveriesWithBla
 
 	this.So(this.handleCtx, should.Equal, this.hardContext)
 	this.So(this.handleCount, should.Equal, 1)
-	this.So(this.handleMessages, should.Resemble, []interface{}{1, 3})
+	this.So(this.handleMessages, should.Resemble, []any{1, 3})
 
 	this.So(this.acknowledgeContext, should.Equal, this.hardContext)
 	this.So(this.acknowledgeCount, should.Equal, 1)
@@ -174,7 +174,7 @@ func (this *WorkerFixture) TestWhenMoreDeliveriesExistThanBatchMax_DeliverInBatc
 
 	this.So(this.handleCtx, should.Equal, this.hardContext)
 	this.So(this.handleCount, should.Equal, 3)
-	this.So(this.handleMessages, should.Resemble, []interface{}{1, 2, 3, 4, 5})
+	this.So(this.handleMessages, should.Resemble, []any{1, 2, 3, 4, 5})
 
 	this.So(this.acknowledgeContext, should.Equal, this.hardContext)
 	this.So(this.acknowledgeCount, should.Equal, 3)
@@ -190,7 +190,7 @@ func (this *WorkerFixture) TestWhenConfigured_PassFullDeliveryToHandler() {
 
 	this.So(this.handleCtx, should.Equal, this.hardContext)
 	this.So(this.handleCount, should.Equal, 1)
-	this.So(this.handleMessages, should.Resemble, []interface{}{messaging.Delivery{Message: 1}})
+	this.So(this.handleMessages, should.Resemble, []any{messaging.Delivery{Message: 1}})
 }
 func (this *WorkerFixture) TestWhenConfigured_PassFullDeliveryToContext() {
 	this.subscription.deliveryToContext = true
@@ -206,7 +206,7 @@ func (this *WorkerFixture) TestWhenConfigured_PassFullDeliveryToContext() {
 		{Message: 2},
 	})
 	this.So(this.handleCount, should.Equal, 1)
-	this.So(this.handleMessages, should.Resemble, []interface{}{1, 2})
+	this.So(this.handleMessages, should.Resemble, []any{1, 2})
 }
 
 func (this *WorkerFixture) TestWhenAcknowledgementFails_ListeningConcludesWithoutProcessingBufferedDeliveries() {
@@ -313,7 +313,7 @@ func (this *WorkerFixture) Acknowledge(ctx context.Context, deliveries ...messag
 }
 func (this *WorkerFixture) Close() error { panic("nop") }
 
-func (this *WorkerFixture) Handle(ctx context.Context, messages ...interface{}) {
+func (this *WorkerFixture) Handle(ctx context.Context, messages ...any) {
 	this.handleTimestamp = time.Now().UTC()
 	this.handleCount++
 	this.handleCtx = ctx

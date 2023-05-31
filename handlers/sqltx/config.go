@@ -67,7 +67,7 @@ type monitor interface {
 	TransactionRolledBack(error)
 }
 type logger interface {
-	Printf(format string, args ...interface{})
+	Printf(format string, args ...any)
 }
 
 type handlerFunc func(*sql.Tx) messaging.Handler
@@ -76,7 +76,7 @@ type handlerFunc func(*sql.Tx) messaging.Handler
 
 type nop struct{}
 
-func (*nop) Printf(_ string, _ ...interface{}) {}
+func (*nop) Printf(_ string, _ ...any) {}
 
 func (*nop) TransactionStarted(_ error)    {}
 func (*nop) TransactionCommitted(_ error)  {}

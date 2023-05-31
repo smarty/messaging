@@ -12,7 +12,7 @@ func New(handlers ...messaging.Handler) messaging.Handler {
 	return handler(handlers)
 }
 
-func (this handler) Handle(ctx context.Context, messages ...interface{}) {
+func (this handler) Handle(ctx context.Context, messages ...any) {
 	for _, handler := range this {
 		handler.Handle(ctx, messages...)
 	}

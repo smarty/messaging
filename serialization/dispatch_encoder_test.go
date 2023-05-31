@@ -22,7 +22,7 @@ type DispatchEncoderFixture struct {
 	writeTypes        map[reflect.Type]string
 	dispatch          messaging.Dispatch
 	serializeCalls    int
-	serializeInstance interface{}
+	serializeInstance any
 	serializePayload  []byte
 	serializeError    error
 }
@@ -120,7 +120,7 @@ func (this *DispatchEncoderFixture) TestWhenConfiguredToNotCopyMessageTypeFromTo
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 func (this *DispatchEncoderFixture) ContentType() string { return "test-content-type" }
-func (this *DispatchEncoderFixture) Serialize(instance interface{}) ([]byte, error) {
+func (this *DispatchEncoderFixture) Serialize(instance any) ([]byte, error) {
 	this.serializeCalls++
 	this.serializeInstance = instance
 	return this.serializePayload, this.serializeError

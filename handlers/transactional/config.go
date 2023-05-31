@@ -36,7 +36,7 @@ func (singleton) defaults(options ...option) []option {
 
 type nop struct{}
 
-func (nop) Printf(_ string, _ ...interface{}) {}
+func (nop) Printf(_ string, _ ...any) {}
 
 func (nop) TransactionStarted(_ error)    {}
 func (nop) TransactionCommitted(_ error)  {}

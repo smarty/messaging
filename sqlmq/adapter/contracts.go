@@ -24,8 +24,8 @@ type Handle interface {
 }
 
 type Reader interface {
-	QueryContext(ctx context.Context, statement string, args ...interface{}) (QueryResult, error)
-	QueryRowContext(ctx context.Context, statement string, args ...interface{}) RowScanner
+	QueryContext(ctx context.Context, statement string, args ...any) (QueryResult, error)
+	QueryRowContext(ctx context.Context, statement string, args ...any) RowScanner
 }
 type QueryResult interface {
 	RowScanner
@@ -34,11 +34,11 @@ type QueryResult interface {
 	io.Closer
 }
 type RowScanner interface {
-	Scan(...interface{}) error
+	Scan(...any) error
 }
 
 type Writer interface {
-	ExecContext(ctx context.Context, statement string, args ...interface{}) (sql.Result, error)
+	ExecContext(ctx context.Context, statement string, args ...any) (sql.Result, error)
 }
 type ReadWriter interface {
 	Reader

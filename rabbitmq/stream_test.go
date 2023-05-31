@@ -68,7 +68,7 @@ func (this *StreamFixture) TestWhenReading_ReadFromConsumerBufferChannel() {
 		DeliveryTag:     6,
 		Redelivered:     false,
 		Body:            []byte("payload"),
-		Headers: map[string]interface{}{
+		Headers: map[string]any{
 			"header10": "value10",
 			"header20": int64(20),
 			"header30": false,
@@ -93,7 +93,7 @@ func (this *StreamFixture) TestWhenReading_ReadFromConsumerBufferChannel() {
 		ContentType:     "content-type",
 		ContentEncoding: "content-encoding",
 		Payload:         []byte("payload"),
-		Headers: map[string]interface{}{
+		Headers: map[string]any{
 			"header10": "value10",
 			"header20": int64(20),
 			"header30": false,

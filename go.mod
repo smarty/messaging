@@ -1,6 +1,6 @@
 module github.com/smartystreets/messaging/v3
 
-go 1.17
+go 1.18
 
 require (
 	github.com/smartystreets/assertions v1.13.1

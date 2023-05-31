@@ -25,7 +25,7 @@ func newHandler(config configuration) messaging.Handler {
 	}
 }
 
-func (this *handler) Handle(ctx context.Context, messages ...interface{}) {
+func (this *handler) Handle(ctx context.Context, messages ...any) {
 	tx := this.beginTransaction(ctx)
 
 	defer func() { this.finally(tx, recover()) }()
@@ -41,7 +41,7 @@ func (this *handler) beginTransaction(ctx context.Context) *sql.Tx {
 		return tx
 	}
 }
-func (this *handler) finally(tx *sql.Tx, recovered interface{}) {
+func (this *handler) finally(tx *sql.Tx, recovered any) {
 	if recovered != nil {
 		_ = tx.Rollback()
 		panic(recovered)

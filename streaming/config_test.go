@@ -62,5 +62,5 @@ func (this *ConfigFixture) CommitWriter(ctx context.Context) (messaging.CommitWr
 	panic("nop")
 }
 
-func (this *ConfigFixture) Handle(_ context.Context, _ ...interface{}) {
+func (this *ConfigFixture) Handle(_ context.Context, _ ...any) {
 }

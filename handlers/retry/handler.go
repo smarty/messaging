@@ -15,22 +15,22 @@ type handler struct {
 	logger      logger
 	monitor     monitor
 	stackTrace  bool
-	immediate   map[interface{}]struct{}
+	immediate   map[any]struct{}
 }
 
-func (this handler) Handle(ctx context.Context, messages ...interface{}) {
+func (this handler) Handle(ctx context.Context, messages ...any) {
 	for attempt := 0; isAlive(ctx); attempt++ {
 		if this.handle(ctx, attempt, messages...) {
 			break
 		}
 	}
 }
-func (this handler) handle(ctx context.Context, attempt int, messages ...interface{}) (success bool) {
+func (this handler) handle(ctx context.Context, attempt int, messages ...any) (success bool) {
 	defer func() { success = this.finally(ctx, attempt, recover()) }()
 	this.Handler.Handle(ctx, messages...)
 	return success
 }
-func (this handler) finally(ctx context.Context, attempt int, err interface{}) bool {
+func (this handler) finally(ctx context.Context, attempt int, err any) bool {
 	this.monitor.HandleAttempted(attempt, err)
 
 	if err != nil {
@@ -42,12 +42,12 @@ func (this handler) finally(ctx context.Context, attempt int, err interface{}) b
 	return err == nil
 }
 
-func (this handler) handleFailure(ctx context.Context, attempt int, err interface{}) {
+func (this handler) handleFailure(ctx context.Context, attempt int, err any) {
 	this.logFailure(attempt, err)
 	this.panicOnTooManyAttempts(attempt)
 	this.sleep(ctx, err)
 }
-func (this handler) logFailure(attempt int, err interface{}) {
+func (this handler) logFailure(attempt int, err any) {
 	if this.stackTrace {
 		this.logger.Printf("[INFO] Attempt [%d] operation failure [%s].\n%s", attempt, err, string(debug.Stack()))
 	} else {
@@ -59,7 +59,7 @@ func (this handler) panicOnTooManyAttempts(attempt int) {
 		panic(ErrMaxRetriesExceeded)
 	}
 }
-func (this handler) sleep(ctx context.Context, err interface{}) {
+func (this handler) sleep(ctx context.Context, err any) {
 	if _, contains := this.immediate[err]; contains {
 		return
 	}

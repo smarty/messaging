@@ -27,12 +27,12 @@ type DispatchStoreFixture struct {
 	execCalls     int
 	execContext   context.Context
 	execStatement string
-	execArgs      []interface{}
+	execArgs      []any
 	execError     error
 
 	queryContext   context.Context
 	queryStatement string
-	queryArgs      []interface{}
+	queryArgs      []any
 	queryError     error
 	queryResult    *storageQueryResult
 
@@ -70,7 +70,7 @@ func (this *DispatchStoreFixture) TestWhenStoring_WriteToUnderlyingStoreAndMarkD
 
 	this.So(this.execContext, should.Equal, this.ctx)
 	this.So(this.execStatement, should.Equal, "INSERT INTO Messages (type, payload) VALUES (?,?),(?,?),(?,?);")
-	this.So(this.execArgs, should.Resemble, []interface{}{
+	this.So(this.execArgs, should.Resemble, []any{
 		"1", []byte("a"),
 		"2", []byte("b"),
 		"3", []byte("c"),
@@ -178,7 +178,7 @@ func (this *DispatchStoreFixture) TestConfirmedDispatches_WrittenToUnderlyingSto
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func (this *DispatchStoreFixture) ExecContext(ctx context.Context, statement string, args ...interface{}) (sql.Result, error) {
+func (this *DispatchStoreFixture) ExecContext(ctx context.Context, statement string, args ...any) (sql.Result, error) {
 	this.execCalls++
 	this.execContext = ctx
 	this.execStatement = statement
@@ -192,14 +192,14 @@ func (this *DispatchStoreFixture) RowsAffected() (int64, error) {
 	return this.rowsAffectedValue, nil
 }
 
-func (this *DispatchStoreFixture) QueryContext(ctx context.Context, statement string, args ...interface{}) (adapter.QueryResult, error) {
+func (this *DispatchStoreFixture) QueryContext(ctx context.Context, statement string, args ...any) (adapter.QueryResult, error) {
 	this.queryContext = ctx
 	this.queryStatement = statement
 	this.queryArgs = args
 	return this.queryResult, this.queryError
 }
 
-func (this *DispatchStoreFixture) QueryRowContext(ctx context.Context, statement string, args ...interface{}) adapter.RowScanner {
+func (this *DispatchStoreFixture) QueryRowContext(ctx context.Context, statement string, args ...any) adapter.RowScanner {
 	panic("nop")
 }
 
@@ -211,7 +211,7 @@ type storageQueryResult struct {
 	items      []messaging.Dispatch
 }
 
-func (this *storageQueryResult) Scan(fields ...interface{}) error {
+func (this *storageQueryResult) Scan(fields ...any) error {
 	item := this.items[this.index-1]
 	for i := 0; i < len(fields); i++ {
 		switch i {

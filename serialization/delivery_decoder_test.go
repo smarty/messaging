@@ -27,7 +27,7 @@ type DeliveryDecoderFixture struct {
 
 	deserializeCalls    int
 	deserializePayload  []byte
-	deserializeInstance interface{}
+	deserializeInstance any
 	deserializeError    error
 }
 
@@ -182,7 +182,7 @@ func (this *DeliveryDecoderFixture) TestWhenMessageTypeNotAllowed_ReturnError() 
 
 func (this *DeliveryDecoderFixture) ContentType() string { panic("not called") }
 
-func (this *DeliveryDecoderFixture) Deserialize(raw []byte, instance interface{}) error {
+func (this *DeliveryDecoderFixture) Deserialize(raw []byte, instance any) error {
 	this.deserializeCalls++
 	this.deserializePayload = raw
 	this.deserializeInstance = instance
