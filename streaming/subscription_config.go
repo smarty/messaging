@@ -5,7 +5,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/smartystreets/messaging/v3"
+	"github.com/smarty/messaging/v3"
 )
 
 func NewSubscription(streamName string, options ...subscriptionOption) Subscription {

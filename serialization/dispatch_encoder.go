@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/smartystreets/messaging/v3"
+	"github.com/smarty/messaging/v3"
 )
 
 type defaultDispatchEncoder struct {

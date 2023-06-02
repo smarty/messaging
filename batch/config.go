@@ -1,6 +1,6 @@
 package batch
 
-import "github.com/smartystreets/messaging/v3"
+import "github.com/smarty/messaging/v3"
 
 type configuration struct {
 	Connector   messaging.Connector

@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"io"
 
-	"github.com/smartystreets/messaging/v3"
+	"github.com/smarty/messaging/v3"
 )
 
 type handler struct {

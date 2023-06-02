@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/smartystreets/messaging/v3"
-	"github.com/smartystreets/messaging/v3/rabbitmq/adapter"
+	"github.com/smarty/messaging/v3"
+	"github.com/smarty/messaging/v3/rabbitmq/adapter"
 	"github.com/streadway/amqp"
 )
 

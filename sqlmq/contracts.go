@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/smartystreets/messaging/v3"
-	"github.com/smartystreets/messaging/v3/sqlmq/adapter"
+	"github.com/smarty/messaging/v3"
+	"github.com/smarty/messaging/v3/sqlmq/adapter"
 )
 
 type messageStore interface {

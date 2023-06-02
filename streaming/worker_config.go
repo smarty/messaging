@@ -3,7 +3,7 @@ package streaming
 import (
 	"context"
 
-	"github.com/smartystreets/messaging/v3"
+	"github.com/smarty/messaging/v3"
 )
 
 type workerFactory func(workerConfig) messaging.Listener

@@ -3,7 +3,7 @@ package sqltx
 import (
 	"database/sql"
 
-	"github.com/smartystreets/messaging/v3"
+	"github.com/smarty/messaging/v3"
 )
 
 func New(handle *sql.DB, callback handlerFunc, options ...option) messaging.Handler {

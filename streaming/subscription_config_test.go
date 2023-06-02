@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/smarty/messaging/v3"
 	"github.com/smartystreets/assertions/should"
 	"github.com/smartystreets/gunit"
-	"github.com/smartystreets/messaging/v3"
 )
 
 func TestSubscriptionConfigFixture(t *testing.T) {

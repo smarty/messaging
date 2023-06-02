@@ -3,7 +3,7 @@ package serialization
 import (
 	"context"
 
-	"github.com/smartystreets/messaging/v3"
+	"github.com/smarty/messaging/v3"
 )
 
 type defaultConnector struct {
