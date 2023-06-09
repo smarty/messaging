@@ -36,7 +36,7 @@ func newConnector(config configuration) messaging.Connector {
 func (this *defaultConnector) Connect(ctx context.Context) (messaging.Connection, error) {
 	hostAddress, config := this.configuration()
 
-	var encryption string = "plaintext"
+	var encryption = "plaintext"
 	if this.broker.Address.Scheme == "amqps" {
 		encryption = "encrypted"
 	}

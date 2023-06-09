@@ -7,7 +7,7 @@ import (
 )
 
 type brokerEndpoint struct {
-	Address   url.URL
+	Address   *url.URL
 	TLSConfig *tls.Config
 }
 

@@ -17,7 +17,7 @@ func New(options ...option) messaging.Connector {
 }
 
 type configuration struct {
-	Address              url.URL
+	Address              *url.URL
 	TLSConfig            *tls.Config
 	Endpoint             brokerEndpoint
 	TLSClient            tlsClientFunc
@@ -35,8 +35,16 @@ type singleton struct{}
 type option func(*configuration)
 
 func (singleton) Address(value string) option {
-	return func(this *configuration) { address, _ := url.Parse(value); this.Address = *address }
+	return func(this *configuration) { this.Address, _ = url.Parse(coalesce(value, defaultAddress)) }
 }
+func (singleton) BrokerAddress(value *url.URL) option {
+	if value == nil {
+		return Options.Address(defaultAddress)
+	}
+
+	return func(this *configuration) { this.Address = value }
+}
+
 func (singleton) TLSConfig(value *tls.Config) option {
 	return func(this *configuration) { this.TLSConfig = value }
 }
@@ -83,7 +91,7 @@ func (singleton) apply(options ...option) option {
 	}
 }
 func (singleton) defaults(options ...option) []option {
-	const defaultAddress = "amqp://guest:guest@127.0.0.1:5672/"
+
 	const defaultTopologyFailurePanic = true
 	var defaultNow = time.Now
 	var defaultLogger = nop{}
@@ -113,6 +121,10 @@ func (singleton) defaults(options ...option) []option {
 		Options.Now(defaultNow),
 	}, options...)
 }
+
+const (
+	defaultAddress = "amqp://guest:guest@127.0.0.1:5672/"
+)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
