@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/smarty/messaging/v3"
 	"github.com/smartystreets/assertions/should"
 	"github.com/smartystreets/gunit"
+
+	"github.com/smarty/messaging/v3"
 )
 
 func TestSubscriptionConfigFixture(t *testing.T) {
@@ -42,7 +43,7 @@ func (this *SubscriptionConfigFixture) TestWhenValuesAreProvided_SubscriptionSho
 		SubscriptionOptions.Name("name"),
 		SubscriptionOptions.AddWorkers(nil),
 		SubscriptionOptions.Topics("topic1", "topic2"),
-		SubscriptionOptions.AllTopics("topic1", "topic2", "topic3"),
+		SubscriptionOptions.AvailableTopics("topic1", "topic2", "topic3"),
 		SubscriptionOptions.BatchCapacity(1),
 		SubscriptionOptions.BufferCapacity(2),
 		SubscriptionOptions.BufferDelayBetweenBatches(3),
