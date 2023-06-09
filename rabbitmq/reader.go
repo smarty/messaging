@@ -43,7 +43,7 @@ func (this *defaultReader) Stream(_ context.Context, settings messaging.StreamCo
 	}
 
 	if err := this.inner.BufferCapacity(settings.BufferCapacity); err != nil {
-		this.logger.Printf("[WARN] Unable to set channel buffer size [%s].", err)
+		this.logger.Printf("[WARN] Unable to set channel buffer size for stream [%s]: %s", settings.StreamName, err)
 		_ = this.inner.Close()
 		return nil, err
 	}
@@ -51,7 +51,7 @@ func (this *defaultReader) Stream(_ context.Context, settings messaging.StreamCo
 	streamID := strconv.FormatUint(this.counter, 10)
 	deliveries, err := this.inner.Consume(streamID, settings.StreamName)
 	if err != nil {
-		this.logger.Printf("[WARN] Unable to open consumer on channel [%s].", err)
+		this.logger.Printf("[WARN] Unable to open consumer for stream (channel) [%s]:", settings.StreamName, err)
 		_ = this.inner.Close()
 		return nil, err
 	}
@@ -75,18 +75,22 @@ func (this *defaultReader) establishTopology(config messaging.StreamConfig) erro
 
 	for _, topic := range config.Topics {
 		if err := this.inner.DeclareExchange(topic); err != nil {
-			this.logger.Printf("[WARN] Unable to establish topology for subscriber; exchange declaration failed [%s].", err)
+			this.logger.Printf("[WARN] Unable to establish topology for subscriber on stream [%s]; exchange declaration failed for topic [%s]: %s", config.StreamName, topic, err)
 			return err
 		}
 		if err := this.inner.BindQueue(config.StreamName, topic); err != nil {
-			this.logger.Printf("[WARN] Unable to establish topology for subscriber; queue binding failed [%s].", err)
+			this.logger.Printf("[WARN] Unable to establish topology for subscriber on stream [%s]; stream (queue) binding failed [%s]: %s", config.StreamName, topic, err)
 			return err
 		}
 	}
 
 	for _, topic := range config.AvailableTopics {
+		if len(topic) == 0 {
+			continue
+		}
+
 		if err := this.inner.DeclareExchange(topic); err != nil {
-			this.logger.Printf("[WARN] Unable to establish general topology of available topics; exchange declaration failed [%s].", err)
+			this.logger.Printf("[WARN] Unable to establish general topology of available topics; exchange declaration failed for topic [%s]:", topic, err)
 			return err
 		}
 	}
