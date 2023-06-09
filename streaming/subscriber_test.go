@@ -54,11 +54,11 @@ type SubscriberFixture struct {
 
 func (this *SubscriberFixture) Setup() {
 	this.subscription = Subscription{
-		streamName:        "queue",
-		topics:            []string{"topic1", "topic2"},
-		establishTopology: true,
-		bufferCapacity:    16,
-		handlers:          []messaging.Handler{nil},
+		streamName:         "queue",
+		subscriptionTopics: []string{"topic1", "topic2"},
+		establishTopology:  true,
+		bufferCapacity:     16,
+		handlers:           []messaging.Handler{nil},
 	}
 	this.softContext, this.softShutdown = context.WithCancel(context.Background())
 	this.initializeSubscriber()
@@ -101,7 +101,7 @@ func (this *SubscriberFixture) TestWhenOpeningStreamFails_ListenShouldReturn() {
 		ExclusiveStream:   true, // single handler
 		BufferCapacity:    this.subscription.bufferCapacity,
 		StreamName:        this.subscription.streamName,
-		Topics:            this.subscription.topics,
+		Topics:            this.subscription.subscriptionTopics,
 	})
 	this.So(this.closeCount, should.Equal, 1) // reader
 }

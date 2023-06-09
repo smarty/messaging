@@ -144,6 +144,28 @@ func (this *ReaderFixture) TestWhenTopologyRedeclarationConflictOccurs_CloseChan
 	this.So(this.callsToClose, should.Equal, 1)
 }
 
+func (this *ReaderFixture) TestWhenTopologyAvailableTopicsDeclared_DeclareAllOfThem() {
+	stream, err := this.reader.Stream(context.Background(), messaging.StreamConfig{
+		EstablishTopology: true,
+		ExclusiveStream:   true,
+		BufferCapacity:    2,
+		StreamName:        "queue",
+		Topics:            []string{"subscribed"},
+		AvailableTopics:   []string{"another-topic-1", "another-topic-2"},
+	})
+
+	this.So(stream, should.HaveSameTypeAs, &defaultStream{})
+	this.So(err, should.BeNil)
+
+	this.So(this.declareQueueName, should.Equal, "queue")
+	this.So(this.declareExchangeNames, should.Resemble, []string{"subscribed", "another-topic-1", "another-topic-2"})
+	this.So(this.bindQueueQueueNames, should.Resemble, []string{"queue"})
+	this.So(this.bindQueueExchangeNames, should.Resemble, []string{"subscribed"})
+	this.So(this.bufferCapacityValue, should.Equal, 2)
+	this.So(this.consumeConsumerID, should.Equal, "0")
+	this.So(this.consumeQueue, should.Equal, "queue")
+}
+
 func (this *ReaderFixture) TestWhenSettingBufferCapacityFails_CloseChannelAndReturnError() {
 	this.bufferCapacityError = errors.New("")
 

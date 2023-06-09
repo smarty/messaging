@@ -51,7 +51,10 @@ func (subscriptionSingleton) StreamReplication(value bool) subscriptionOption {
 	return func(this *Subscription) { this.streamReplication = value }
 }
 func (subscriptionSingleton) Topics(values ...string) subscriptionOption {
-	return func(this *Subscription) { this.topics = values }
+	return func(this *Subscription) { this.subscriptionTopics = values }
+}
+func (subscriptionSingleton) AllTopics(values ...string) subscriptionOption {
+	return func(this *Subscription) { this.availableTopics = values }
 }
 func (subscriptionSingleton) Partition(value uint64) subscriptionOption {
 	return func(this *Subscription) { this.partition = value }
@@ -88,8 +91,8 @@ func (subscriptionSingleton) ShutdownStrategy(strategy ShutdownStrategy, timeout
 
 func (subscriptionSingleton) apply(options ...subscriptionOption) subscriptionOption {
 	return func(this *Subscription) {
-		for _, option := range SubscriptionOptions.defaults(options...) {
-			option(this)
+		for _, item := range SubscriptionOptions.defaults(options...) {
+			item(this)
 		}
 
 		if length := len(this.handlers); length > int(this.bufferCapacity) {
@@ -99,7 +102,29 @@ func (subscriptionSingleton) apply(options ...subscriptionOption) subscriptionOp
 		if len(this.handlers) == 0 {
 			panic("no workers configured")
 		}
+
+		this.availableTopics = uniqueTopics(this.subscriptionTopics, this.availableTopics)
 	}
+}
+func uniqueTopics(subscriptionTopics []string, allTopics []string) []string {
+	unique := make([]string, 0, len(allTopics))
+
+	subscribedTopics := make(map[string]struct{}, len(subscriptionTopics))
+	for _, item := range subscriptionTopics {
+		subscribedTopics[item] = struct{}{}
+	}
+
+	for _, item := range allTopics {
+		if _, contains := subscribedTopics[item]; !contains {
+			unique = append(unique, item)
+		}
+	}
+
+	if len(unique) == 0 {
+		return nil
+	}
+
+	return unique
 }
 func (subscriptionSingleton) defaults(options ...subscriptionOption) []subscriptionOption {
 	const defaultBufferCapacity = 1

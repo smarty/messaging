@@ -8,22 +8,23 @@ import (
 )
 
 type Subscription struct {
-	name              string
-	streamName        string
-	streamReplication bool
-	topics            []string
-	partition         uint64
-	sequence          uint64
-	handlers          []messaging.Handler
-	bufferCapacity    uint16
-	establishTopology bool
-	batchCapacity     uint16
-	handleDelivery    bool
-	deliveryToContext bool
-	bufferTimeout     time.Duration // the amount of time to rest and buffer between batches (instead of going as quickly as possible)
-	reconnectDelay    time.Duration
-	shutdownTimeout   time.Duration
-	shutdownStrategy  ShutdownStrategy
+	name               string
+	streamName         string
+	streamReplication  bool
+	subscriptionTopics []string
+	availableTopics    []string
+	partition          uint64
+	sequence           uint64
+	handlers           []messaging.Handler
+	bufferCapacity     uint16
+	establishTopology  bool
+	batchCapacity      uint16
+	handleDelivery     bool
+	deliveryToContext  bool
+	bufferTimeout      time.Duration // the amount of time to rest and buffer between batches (instead of going as quickly as possible)
+	reconnectDelay     time.Duration
+	shutdownTimeout    time.Duration
+	shutdownStrategy   ShutdownStrategy
 }
 
 func (this Subscription) streamConfig() messaging.StreamConfig {
@@ -33,7 +34,8 @@ func (this Subscription) streamConfig() messaging.StreamConfig {
 		BufferCapacity:    this.bufferCapacity,
 		StreamName:        this.streamName,
 		StreamReplication: this.streamReplication,
-		Topics:            this.topics,
+		Topics:            this.subscriptionTopics,
+		AvailableTopics:   this.availableTopics,
 		GroupName:         this.name,
 		Partition:         this.partition,
 		Sequence:          this.sequence,

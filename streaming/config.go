@@ -7,11 +7,11 @@ import (
 )
 
 func New(connector messaging.Connector, options ...option) messaging.ListenCloser {
-	config := config{}
-	Options.apply(options...)(&config)
+	configuration := config{}
+	Options.apply(options...)(&configuration)
 
 	pool := newConnectionPool(connector)
-	return newManager(pool, config.subscriptions, func(ctx context.Context, sub Subscription) messaging.Listener {
+	return newManager(pool, configuration.subscriptions, func(ctx context.Context, sub Subscription) messaging.Listener {
 		return newSubscriber(pool, sub, ctx, newWorker)
 	})
 }
@@ -35,8 +35,8 @@ func (singleton) Subscriptions(values ...Subscription) option {
 
 func (singleton) apply(options ...option) option {
 	return func(this *config) {
-		for _, option := range Options.defaults(options...) {
-			option(this)
+		for _, item := range Options.defaults(options...) {
+			item(this)
 		}
 	}
 }

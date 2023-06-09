@@ -95,6 +95,10 @@ type (
 		// value is used when a consumer group GroupName is specified, otherwise, it is ignored.
 		Topics []string
 
+		// If supported by the underlying messaging infrastructure, the list of available topics that should exist with
+		// the message broker. In the case of RabbitMQ, the names of the exchanges which should be declared.
+		AvailableTopics []string
+
 		// If supported by the underlying messaging infrastructure, the partition which should be read from. In cases like
 		// RabbitMQ, this value is ignored. With Kafka, this value is used to subscribe to the appropriate partition for an
 		// individual consumer when not acting as part of a consumer group.

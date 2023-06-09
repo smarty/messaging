@@ -75,11 +75,18 @@ func (this *defaultReader) establishTopology(config messaging.StreamConfig) erro
 
 	for _, topic := range config.Topics {
 		if err := this.inner.DeclareExchange(topic); err != nil {
-			this.logger.Printf("[WARN] Unable to establish topology, exchange declaration failed [%s].", err)
+			this.logger.Printf("[WARN] Unable to establish topology for subscriber; exchange declaration failed [%s].", err)
 			return err
 		}
 		if err := this.inner.BindQueue(config.StreamName, topic); err != nil {
-			this.logger.Printf("[WARN] Unable to establish topology, queue binding failed [%s].", err)
+			this.logger.Printf("[WARN] Unable to establish topology for subscriber; queue binding failed [%s].", err)
+			return err
+		}
+	}
+
+	for _, topic := range config.AvailableTopics {
+		if err := this.inner.DeclareExchange(topic); err != nil {
+			this.logger.Printf("[WARN] Unable to establish general topology of available topics; exchange declaration failed [%s].", err)
 			return err
 		}
 	}
