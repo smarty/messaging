@@ -7,8 +7,8 @@ import (
 
 	"github.com/smarty/messaging/v3"
 	"github.com/smarty/messaging/v3/rabbitmq/adapter"
-	"github.com/smartystreets/assertions/should"
-	"github.com/smartystreets/gunit"
+	"github.com/smarty/assertions/should"
+	"github.com/smarty/gunit"
 	"github.com/streadway/amqp"
 )
 

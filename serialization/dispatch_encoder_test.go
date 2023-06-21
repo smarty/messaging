@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/smarty/messaging/v3"
-	"github.com/smartystreets/assertions/should"
-	"github.com/smartystreets/gunit"
+	"github.com/smarty/assertions/should"
+	"github.com/smarty/gunit"
 )
 
 func TestDispatchEncoderFixture(t *testing.T) {
