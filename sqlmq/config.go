@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/smartystreets/messaging/v4"
-	"github.com/smartystreets/messaging/v4/batch"
-	"github.com/smartystreets/messaging/v4/sqlmq/adapter"
+	"github.com/smarty/messaging/v4"
+	"github.com/smarty/messaging/v4/batch"
+	"github.com/smarty/messaging/v4/sqlmq/adapter"
 )
 
 type configuration struct {

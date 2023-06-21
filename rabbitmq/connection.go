@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/smartystreets/messaging/v4"
-	"github.com/smartystreets/messaging/v4/rabbitmq/adapter"
+	"github.com/smarty/messaging/v4"
+	"github.com/smarty/messaging/v4/rabbitmq/adapter"
 )
 
 type defaultConnection struct {

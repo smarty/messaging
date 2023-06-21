@@ -3,7 +3,7 @@ package serialization
 import (
 	"reflect"
 
-	"github.com/smartystreets/messaging/v4"
+	"github.com/smarty/messaging/v4"
 )
 
 func New(connector messaging.Connector, options ...option) messaging.Connector {

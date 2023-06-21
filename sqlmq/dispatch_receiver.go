@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/smartystreets/messaging/v4"
-	"github.com/smartystreets/messaging/v4/sqlmq/adapter"
+	"github.com/smarty/messaging/v4"
+	"github.com/smarty/messaging/v4/sqlmq/adapter"
 )
 
 type dispatchReceiver struct {
