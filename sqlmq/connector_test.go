@@ -6,10 +6,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/smarty/messaging/v3"
-	"github.com/smarty/messaging/v3/sqlmq/adapter"
 	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/messaging/v3"
+	"github.com/smarty/messaging/v3/sqlmq/adapter"
 )
 
 func TestConnectorFixture(t *testing.T) {

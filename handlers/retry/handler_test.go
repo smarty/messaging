@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/smarty/messaging/v3"
 	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/messaging/v3"
 )
 
 func TestFixture(t *testing.T) {

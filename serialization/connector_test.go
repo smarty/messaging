@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/smarty/messaging/v3"
 	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/messaging/v3"
 )
 
 func TestConnectorFixture(t *testing.T) {
