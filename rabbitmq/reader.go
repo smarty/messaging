@@ -90,7 +90,7 @@ func (this *defaultReader) establishTopology(config messaging.StreamConfig) erro
 		}
 
 		if err := this.inner.DeclareExchange(topic); err != nil {
-			this.logger.Printf("[WARN] Unable to establish general topology of available topics; exchange declaration failed for topic [%s]:", topic, err)
+			this.logger.Printf("[WARN] Unable to establish general topology of available topics; exchange declaration failed for topic [%s]: %s", topic, err)
 			return err
 		}
 	}
