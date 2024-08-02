@@ -5,11 +5,11 @@ import (
 	"errors"
 	"testing"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
 	"github.com/smarty/messaging/v3"
 	"github.com/smarty/messaging/v3/rabbitmq/adapter"
-	"github.com/streadway/amqp"
 )
 
 func TestConnectionFixture(t *testing.T) {

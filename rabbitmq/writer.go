@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/smarty/messaging/v3"
 	"github.com/smarty/messaging/v3/rabbitmq/adapter"
-	"github.com/streadway/amqp"
 )
 
 type defaultWriter struct {

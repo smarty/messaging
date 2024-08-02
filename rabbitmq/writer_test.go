@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
 	"github.com/smarty/messaging/v3"
-	"github.com/streadway/amqp"
 )
 
 func TestWriterFixture(t *testing.T) {

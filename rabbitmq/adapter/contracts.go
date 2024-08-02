@@ -5,7 +5,7 @@ import (
 	"io"
 	"net"
 
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 func New() Connector { return amqpConnector{} }
