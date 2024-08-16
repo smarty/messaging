@@ -91,7 +91,6 @@ func (singleton) apply(options ...option) option {
 	}
 }
 func (singleton) defaults(options ...option) []option {
-
 	const defaultTopologyFailurePanic = true
 	var defaultNow = time.Now
 	var defaultLogger = nop{}
