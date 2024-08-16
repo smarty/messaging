@@ -22,7 +22,7 @@ func newDefaultStatusChecker(config configuration) Checker {
 		lock:      new(sync.Mutex),
 		logger:    config.logger,
 		connector: config.connector,
-		dispatch:  messaging.Dispatch{Topic: config.topic, Message: ""}, // <- this message intentionally left blank
+		dispatch:  messaging.Dispatch{Topic: config.topic},
 	}
 }
 func (this *defaultStatusChecker) Status(ctx context.Context) (err error) {
