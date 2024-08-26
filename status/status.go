@@ -3,6 +3,7 @@ package status
 import (
 	"context"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/smarty/messaging/v3"
@@ -28,7 +29,11 @@ func newDefaultStatusChecker(config configuration) Checker {
 func (this *defaultStatusChecker) Status(ctx context.Context) (err error) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
-
+	defer func() {
+		if err != nil && !strings.Contains(strings.ToLower(err.Error()), "password") {
+			err = nil
+		}
+	}()
 	err = this.connect(ctx)
 	if err != nil {
 		return err
