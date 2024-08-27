@@ -26,15 +26,21 @@ func newDefaultStatusChecker(config configuration) Checker {
 		dispatch:  messaging.Dispatch{Topic: config.topic},
 	}
 }
-func (this *defaultStatusChecker) Status(ctx context.Context) (err error) {
+func (this *defaultStatusChecker) Status(ctx context.Context) error {
 	this.lock.Lock()
 	defer this.lock.Unlock()
-	defer func() {
-		if err != nil && !strings.Contains(strings.ToLower(err.Error()), "password") {
-			err = nil
-		}
-	}()
-	err = this.connect(ctx)
+	err := this.status(ctx)
+	if err == nil {
+		return nil
+	}
+	if strings.Contains(strings.ToLower(err.Error()), "password") {
+		return nil
+	}
+	return err
+}
+
+func (this *defaultStatusChecker) status(ctx context.Context) error {
+	err := this.connect(ctx)
 	if err != nil {
 		return err
 	}
