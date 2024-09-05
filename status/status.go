@@ -29,7 +29,7 @@ func newDefaultStatusChecker(config configuration) Checker {
 func (this *defaultStatusChecker) Status(ctx context.Context) error {
 	this.lock.Lock()
 	defer this.lock.Unlock()
-	err := this.status(ctx)
+	err := this.tryWrite(ctx)
 	if err == nil {
 		return nil
 	}
@@ -39,8 +39,8 @@ func (this *defaultStatusChecker) Status(ctx context.Context) error {
 	return nil
 }
 
-func (this *defaultStatusChecker) status(ctx context.Context) error {
-	err := this.connect(ctx)
+func (this *defaultStatusChecker) tryWrite(ctx context.Context) error {
+	err := this.tryConnect(ctx)
 	if err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func (this *defaultStatusChecker) status(ctx context.Context) error {
 	}
 	return err
 }
-func (this *defaultStatusChecker) connect(ctx context.Context) (err error) {
+func (this *defaultStatusChecker) tryConnect(ctx context.Context) (err error) {
 	if this.connection != nil && this.writer != nil {
 		return nil
 	}
