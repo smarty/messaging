@@ -34,9 +34,9 @@ func (this *defaultStatusChecker) Status(ctx context.Context) error {
 		return nil
 	}
 	if strings.Contains(strings.ToLower(err.Error()), "password") {
-		return nil
+		return err
 	}
-	return err
+	return nil
 }
 
 func (this *defaultStatusChecker) status(ctx context.Context) error {
