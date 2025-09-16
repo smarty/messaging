@@ -11,8 +11,8 @@ import (
 
 type handler struct {
 	messaging.Handler
-	minTimeout   time.Duration
-	maxTimeout   time.Duration
+	minBackoff   time.Duration
+	maxBackoff   time.Duration
 	jitterFactor float64
 	maxAttempts  int
 	logger       logger
@@ -72,12 +72,12 @@ func (this handler) sleep(ctx context.Context, attempt int, err any) {
 }
 
 func (this handler) backoffDelay(attempt int) time.Duration {
-	if attempt == 0 || this.maxTimeout == 0 {
-		return this.minTimeout
+	if attempt == 0 || this.maxBackoff == 0 {
+		return this.minBackoff
 	}
 
-	backoff := this.minTimeout << min(attempt, 63)
-	delay := min(backoff, this.maxTimeout)
+	backoff := this.minBackoff << min(attempt, 63)
+	delay := min(backoff, this.maxBackoff)
 
 	if this.jitterFactor > 0 && this.jitterFactor <= 1.0 {
 		jitterRange := float64(delay) * this.jitterFactor

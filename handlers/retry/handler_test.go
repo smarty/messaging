@@ -146,9 +146,9 @@ func (this *Fixture) LongTestExponentialBackoff() {
 	this.noErrorAfterAttempt = 4
 	this.handler = New(this,
 		Options.MaxAttempts(3),
-		Options.Timeout(time.Millisecond*50),
-		Options.MaxTimeout(time.Millisecond*500),
-		Options.Jitter(0.0),
+		Options.Backoff(time.Millisecond*50),
+		Options.MaxBackoff(time.Millisecond*500),
+		Options.JitterFactor(0.0),
 		Options.Monitor(this),
 		Options.Logger(this),
 	)
@@ -166,9 +166,9 @@ func (this *Fixture) LongTestBackoffMaxTimeoutNotExceeded() {
 	this.noErrorAfterAttempt = 5
 	this.handler = New(this,
 		Options.MaxAttempts(4),
-		Options.Timeout(time.Millisecond*50),
-		Options.MaxTimeout(time.Millisecond*100),
-		Options.Jitter(0.0),
+		Options.Backoff(time.Millisecond*50),
+		Options.MaxBackoff(time.Millisecond*100),
+		Options.JitterFactor(0.0),
 		Options.Monitor(this),
 		Options.Logger(this),
 	)
