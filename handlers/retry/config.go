@@ -22,8 +22,15 @@ type singleton struct{}
 type option func(*handler)
 
 func (singleton) Timeout(value time.Duration) option {
-	return func(this *handler) { this.timeout = value }
+	return func(this *handler) { this.minTimeout = value }
 }
+func (singleton) MaxTimeout(value time.Duration) option {
+	return func(this *handler) { this.maxTimeout = value }
+}
+func (singleton) Jitter(value float64) option {
+	return func(this *handler) { this.jitter = value }
+}
+
 func (singleton) MaxAttempts(value uint32) option {
 	return func(this *handler) { this.maxAttempts = int(value) }
 }
