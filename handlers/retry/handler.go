@@ -11,14 +11,14 @@ import (
 
 type handler struct {
 	messaging.Handler
-	minTimeout  time.Duration
-	maxTimeout  time.Duration
-	jitter      float64
-	maxAttempts int
-	logger      logger
-	monitor     monitor
-	stackTrace  bool
-	immediate   map[any]struct{}
+	minTimeout   time.Duration
+	maxTimeout   time.Duration
+	jitterFactor float64
+	maxAttempts  int
+	logger       logger
+	monitor      monitor
+	stackTrace   bool
+	immediate    map[any]struct{}
 }
 
 func (this handler) Handle(ctx context.Context, messages ...any) {
@@ -79,9 +79,9 @@ func (this handler) backoffDelay(attempt int) time.Duration {
 	backoff := this.minTimeout << min(attempt, 63)
 	delay := min(backoff, this.maxTimeout)
 
-	if this.jitter > 0 && this.jitter <= 1.0 {
-		jitterRange := float64(delay) * this.jitter
-		minDelay := float64(delay) * (1.0 - this.jitter)
+	if this.jitterFactor > 0 && this.jitterFactor <= 1.0 {
+		jitterRange := float64(delay) * this.jitterFactor
+		minDelay := float64(delay) * (1.0 - this.jitterFactor)
 		delay = time.Duration(minDelay + rand.Float64()*(2*jitterRange))
 	}
 

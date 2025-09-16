@@ -27,8 +27,15 @@ func (singleton) Timeout(value time.Duration) option {
 func (singleton) MaxTimeout(value time.Duration) option {
 	return func(this *handler) { this.maxTimeout = value }
 }
-func (singleton) Jitter(value float64) option {
-	return func(this *handler) { this.jitter = value }
+func (singleton) JitterFactor(value float64) option {
+	return func(this *handler) {
+		if value < 0 {
+			value = 0
+		} else if value > 1.0 {
+			value = 1.0
+		}
+		this.jitterFactor = value
+	}
 }
 
 func (singleton) MaxAttempts(value uint32) option {
