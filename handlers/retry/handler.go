@@ -81,7 +81,7 @@ func (this handler) backoffDelay(attempt int) time.Duration {
 
 	if this.jitterFactor > 0 && this.jitterFactor <= 1.0 {
 		jitterRange := float64(delay) * this.jitterFactor
-		minDelay := float64(delay) * (1.0 - this.jitterFactor)
+		minDelay := float64(delay) - jitterRange
 		delay = time.Duration(minDelay + rand.Float64()*(2*jitterRange))
 	}
 
