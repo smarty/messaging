@@ -141,6 +141,47 @@ func (this *Fixture) TestWhenRecoveryGivesSpecifiedError_DoNotSleepAndRetryImmed
 	this.So(time.Since(started), should.BeLessThan, time.Millisecond*10)
 }
 
+func (this *Fixture) LongTestExponentialBackoff() {
+	this.handleError = errors.New("failed")
+	this.noErrorAfterAttempt = 4
+	this.handler = New(this,
+		Options.MaxAttempts(3),
+		Options.Backoff(time.Millisecond*50),
+		Options.MaxBackoff(time.Millisecond*500),
+		Options.JitterFactor(0.0),
+		Options.Monitor(this),
+		Options.Logger(this),
+	)
+
+	start := time.Now().UTC()
+	this.So(this.handle, should.NotPanic)
+	elapsed := time.Since(start)
+
+	expected := 50*time.Millisecond + 100*time.Millisecond + 200*time.Millisecond
+	this.So(elapsed, should.BeBetween, expected, expected+5*time.Millisecond)
+	this.So(this.monitoredAttemptCount, should.Equal, 3)
+}
+func (this *Fixture) LongTestBackoffMaxTimeoutNotExceeded() {
+	this.handleError = errors.New("failed")
+	this.noErrorAfterAttempt = 5
+	this.handler = New(this,
+		Options.MaxAttempts(4),
+		Options.Backoff(time.Millisecond*50),
+		Options.MaxBackoff(time.Millisecond*100),
+		Options.JitterFactor(0.0),
+		Options.Monitor(this),
+		Options.Logger(this),
+	)
+
+	start := time.Now().UTC()
+	this.handle()
+	elapsed := time.Since(start)
+
+	expected := 50*time.Millisecond + 100*time.Millisecond*3
+	this.So(elapsed, should.BeBetween, expected, expected+5*time.Millisecond)
+	this.So(this.monitoredAttemptCount, should.Equal, 4)
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 func (this *Fixture) Handle(ctx context.Context, messages ...any) {

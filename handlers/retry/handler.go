@@ -2,6 +2,7 @@ package retry
 
 import (
 	"context"
+	"math/rand/v2"
 	"runtime/debug"
 	"time"
 
@@ -10,12 +11,14 @@ import (
 
 type handler struct {
 	messaging.Handler
-	timeout     time.Duration
-	maxAttempts int
-	logger      logger
-	monitor     monitor
-	stackTrace  bool
-	immediate   map[any]struct{}
+	minBackoff   time.Duration
+	maxBackoff   time.Duration
+	jitterFactor float64
+	maxAttempts  int
+	logger       logger
+	monitor      monitor
+	stackTrace   bool
+	immediate    map[any]struct{}
 }
 
 func (this handler) Handle(ctx context.Context, messages ...any) {
@@ -45,7 +48,7 @@ func (this handler) finally(ctx context.Context, attempt int, err any) bool {
 func (this handler) handleFailure(ctx context.Context, attempt int, err any) {
 	this.logFailure(attempt, err)
 	this.panicOnTooManyAttempts(attempt)
-	this.sleep(ctx, err)
+	this.sleep(ctx, attempt, err)
 }
 func (this handler) logFailure(attempt int, err any) {
 	if this.stackTrace {
@@ -59,13 +62,30 @@ func (this handler) panicOnTooManyAttempts(attempt int) {
 		panic(ErrMaxRetriesExceeded)
 	}
 }
-func (this handler) sleep(ctx context.Context, err any) {
+func (this handler) sleep(ctx context.Context, attempt int, err any) {
 	if _, contains := this.immediate[err]; contains {
 		return
 	}
-	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, this.timeout)
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, this.backoffDelay(attempt))
 	defer timeoutCancel()
 	<-timeoutCtx.Done()
+}
+
+func (this handler) backoffDelay(attempt int) time.Duration {
+	if attempt == 0 || this.maxBackoff == 0 {
+		return this.minBackoff
+	}
+
+	backoff := this.minBackoff << min(attempt, 63)
+	delay := min(backoff, this.maxBackoff)
+
+	if this.jitterFactor > 0 && this.jitterFactor <= 1.0 {
+		jitterRange := float64(delay) * this.jitterFactor
+		minDelay := float64(delay) - jitterRange
+		delay = time.Duration(minDelay + rand.Float64()*(2*jitterRange))
+	}
+
+	return delay
 }
 
 func isAlive(ctx context.Context) bool {

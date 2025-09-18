@@ -21,9 +21,24 @@ var Options singleton
 type singleton struct{}
 type option func(*handler)
 
+// Deprecated: Timeout is deprecated in favor of Backoff
 func (singleton) Timeout(value time.Duration) option {
-	return func(this *handler) { this.timeout = value }
+	return Options.Backoff(value)
 }
+func (singleton) Backoff(value time.Duration) option {
+	return func(this *handler) {
+		this.minBackoff = value
+	}
+}
+func (singleton) MaxBackoff(value time.Duration) option {
+	return func(this *handler) { this.maxBackoff = value }
+}
+func (singleton) JitterFactor(value float64) option {
+	return func(this *handler) {
+		this.jitterFactor = max(0.0, min(1.0, value))
+	}
+}
+
 func (singleton) MaxAttempts(value uint32) option {
 	return func(this *handler) { this.maxAttempts = int(value) }
 }
@@ -45,14 +60,14 @@ func (singleton) LogStackTrace(value bool) option {
 }
 
 func (singleton) defaults(options ...option) []option {
-	const defaultRetryTimeout = time.Second * 5
+	const defaultRetryBackoffDelay = time.Second * 5
 	const defaultMaxAttempts = 1<<32 - 1
 	const defaultLogStackTrace = true
 	var defaultLogger = nop{}
 	var defaultMonitor = nop{}
 
 	return append([]option{
-		Options.Timeout(defaultRetryTimeout),
+		Options.Backoff(defaultRetryBackoffDelay),
 		Options.MaxAttempts(defaultMaxAttempts),
 		Options.LogStackTrace(defaultLogStackTrace),
 		Options.Logger(defaultLogger),
