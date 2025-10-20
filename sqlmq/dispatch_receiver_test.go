@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 	"github.com/smarty/messaging/v3/sqlmq/adapter"
 )
@@ -70,7 +70,7 @@ func (this *DispatchReceiverFixture) TestWhenCommitting_FlushBufferToStorageThen
 
 	this.So(err, should.BeNil)
 	this.So(this.storeContext, should.Equal, this.ctx)
-	this.So(this.storeWrites, should.Resemble, writes)
+	this.So(this.storeWrites, should.Equal, writes)
 	this.So(this.commitCalls, should.Equal, 1)
 	this.So(len(this.channel), should.Equal, len(writes))
 }
@@ -132,7 +132,7 @@ func (this *DispatchReceiverFixture) TestWhenCommittingIndicatesDone_ItShouldRet
 	time.Sleep(time.Millisecond * 5)
 	err := this.writer.Commit()
 
-	this.So(err, should.Resemble, context.DeadlineExceeded)
+	this.So(err, should.Equal, context.DeadlineExceeded)
 	this.So(this.commitCalls, should.Equal, 1)
 }
 

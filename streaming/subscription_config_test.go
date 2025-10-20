@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 
 	"github.com/smarty/messaging/v3"
 )
@@ -32,7 +32,7 @@ func (this *SubscriptionConfigFixture) TestWhenLegacyHandlerIsProvided_HandlerSh
 
 	subscription.handlers[0].Handle(context.Background(), 0, 1, 2)
 
-	this.So(this.legacyHandleMessages, should.Resemble, []any{0, 1, 2})
+	this.So(this.legacyHandleMessages, should.Equal, []any{0, 1, 2})
 }
 func (this *SubscriptionConfigFixture) Handle(messages ...any) {
 	this.legacyHandleMessages = messages
@@ -56,7 +56,7 @@ func (this *SubscriptionConfigFixture) TestWhenValuesAreProvided_SubscriptionSho
 		SubscriptionOptions.Sequence(7),
 	)
 
-	this.So(subscription, should.Resemble, Subscription{
+	this.So(subscription, should.Equal, Subscription{
 		name:               "name",
 		streamName:         "queue",
 		streamReplication:  true,

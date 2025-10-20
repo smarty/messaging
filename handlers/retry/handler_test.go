@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 )
 
@@ -53,7 +53,7 @@ func (this *Fixture) handle() {
 	this.handler.Handle(this.expectedContext, this.expectedMessages...)
 }
 func (this *Fixture) assertCallToInnerHandler() {
-	this.So(this.receivedMessages, should.Resemble, this.expectedMessages)
+	this.So(this.receivedMessages, should.Equal, this.expectedMessages)
 	this.So(this.receivedContext.Value(reflect.TypeOf(this)), should.Equal, this)
 }
 
@@ -85,7 +85,7 @@ func (this *Fixture) SkipTestSleepBetweenRetries() {
 
 	this.So(start, should.HappenWithin, time.Millisecond*5, time.Now().UTC())
 	this.So(this.monitoredAttemptCount, should.Equal, 1)
-	this.So(this.monitoredErrors, should.Resemble, []any{this.handleError, nil})
+	this.So(this.monitoredErrors, should.Equal, []any{this.handleError, nil})
 	this.So(this.loggedMessages[0], should.ContainSubstring, "debug.Stack")
 }
 func (this *Fixture) TestPanicOnTooManyFailedAttempts() {
@@ -101,7 +101,7 @@ func (this *Fixture) TestPanicOnTooManyFailedAttempts() {
 
 	this.So(this.handleCalls, should.Equal, 2)
 	this.So(this.monitoredAttemptCount, should.Equal, 1)
-	this.So(this.monitoredErrors, should.Resemble, []any{this.handleError, this.handleError})
+	this.So(this.monitoredErrors, should.Equal, []any{this.handleError, this.handleError})
 }
 func (this *Fixture) TestNoMoreRetriesOnCancelledContext() {
 	this.handleError = errors.New("failed")

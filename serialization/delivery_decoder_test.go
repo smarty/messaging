@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 )
 
@@ -79,7 +79,7 @@ func (this *DeliveryDecoderFixture) TestWhenDeserializationFails_ReturnError() {
 
 	this.So(err, should.Wrap, ErrSerializationFailure)
 	this.So(this.deserializeCalls, should.Equal, 1)
-	this.So(this.deserializePayload, should.Resemble, this.delivery.Payload)
+	this.So(this.deserializePayload, should.Equal, this.delivery.Payload)
 }
 
 func (this *DeliveryDecoderFixture) TestWhenDecodingSucceeds_PopulateMessageOnDelivery() {
@@ -94,7 +94,7 @@ func (this *DeliveryDecoderFixture) TestWhenDecodingSucceeds_PopulateMessageOnDe
 	this.So(err, should.BeNil)
 	this.So(this.delivery.Message, should.Equal, 42)
 	this.So(this.deserializeCalls, should.Equal, 1)
-	this.So(this.deserializePayload, should.Resemble, this.delivery.Payload)
+	this.So(this.deserializePayload, should.Equal, this.delivery.Payload)
 }
 
 func (this *DeliveryDecoderFixture) TestWhenDeliveryHasNoBody_SkipDecoding() {

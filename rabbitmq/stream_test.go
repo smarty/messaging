@@ -8,8 +8,8 @@ import (
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 )
 
@@ -50,7 +50,7 @@ func (this *StreamFixture) TestWhenCloseInvokedMultipleTimes_OnlyCancelConsumerO
 
 	_ = this.stream.Close()
 
-	this.So(this.cancellations, should.Resemble, []string{this.streamID})
+	this.So(this.cancellations, should.Equal, []string{this.streamID})
 }
 
 func (this *StreamFixture) TestWhenReading_ReadFromConsumerBufferChannel() {
@@ -80,7 +80,7 @@ func (this *StreamFixture) TestWhenReading_ReadFromConsumerBufferChannel() {
 	err := this.stream.Read(context.Background(), &delivery)
 
 	this.So(err, should.BeNil)
-	this.So(delivery, should.Resemble, messaging.Delivery{
+	this.So(delivery, should.Equal, messaging.Delivery{
 		Upstream:        raw,
 		DeliveryID:      6,
 		SourceID:        5,
@@ -107,7 +107,7 @@ func (this *StreamFixture) TestWhenReadingFromAClosedBufferChannel_ReturnEOF() {
 	err := this.stream.Read(context.Background(), &delivery)
 
 	this.So(err, should.Equal, io.EOF)
-	this.So(delivery, should.Resemble, messaging.Delivery{})
+	this.So(delivery, should.Equal, messaging.Delivery{})
 }
 func (this *StreamFixture) TestWhenContextIsCancelled_ReturnCancellationError() {
 	dead, shutdown := context.WithCancel(context.Background())
@@ -117,7 +117,7 @@ func (this *StreamFixture) TestWhenContextIsCancelled_ReturnCancellationError() 
 	err := this.stream.Read(dead, &delivery)
 
 	this.So(err, should.Equal, context.Canceled)
-	this.So(delivery, should.Resemble, messaging.Delivery{})
+	this.So(delivery, should.Equal, messaging.Delivery{})
 }
 
 func (this *StreamFixture) TestWhenAcknowledgingADeliveryWithACancelledContext_ReturnError() {
@@ -140,8 +140,8 @@ func (this *StreamFixture) TestWhenAcknowledgingManyDeliveriesOnExclusiveStream_
 	)
 
 	this.So(err, should.BeNil)
-	this.So(this.acknowledgedTags, should.Resemble, []uint64{3})
-	this.So(this.acknowledgedMultiples, should.Resemble, []bool{true})
+	this.So(this.acknowledgedTags, should.Equal, []uint64{3})
+	this.So(this.acknowledgedMultiples, should.Equal, []bool{true})
 }
 func (this *StreamFixture) TestWhenAcknowledgingManyDeliveriesOnSharedStream_EachEachDelivery() {
 	err := this.stream.Acknowledge(context.Background(),
@@ -151,8 +151,8 @@ func (this *StreamFixture) TestWhenAcknowledgingManyDeliveriesOnSharedStream_Eac
 	)
 
 	this.So(err, should.BeNil)
-	this.So(this.acknowledgedTags, should.Resemble, []uint64{1, 2, 3})
-	this.So(this.acknowledgedMultiples, should.Resemble, []bool{false, false, false})
+	this.So(this.acknowledgedTags, should.Equal, []uint64{1, 2, 3})
+	this.So(this.acknowledgedMultiples, should.Equal, []bool{false, false, false})
 }
 func (this *StreamFixture) TestWhenAcknowledgingFails_ReturnUnderlyingError() {
 	this.acknowledgeError = errors.New("")
@@ -160,8 +160,8 @@ func (this *StreamFixture) TestWhenAcknowledgingFails_ReturnUnderlyingError() {
 	err := this.stream.Acknowledge(context.Background(), messaging.Delivery{DeliveryID: 1})
 
 	this.So(err, should.Equal, this.acknowledgeError)
-	this.So(this.acknowledgedTags, should.Resemble, []uint64{1})
-	this.So(this.acknowledgedMultiples, should.Resemble, []bool{false})
+	this.So(this.acknowledgedTags, should.Equal, []uint64{1})
+	this.So(this.acknowledgedMultiples, should.Equal, []bool{false})
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

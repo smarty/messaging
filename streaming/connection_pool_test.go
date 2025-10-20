@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 )
 

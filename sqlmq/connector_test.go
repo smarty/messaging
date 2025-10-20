@@ -6,8 +6,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 	"github.com/smarty/messaging/v3/sqlmq/adapter"
 )
@@ -85,7 +85,7 @@ func (this *ConnectorFixture) TestWhenOpeningCommitWriterAndNewTxFails_ItShouldR
 	this.So(writer, should.BeNil)
 	this.So(err, should.Equal, this.beginError)
 	this.So(this.beginContext, should.Equal, this.ctx)
-	this.So(this.beginOptions, should.Resemble, this.sqlOptions)
+	this.So(this.beginOptions, should.Equal, this.sqlOptions)
 }
 func (this *ConnectorFixture) TestWhenOpeningCommitWriterItShouldReturnNewWriter() {
 	connection, _ := this.connector.Connect(this.ctx)

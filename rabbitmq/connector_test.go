@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 	"github.com/smarty/messaging/v3/rabbitmq/adapter"
 )
@@ -62,7 +62,7 @@ func (this *ConnectorFixture) TestWhenConnectingToBroker_UseDialedNetworkConnect
 
 	this.So(this.connectContext, should.Equal, this.ctx)
 	this.So(this.connectSocket, should.Equal, this)
-	this.So(this.connectConfig, should.Resemble, adapter.Config{
+	this.So(this.connectConfig, should.Equal, adapter.Config{
 		Username:    "my-username",
 		Password:    "my-password",
 		VirtualHost: "my-vhost",
@@ -73,7 +73,7 @@ func (this *ConnectorFixture) TestCredentialsFromQueryString() {
 	this.initializeConnector()
 	_, _ = this.connector.Connect(this.ctx)
 
-	this.So(this.connectConfig, should.Resemble, adapter.Config{
+	this.So(this.connectConfig, should.Equal, adapter.Config{
 		Username:    "My-Username-1",
 		Password:    "My-Password-1",
 		VirtualHost: "the-vhost",
@@ -84,7 +84,7 @@ func (this *ConnectorFixture) TestCredentialsFromQueryString_PreferUserInfo() {
 	this.initializeConnector()
 	_, _ = this.connector.Connect(this.ctx)
 
-	this.So(this.connectConfig, should.Resemble, adapter.Config{
+	this.So(this.connectConfig, should.Equal, adapter.Config{
 		Username:    "username-1",
 		Password:    "password-1",
 		VirtualHost: "the-vhost",
@@ -105,7 +105,7 @@ func (this *ConnectorFixture) TestWhenNoCredentialsFound_ConnectUsingDefaultCred
 
 	this.So(this.connectContext, should.Equal, this.ctx)
 	this.So(this.connectSocket, should.Equal, this)
-	this.So(this.connectConfig, should.Resemble, adapter.Config{
+	this.So(this.connectConfig, should.Equal, adapter.Config{
 		Username:    "guest",
 		Password:    "guest",
 		VirtualHost: "another-vhost",

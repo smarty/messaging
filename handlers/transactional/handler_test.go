@@ -6,8 +6,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 )
 
@@ -73,14 +73,14 @@ func (this *Fixture) TestWhenOpeningConnectionFails_ItShouldPanic() {
 
 	this.So(this.handle, should.PanicWith, this.connectError)
 	this.So(this.connectContext, should.Equal, this.ctx)
-	this.So(this.monitorBeginErrors, should.Resemble, []error{this.connectError})
+	this.So(this.monitorBeginErrors, should.Equal, []error{this.connectError})
 }
 func (this *Fixture) TestWhenOpeningCommitWriterFails_ItShouldPanic() {
 	this.commitWriterError = errors.New("")
 
 	this.So(this.handle, should.PanicWith, this.commitWriterError)
-	this.So(this.monitorBeginErrors, should.Resemble, []error{this.commitWriterError})
-	this.So(this.commitWriterContext, should.Resemble, &transactionalContext{
+	this.So(this.monitorBeginErrors, should.Equal, []error{this.commitWriterError})
+	this.So(this.commitWriterContext, should.Equal, &transactionalContext{
 		Context:    this.ctx,
 		Connection: this,
 		Tx:         this.sqlTx,
@@ -92,7 +92,7 @@ func (this *Fixture) TestWhenInvokingFactoryPanics_ItShouldPanicAndRollBack() {
 	this.factoryError = errors.New("")
 
 	this.So(this.handle, should.PanicWith, this.factoryError)
-	this.So(this.factoryState, should.Resemble, State{Tx: this.sqlTx, Writer: this})
+	this.So(this.factoryState, should.Equal, State{Tx: this.sqlTx, Writer: this})
 	this.So(this.closeCount, should.Equal, 2) // close connection and writer
 	this.So(this.rollbackCount, should.Equal, 1)
 }
@@ -103,7 +103,7 @@ func (this *Fixture) TestWhenInvokingHandlerPanics_ItShouldPanicAndRollback() {
 	this.So(this.closeCount, should.Equal, 2) // close connection and writer
 	this.So(this.rollbackCount, should.Equal, 1)
 	this.So(this.handleContext, should.Equal, this.ctx)
-	this.So(this.handleMessages, should.Resemble, this.messages)
+	this.So(this.handleMessages, should.Equal, this.messages)
 }
 
 func (this *Fixture) TestWhenHandlerCompletesSuccessfully_ItShouldCommit() {
@@ -122,7 +122,7 @@ func (this *Fixture) TestWhenCommitOperationFails_ItShouldPanicAndRollBack() {
 	this.So(this.commitCount, should.Equal, 1)
 	this.So(this.rollbackCount, should.Equal, 1)
 	this.So(this.closeCount, should.Equal, 2) // close connection and writer
-	this.So(this.monitorCommitErrors, should.Resemble, []error{this.commitError})
+	this.So(this.monitorCommitErrors, should.Equal, []error{this.commitError})
 	this.So(this.monitorCommitCount, should.Equal, 0)
 	this.So(this.monitorRollbackCount, should.Equal, 1)
 }
@@ -133,7 +133,7 @@ func (this *Fixture) TestWhenCommitOperationFailsWithContextError_ItShouldPanicA
 	this.So(this.commitCount, should.Equal, 1)
 	this.So(this.rollbackCount, should.Equal, 1)
 	this.So(this.closeCount, should.Equal, 2) // close connection and writer
-	this.So(this.monitorCommitErrors, should.Resemble, []error{this.commitError})
+	this.So(this.monitorCommitErrors, should.Equal, []error{this.commitError})
 	this.So(this.monitorCommitCount, should.Equal, 0)
 	this.So(this.monitorRollbackCount, should.Equal, 1)
 }

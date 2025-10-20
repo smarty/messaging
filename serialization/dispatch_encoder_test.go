@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 )
 
@@ -54,7 +54,7 @@ func (this *DispatchEncoderFixture) TestWhenDispatchAlreadyContainsSerializedPay
 	err := this.encoder.Encode(&this.dispatch)
 
 	this.So(err, should.BeNil)
-	this.So(this.dispatch.Payload, should.Resemble, payload)
+	this.So(this.dispatch.Payload, should.Equal, payload)
 	this.So(this.serializeCalls, should.BeZeroValue)
 }
 
@@ -87,7 +87,7 @@ func (this *DispatchEncoderFixture) TestWhenSerializationSucceeds_DispatchShould
 	err := this.encoder.Encode(&this.dispatch)
 
 	this.So(err, should.BeNil)
-	this.So(this.dispatch.Payload, should.Resemble, this.serializePayload)
+	this.So(this.dispatch.Payload, should.Equal, this.serializePayload)
 	this.So(this.dispatch.ContentType, should.Equal, this.ContentType())
 	this.So(this.dispatch.MessageType, should.Equal, "message-type")
 	this.So(this.dispatch.Topic, should.Equal, "message-type")
@@ -100,7 +100,7 @@ func (this *DispatchEncoderFixture) TestWhenDispatchTopicAlreadyPopulated_ItShou
 	err := this.encoder.Encode(&this.dispatch)
 
 	this.So(err, should.BeNil)
-	this.So(this.dispatch.Payload, should.Resemble, this.serializePayload)
+	this.So(this.dispatch.Payload, should.Equal, this.serializePayload)
 	this.So(this.dispatch.ContentType, should.Equal, this.ContentType())
 	this.So(this.dispatch.MessageType, should.Equal, "message-type")
 	this.So(this.dispatch.Topic, should.Equal, "can't touch this")

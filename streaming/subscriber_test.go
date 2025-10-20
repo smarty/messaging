@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 )
 
@@ -87,7 +87,7 @@ func (this *SubscriberFixture) TestWhenOpeningReaderFails_ListenShouldReturn() {
 
 	this.So(this.readerCtx, should.Equal, this.softContext)
 	this.So(this.readerCount, should.Equal, 1)
-	this.So(this.releasedConnections, should.Resemble, []messaging.Connection{this})
+	this.So(this.releasedConnections, should.Equal, []messaging.Connection{this})
 }
 func (this *SubscriberFixture) TestWhenOpeningStreamFails_ListenShouldReturn() {
 	this.streamError = errors.New("")
@@ -96,7 +96,7 @@ func (this *SubscriberFixture) TestWhenOpeningStreamFails_ListenShouldReturn() {
 
 	this.So(this.streamContext, should.Equal, this.softContext)
 	this.So(this.streamCount, should.Equal, 1)
-	this.So(this.streamConfig, should.Resemble, messaging.StreamConfig{
+	this.So(this.streamConfig, should.Equal, messaging.StreamConfig{
 		EstablishTopology: true,
 		ExclusiveStream:   true, // single handler
 		BufferCapacity:    this.subscription.bufferCapacity,
@@ -112,7 +112,7 @@ func (this *SubscriberFixture) TestWhenListening_EstablishWorkersAndListen() {
 	this.subscriber.Listen()
 
 	this.So(this.workerFactoryCount, should.Equal, len(this.subscription.handlers))
-	this.So(this.workerFactoryConfig, should.Resemble, workerConfig{
+	this.So(this.workerFactoryConfig, should.Equal, workerConfig{
 		Stream:       this,
 		Subscription: this.subscription,
 		Handler:      nil,

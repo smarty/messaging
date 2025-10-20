@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 )
 
@@ -75,7 +75,7 @@ func (this *WriterFixture) TestWhenWritingTheFirstTime_ItShouldOpenANewConnectio
 	this.So(this.connectContext, should.Equal, this.ctx)
 	this.So(this.commitWriterContext, should.Equal, this.ctx)
 	this.So(this.writeContext, should.Equal, this.ctx)
-	this.So(this.writeDispatches, should.Resemble, dispatches)
+	this.So(this.writeDispatches, should.Equal, dispatches)
 	this.So(this.commitCount, should.Equal, 1)
 	this.So(this.closeCount, should.Equal, 0)
 }

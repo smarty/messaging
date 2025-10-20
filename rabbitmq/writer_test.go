@@ -7,8 +7,8 @@ import (
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 )
 
@@ -131,9 +131,9 @@ func (this *WriterFixture) TestWhenWrite_PublishToUnderlyingChannel() {
 	this.So(err, should.BeNil)
 	this.So(count, should.Equal, 1)
 
-	this.So(this.publishExchanges, should.Resemble, []string{"topic"})
-	this.So(this.publishKeys, should.Resemble, []string{"5"})
-	this.So(this.publishMessages, should.Resemble, []amqp.Publishing{
+	this.So(this.publishExchanges, should.Equal, []string{"topic"})
+	this.So(this.publishKeys, should.Equal, []string{"5"})
+	this.So(this.publishMessages, should.Equal, []amqp.Publishing{
 		{
 			ContentType:     "content-type",
 			ContentEncoding: "content-encoding",
@@ -167,9 +167,9 @@ func (this *WriterFixture) TestWhenWriteTransientMessage_PublishTransientMessage
 	this.So(err, should.BeNil)
 	this.So(count, should.Equal, 1)
 
-	this.So(this.publishExchanges, should.Resemble, []string{"a"})
-	this.So(this.publishKeys, should.Resemble, []string{""})
-	this.So(this.publishMessages, should.Resemble, []amqp.Publishing{
+	this.So(this.publishExchanges, should.Equal, []string{"a"})
+	this.So(this.publishKeys, should.Equal, []string{""})
+	this.So(this.publishMessages, should.Equal, []amqp.Publishing{
 		{
 			MessageId:     "0",
 			CorrelationId: "0",
@@ -187,9 +187,9 @@ func (this *WriterFixture) TestWhenWriteExpirationLessThanOneSecond_UseOneSecond
 	this.So(err, should.BeNil)
 	this.So(count, should.Equal, 1)
 
-	this.So(this.publishExchanges, should.Resemble, []string{"a"})
-	this.So(this.publishKeys, should.Resemble, []string{""})
-	this.So(this.publishMessages, should.Resemble, []amqp.Publishing{
+	this.So(this.publishExchanges, should.Equal, []string{"a"})
+	this.So(this.publishKeys, should.Equal, []string{""})
+	this.So(this.publishMessages, should.Equal, []amqp.Publishing{
 		{
 			MessageId:     "0",
 			CorrelationId: "0",

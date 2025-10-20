@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 )
 
@@ -62,9 +62,9 @@ func (this *ReaderFixture) TestWhenEstablishingAStream_StartConsumerOnFromUnderl
 	this.So(err, should.BeNil)
 
 	this.So(this.declareQueueName, should.Equal, "queue")
-	this.So(this.declareExchangeNames, should.Resemble, []string{"topic1", "topic2"})
-	this.So(this.bindQueueQueueNames, should.Resemble, []string{"queue", "queue"})
-	this.So(this.bindQueueExchangeNames, should.Resemble, []string{"topic1", "topic2"})
+	this.So(this.declareExchangeNames, should.Equal, []string{"topic1", "topic2"})
+	this.So(this.bindQueueQueueNames, should.Equal, []string{"queue", "queue"})
+	this.So(this.bindQueueExchangeNames, should.Equal, []string{"topic1", "topic2"})
 	this.So(this.bufferCapacityValue, should.Equal, 2)
 	this.So(this.consumeConsumerID, should.Equal, "0")
 	this.So(this.consumeQueue, should.Equal, "queue")
@@ -158,9 +158,9 @@ func (this *ReaderFixture) TestWhenTopologyAvailableTopicsDeclared_DeclareAllOfT
 	this.So(err, should.BeNil)
 
 	this.So(this.declareQueueName, should.Equal, "queue")
-	this.So(this.declareExchangeNames, should.Resemble, []string{"subscribed", "another-topic-1", "another-topic-2"})
-	this.So(this.bindQueueQueueNames, should.Resemble, []string{"queue"})
-	this.So(this.bindQueueExchangeNames, should.Resemble, []string{"subscribed"})
+	this.So(this.declareExchangeNames, should.Equal, []string{"subscribed", "another-topic-1", "another-topic-2"})
+	this.So(this.bindQueueQueueNames, should.Equal, []string{"queue"})
+	this.So(this.bindQueueExchangeNames, should.Equal, []string{"subscribed"})
 	this.So(this.bufferCapacityValue, should.Equal, 2)
 	this.So(this.consumeConsumerID, should.Equal, "0")
 	this.So(this.consumeQueue, should.Equal, "queue")
@@ -190,7 +190,7 @@ func (this *ReaderFixture) TestWhenClosing_ShutDownAllStreamsAndUnderlyingChanne
 
 	_ = this.reader.Close()
 
-	this.So(this.cancelledConsumers, should.Resemble, []string{"0", "1", "2"})
+	this.So(this.cancelledConsumers, should.Equal, []string{"0", "1", "2"})
 	this.So(this.callsToClose, should.Equal, 1)
 }
 

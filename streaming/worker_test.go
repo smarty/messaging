@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 )
 
@@ -87,7 +87,7 @@ func (this *WorkerFixture) TestWhenReadingFromUnderlyingStream_AddToBufferedChan
 	for delivery := range this.channelBuffer {
 		readDeliveries = append(readDeliveries, delivery)
 	}
-	this.So(this.readDeliveries, should.Resemble, readDeliveries) // the buffered deliveries are the ones that were read
+	this.So(this.readDeliveries, should.Equal, readDeliveries) // the buffered deliveries are the ones that were read
 
 	_, open := <-this.channelBuffer
 	this.So(open, should.BeFalse) // channel closed when read completed
@@ -120,11 +120,11 @@ func (this *WorkerFixture) TestWhenOnlySingleDeliveryAvailable_SendTheBatchWitho
 
 	this.So(this.handleCtx, should.Equal, this.hardContext)
 	this.So(this.handleCount, should.Equal, 1)
-	this.So(this.handleMessages, should.Resemble, []any{1})
+	this.So(this.handleMessages, should.Equal, []any{1})
 
 	this.So(this.acknowledgeContext, should.Equal, this.hardContext)
 	this.So(this.acknowledgeCount, should.Equal, 1)
-	this.So(this.acknowledgeDeliveries, should.Resemble, []messaging.Delivery{{Message: 1}})
+	this.So(this.acknowledgeDeliveries, should.Equal, []messaging.Delivery{{Message: 1}})
 }
 func (this *WorkerFixture) TestWhenStreamingToHandler_BatchOfMessagesPushedToHandlersAndDeliveriesAcknowledged() {
 	this.readError = io.EOF
@@ -137,11 +137,11 @@ func (this *WorkerFixture) TestWhenStreamingToHandler_BatchOfMessagesPushedToHan
 
 	this.So(this.handleCtx, should.Equal, this.hardContext)
 	this.So(this.handleCount, should.Equal, 1)
-	this.So(this.handleMessages, should.Resemble, []any{1, 2, 3})
+	this.So(this.handleMessages, should.Equal, []any{1, 2, 3})
 
 	this.So(this.acknowledgeContext, should.Equal, this.hardContext)
 	this.So(this.acknowledgeCount, should.Equal, 1)
-	this.So(this.acknowledgeDeliveries, should.Resemble, deliveries)
+	this.So(this.acknowledgeDeliveries, should.Equal, deliveries)
 }
 func (this *WorkerFixture) TestWhenStreamingToHandler_DoNotPushDeliveriesWithBlankMessage_ButStillAckAllDeliveries() {
 	this.readError = io.EOF
@@ -154,11 +154,11 @@ func (this *WorkerFixture) TestWhenStreamingToHandler_DoNotPushDeliveriesWithBla
 
 	this.So(this.handleCtx, should.Equal, this.hardContext)
 	this.So(this.handleCount, should.Equal, 1)
-	this.So(this.handleMessages, should.Resemble, []any{1, 3})
+	this.So(this.handleMessages, should.Equal, []any{1, 3})
 
 	this.So(this.acknowledgeContext, should.Equal, this.hardContext)
 	this.So(this.acknowledgeCount, should.Equal, 1)
-	this.So(this.acknowledgeDeliveries, should.Resemble, deliveries)
+	this.So(this.acknowledgeDeliveries, should.Equal, deliveries)
 }
 func (this *WorkerFixture) TestWhenMoreDeliveriesExistThanBatchMax_DeliverInBatchesOfMaxSpecifiedSize() {
 	this.subscription.batchCapacity = 2
@@ -174,11 +174,11 @@ func (this *WorkerFixture) TestWhenMoreDeliveriesExistThanBatchMax_DeliverInBatc
 
 	this.So(this.handleCtx, should.Equal, this.hardContext)
 	this.So(this.handleCount, should.Equal, 3)
-	this.So(this.handleMessages, should.Resemble, []any{1, 2, 3, 4, 5})
+	this.So(this.handleMessages, should.Equal, []any{1, 2, 3, 4, 5})
 
 	this.So(this.acknowledgeContext, should.Equal, this.hardContext)
 	this.So(this.acknowledgeCount, should.Equal, 3)
-	this.So(this.acknowledgeDeliveries, should.Resemble, deliveries)
+	this.So(this.acknowledgeDeliveries, should.Equal, deliveries)
 }
 func (this *WorkerFixture) TestWhenConfigured_PassFullDeliveryToHandler() {
 	this.subscription.handleDelivery = true
@@ -190,7 +190,7 @@ func (this *WorkerFixture) TestWhenConfigured_PassFullDeliveryToHandler() {
 
 	this.So(this.handleCtx, should.Equal, this.hardContext)
 	this.So(this.handleCount, should.Equal, 1)
-	this.So(this.handleMessages, should.Resemble, []any{messaging.Delivery{Message: 1}})
+	this.So(this.handleMessages, should.Equal, []any{messaging.Delivery{Message: 1}})
 }
 func (this *WorkerFixture) TestWhenConfigured_PassFullDeliveryToContext() {
 	this.subscription.deliveryToContext = true
@@ -201,12 +201,12 @@ func (this *WorkerFixture) TestWhenConfigured_PassFullDeliveryToContext() {
 
 	this.worker.Listen()
 
-	this.So(this.handleCtx.Value(ContextKeyDeliveries), should.Resemble, []messaging.Delivery{
+	this.So(this.handleCtx.Value(ContextKeyDeliveries), should.Equal, []messaging.Delivery{
 		{Message: 1},
 		{Message: 2},
 	})
 	this.So(this.handleCount, should.Equal, 1)
-	this.So(this.handleMessages, should.Resemble, []any{1, 2})
+	this.So(this.handleMessages, should.Equal, []any{1, 2})
 }
 
 func (this *WorkerFixture) TestWhenAcknowledgementFails_ListeningConcludesWithoutProcessingBufferedDeliveries() {

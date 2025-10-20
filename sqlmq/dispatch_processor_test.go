@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 	"github.com/smarty/messaging/v3/sqlmq/adapter"
 )
@@ -90,11 +90,11 @@ func (this *DispatchProcessorFixture) TestWhenDispatchesArePending_ItShouldPubli
 
 	this.So(this.writeCount, should.Equal, 1)
 	this.So(this.writeContext, should.NotBeNil)
-	this.So(this.writeDispatches, should.Resemble, expected)
+	this.So(this.writeDispatches, should.Equal, expected)
 
 	this.So(this.confirmCount, should.Equal, 1)
 	this.So(this.confirmContext, should.NotBeNil)
-	this.So(this.confirmDispatches, should.Resemble, expected)
+	this.So(this.confirmDispatches, should.Equal, expected)
 }
 func (this *DispatchProcessorFixture) TestWhenWritingToSenderFails_TryAgain() {
 	this.writeError = errors.New("")
@@ -109,11 +109,11 @@ func (this *DispatchProcessorFixture) TestWhenWritingToSenderFails_TryAgain() {
 
 	this.So(this.writeCount, should.Equal, 2)
 	this.So(this.writeContext, should.NotBeNil)
-	this.So(this.writeDispatches, should.Resemble, append(expected, expected...))
+	this.So(this.writeDispatches, should.Equal, append(expected, expected...))
 
 	this.So(this.confirmCount, should.Equal, 1)
 	this.So(this.confirmContext, should.NotBeNil)
-	this.So(this.confirmDispatches, should.Resemble, expected)
+	this.So(this.confirmDispatches, should.Equal, expected)
 }
 func (this *DispatchProcessorFixture) TestWhenConfirmDispatchFails_TryAgainWithoutWritingToSenderTwice() {
 	this.confirmError = errors.New("")
@@ -128,11 +128,11 @@ func (this *DispatchProcessorFixture) TestWhenConfirmDispatchFails_TryAgainWitho
 
 	this.So(this.writeCount, should.Equal, 1)
 	this.So(this.writeContext, should.NotBeNil)
-	this.So(this.writeDispatches, should.Resemble, expected)
+	this.So(this.writeDispatches, should.Equal, expected)
 
 	this.So(this.confirmCount, should.Equal, 2)
 	this.So(this.confirmContext, should.NotBeNil)
-	this.So(this.confirmDispatches, should.Resemble, append(expected, expected...))
+	this.So(this.confirmDispatches, should.Equal, append(expected, expected...))
 }
 func (this *DispatchProcessorFixture) TestWhenClosingDuringSleepRetry_SleepIsCutShort() {
 	this.sleepTimeout = time.Minute
@@ -156,11 +156,11 @@ func (this *DispatchProcessorFixture) TestWhenListening_ReadPendingDispatchesFro
 
 	this.So(this.writeCount, should.Equal, 1)
 	this.So(this.writeContext, should.NotBeNil)
-	this.So(this.writeDispatches, should.Resemble, expected)
+	this.So(this.writeDispatches, should.Equal, expected)
 
 	this.So(this.confirmCount, should.Equal, 1)
 	this.So(this.confirmContext, should.NotBeNil)
-	this.So(this.confirmDispatches, should.Resemble, expected)
+	this.So(this.confirmDispatches, should.Equal, expected)
 }
 func (this *DispatchProcessorFixture) SkipTestWhenInitializeOperationDoesNotGetAllPendingDispatches_ReadFromLastSuccess() {
 	this.loadResult = []messaging.Dispatch{{MessageID: 1}, {MessageID: 2}, {MessageID: 3}, {MessageID: 4}, {MessageID: 5}}
@@ -171,11 +171,11 @@ func (this *DispatchProcessorFixture) SkipTestWhenInitializeOperationDoesNotGetA
 
 	this.So(this.writeCount, should.Equal, 3)
 	this.So(this.writeContext, should.NotBeNil)
-	this.So(this.writeDispatches, should.Resemble, this.loadResult)
+	this.So(this.writeDispatches, should.Equal, this.loadResult)
 
 	this.So(this.confirmCount, should.Equal, 3)
 	this.So(this.confirmContext, should.NotBeNil)
-	this.So(this.confirmDispatches, should.Resemble, this.loadResult)
+	this.So(this.confirmDispatches, should.Equal, this.loadResult)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

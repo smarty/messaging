@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 )
 
@@ -177,7 +177,7 @@ func (this *ConnectorFixture) TestWhenOpeningStreamFails_ReturnUnderlyingError()
 
 	this.So(err, should.Equal, this.streamError)
 	this.So(this.streamContext, should.Equal, this.originalContext)
-	this.So(this.streamConfig, should.Resemble, config)
+	this.So(this.streamConfig, should.Equal, config)
 }
 func (this *ConnectorFixture) TestWhenReadingFromStreamFails_ReturnUnderlyingError() {
 	this.streamReadError = errors.New("")
@@ -203,7 +203,7 @@ func (this *ConnectorFixture) TestWhenAcknowledgingDeliveryFails_ReturnUnderlyin
 
 	this.So(err, should.Equal, this.streamAckError)
 	this.So(this.streamAckContext, should.Equal, this.originalContext)
-	this.So(this.streamAckDeliveries, should.Resemble, []messaging.Delivery{delivery})
+	this.So(this.streamAckDeliveries, should.Equal, []messaging.Delivery{delivery})
 }
 func (this *ConnectorFixture) TestWhenReadingFromStream_DecodeDelivery() {
 	this.decodeError = errors.New("")
@@ -240,7 +240,7 @@ func (this *ConnectorFixture) TestWhenWriting_EncodeThenCallInnerAndReturnUnderl
 
 	this.So(count, should.Equal, 1)
 	this.So(err, should.Equal, this.writeError)
-	this.So(this.writeDispatches, should.Resemble, []messaging.Dispatch{{MessageID: 42}})
+	this.So(this.writeDispatches, should.Equal, []messaging.Dispatch{{MessageID: 42}})
 	this.So(this.writeContext, should.Equal, this.originalContext)
 }
 func (this *ConnectorFixture) TestWhenCommitWriting_EncodeThenCallInnerAndReturnUnderlyingError() {
@@ -253,7 +253,7 @@ func (this *ConnectorFixture) TestWhenCommitWriting_EncodeThenCallInnerAndReturn
 
 	this.So(count, should.Equal, 1)
 	this.So(err, should.Equal, this.writeError)
-	this.So(this.writeDispatches, should.Resemble, []messaging.Dispatch{{MessageID: 42}})
+	this.So(this.writeDispatches, should.Equal, []messaging.Dispatch{{MessageID: 42}})
 	this.So(this.writeContext, should.Equal, this.originalContext)
 }
 func (this *ConnectorFixture) TestWhenWritingAndEncodeFails_ReturnUnderlyingError() {

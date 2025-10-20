@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/smarty/assertions/should"
 	"github.com/smarty/gunit"
+	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
 	"github.com/smarty/messaging/v3/sqlmq/adapter"
 )
@@ -70,13 +70,13 @@ func (this *DispatchStoreFixture) TestWhenStoring_WriteToUnderlyingStoreAndMarkD
 
 	this.So(this.execContext, should.Equal, this.ctx)
 	this.So(this.execStatement, should.Equal, "INSERT INTO Messages (type, payload) VALUES (?,?),(?,?),(?,?);")
-	this.So(this.execArgs, should.Resemble, []any{
+	this.So(this.execArgs, should.Equal, []any{
 		"1", []byte("a"),
 		"2", []byte("b"),
 		"3", []byte("c"),
 	})
 
-	this.So(writes, should.Resemble, []messaging.Dispatch{
+	this.So(writes, should.Equal, []messaging.Dispatch{
 		{MessageID: 42, MessageType: "1", Payload: []byte("a")},
 		{MessageID: 49, MessageType: "2", Payload: []byte("b")},
 		{MessageID: 56, MessageType: "3", Payload: []byte("c")},
@@ -116,7 +116,7 @@ func (this *DispatchStoreFixture) TestWhenLoading_ItShouldQueryUnderlingStorage(
 
 	results, err := this.store.Load(this.ctx, 42)
 
-	this.So(results, should.Resemble, []messaging.Dispatch{
+	this.So(results, should.Equal, []messaging.Dispatch{
 		{MessageID: 42, MessageType: "message-type1", Topic: "message-type1", Payload: []byte{4}, Timestamp: this.now, Durable: true, ContentType: "application/json"},
 		{MessageID: 43, MessageType: "message-type2", Topic: "message-type2", Payload: []byte{5}, Timestamp: this.now, Durable: true, ContentType: "application/json"},
 		{MessageID: 44, MessageType: "message-type3", Topic: "message-type3", Payload: []byte{6}, Timestamp: this.now, Durable: true, ContentType: "application/json"},
