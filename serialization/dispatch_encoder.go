@@ -36,7 +36,7 @@ func (this defaultDispatchEncoder) Encode(dispatch *messaging.Dispatch) error {
 	messageType, found := this.messageTypes[reflect.TypeOf(dispatch.Message)]
 	if !found {
 		this.monitor.MessageEncoded(ErrMessageTypeNotFound)
-		this.logger.Printf("[WARN] Unable to encode message of type [%s], message type not found.", reflect.TypeOf(dispatch.Message))
+		this.logger.Printf("[ERROR] Unable to encode message of type [%s], message type not found.", reflect.TypeOf(dispatch.Message))
 		return wrapError(fmt.Errorf("%w: [%s]", ErrMessageTypeNotFound, instanceType.Name()))
 	}
 
