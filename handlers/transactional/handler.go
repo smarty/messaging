@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"io"
+	"reflect"
 
 	"github.com/smarty/messaging/v3"
 )
@@ -39,6 +40,11 @@ func (this handler) Handle(ctx context.Context, messages ...any) {
 	this.monitor.TransactionStarted(nil)
 	txCtx.Writer = writer
 	newHandler := this.factory(txCtx.State())
+	this.logger.Printf("Count of messages to handle [%d]", len(messages))
+	for _, message := range messages {
+		this.logger.Printf("Type:", reflect.TypeOf(message).String())
+
+	}
 	newHandler.Handle(ctx, messages...)
 	if err = writer.Commit(); err != nil {
 		this.logger.Printf("[%s] Unable to commit transaction [%s].", logSeverity(err), err)
