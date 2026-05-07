@@ -8,7 +8,7 @@ type: plot
 
 ## Background
 
-A second project (working copy under `billing-context/domain-transformation-phase-9-chunk-C/code/infra`) has grown a staged, pipeline-based message-handling "harness" that we now want to promote into the shared `github.com/smarty/messaging/v3` module so it can be reused. The source split is:
+A second project (working copy under `-context/domain-transformation-phase-9-chunk-C/code/infra`) has grown a staged, pipeline-based message-handling "harness" that we now want to promote into the shared `github.com/smarty/messaging/v3` module so it can be reused. The source split is:
 
 - `infra/harness/*` — a generic, store-and-forward pipeline built from goroutine stages connected by buffered channels. Stages: `Entrypoint → Execution → Serialization (fan-out) → Persistence → Completion → Broadcast → Terminal`. Supporting code: `fanout.go`, `pool.go`, `routing.go`, `scanner.go`.
 - `infra/*` — supporting types and a **reference implementation** of the `Writer` / `Dispatcher` interfaces plus a `Recover` function, all coupled to the same MySQL `Messages` table that `sqlmq/_schema_mysql.sql` already defines (`id`, `dispatched`, `type`, `payload`).
@@ -232,60 +232,60 @@ Design notes:
 
 ### Phase 1: Scaffolding and contracts
 
-- [ ] Create directory `handlers/harness/` and `handlers/harness/sqladapter/`.
-- [ ] Add `github.com/smarty/gunit/v2` to `go.mod`; run `go mod tidy`.
-- [ ] Write `handlers/harness/contracts.go` with the **exported** surface (`Writer`, `Dispatcher`, `Monitor`, event structs `BatchInFlight`, `BatchComplete`, `UnitOfWorkInFlight`, `UnitOfWorkComplete`, `SerializationError`, `PersistenceError`, `BroadcastError`, sentinels `ErrSerialization`, `ErrPersistence`, `ErrBroadcast`) plus the **unexported** internal interfaces (`executor`, `applicator`, `serializer`) and value types (`batch`, `unitOfWork`).
-- [ ] Write `handlers/harness/message.go` — copy `Message` struct with doc comments intact.
-- [ ] Write `handlers/harness/pool.go` — copy verbatim (no external deps).
-- [ ] Write `handlers/harness/scanner.go` — copy verbatim.
-- [ ] Write `handlers/harness/fanout.go` — rename `fanIn` / `newFanIn` / `newFanOut` to stay unexported (already lowercase in source).
-- [ ] Run `make compile` — confirm the package compiles (no tests yet).
+- [x] Create directory `handlers/harness/` and `handlers/harness/sqladapter/`.
+- [x] Add `github.com/smarty/gunit/v2` to `go.mod`; run `go mod tidy`. (Temporarily removed by tidy with no importers; will return automatically once Phase 2 tests are ported.)
+- [x] Write `handlers/harness/contracts.go` with the **exported** surface (`Writer`, `Dispatcher`, `Monitor`, event structs `BatchInFlight`, `BatchComplete`, `UnitOfWorkInFlight`, `UnitOfWorkComplete`, `SerializationError`, `PersistenceError`, `BroadcastError`, sentinels `ErrSerialization`, `ErrPersistence`, `ErrBroadcast`) plus the **unexported** internal interfaces (`executor`, `applicator`, `serializer`) and value types (`batch`, `unitOfWork`).
+- [x] Write `handlers/harness/message.go` — copy `Message` struct with doc comments intact.
+- [x] Write `handlers/harness/pool.go` — copy verbatim (no external deps).
+- [x] Write `handlers/harness/scanner.go` — copy verbatim (signatures adjusted to use unexported `executor`/`applicator`).
+- [x] Write `handlers/harness/fanout.go` — `fanIn` / `newFanIn` / `newFanOut` stay unexported; `stationFactory` now returns `messaging.Listener` and uses unexported `unitOfWork`.
+- [x] Run `make compile` — confirm the package compiles (no tests yet).
 
 ### Phase 2: Port stages bottom-up, TDD each one
 
 Work stage-by-stage from the terminal stage (simplest) upward, since downstream stages have no dependencies on upstream stages. All tests use `gunit/v2` imports as-is from source. **All stage types and constructors are renamed to unexported forms** (`Terminal` → `terminal`, `NewTerminal` → `newTerminal`, etc.); since the tests live in the same package, `_test.go` files can see them.
 
-- [ ] Copy `06_terminal_test.go` from source; rename referenced types to lowercase. Run the terminal test — expect **failure** (`terminal` type doesn't exist yet in this package).
-- [ ] Port `06_terminal.go` as `terminal` / `newTerminal`. Run tests; confirm passing.
-- [ ] Copy `04_completion_test.go`; lowercase the type references. Run — expect failure.
-- [ ] Port `04_completion.go` as `completion` / `newCompletion`. Run tests; confirm passing.
-- [ ] Copy `05_broadcast_test.go`; lowercase the type references. Run — expect failure.
-- [ ] Port `05_broadcast.go` as `broadcast` / `newBroadcast`. Run; confirm passing.
-- [ ] Copy `03_persistence_test.go`; lowercase the type references. Run — expect failure.
-- [ ] Port `03_persistence.go` as `persistence` / `newPersistence`. Run; confirm passing.
-- [ ] **Rewrite** `02_serialization_test.go` to use a fake `serializer` (not jsonv2). Test should cover: success path writes to `message.Content`; serializer error is reported via monitor as `SerializationError` with `ErrSerialization` wrapped. Run — expect failure.
-- [ ] Port `02_serialization.go` as `serialization` / `newSerialization` with the new `Serialize(io.Writer, any) error` signature; drop the `//go:build goexperiment.jsonv2` tag. Run; confirm passing.
-- [ ] Copy `01_execution_test.go`; lowercase the type references. Run — expect failure.
-- [ ] Port `01_execution.go` as `execution` / `newExecution`. Run; confirm passing.
-- [ ] Copy `00_entrypoint_test.go`; lowercase the type references. Confirm it exercises `Close` + `Listen` semantics. Run — expect failure.
-- [ ] Port `00_entrypoint.go` as `entrypoint` / `newEntrypoint`. Run; confirm passing.
+- [x] Copy `06_terminal_test.go` from source; rename referenced types to lowercase. Run the terminal test — expect **failure** (`terminal` type doesn't exist yet in this package).
+- [x] Port `06_terminal.go` as `terminal` / `newTerminal`. Run tests; confirm passing.
+- [x] Copy `04_completion_test.go`; lowercase the type references. Run — expect failure.
+- [x] Port `04_completion.go` as `completion` / `newCompletion`. Run tests; confirm passing.
+- [x] Copy `05_broadcast_test.go`; lowercase the type references. Run — expect failure.
+- [x] Port `05_broadcast.go` as `broadcast` / `newBroadcast`. Run; confirm passing.
+- [x] Copy `03_persistence_test.go`; lowercase the type references. Run — expect failure.
+- [x] Port `03_persistence.go` as `persistence` / `newPersistence`. Run; confirm passing.
+- [x] **Rewrite** `02_serialization_test.go` to use a fake `serializer` (not jsonv2). Test should cover: success path writes to `message.Content`; serializer error is reported via monitor as `SerializationError` with `ErrSerialization` wrapped. Run — expect failure.
+- [x] Port `02_serialization.go` as `serialization` / `newSerialization` with the new `Serialize(io.Writer, any) error` signature; drop the `//go:build goexperiment.jsonv2` tag. Run; confirm passing.
+- [x] Copy `01_execution_test.go`; lowercase the type references. Run — expect failure.
+- [x] Port `01_execution.go` as `execution` / `newExecution`. Run; confirm passing.
+- [x] Copy `00_entrypoint_test.go`; lowercase the type references. Confirm it exercises `Close` + `Listen` semantics. Run — expect failure.
+- [x] Port `00_entrypoint.go` as `entrypoint` / `newEntrypoint`. Run; confirm passing.
 
 ### Phase 3: Routing, pipeline, and functional-options config
 
-- [ ] Copy `routing_test.go`; lowercase references (`Router` → `router`, `NewRouter` → `newRouter`). Run — expect failure.
-- [ ] Port `routing.go` as `router` / `newRouter` with unexported `executor` / `applicator` interfaces; update `scanner.go`'s signature to match. Run; confirm passing.
-- [ ] Write `handlers/harness/pipeline.go` as the unexported `build(ctx, cfg)` function; it constructs all the channels, calls `newRouter(cfg.Types...)`, wires every stage, and returns `messaging.Handler` + `[]messaging.Listener`.
-- [ ] Write `handlers/harness/config.go` with `New(ctx, options...)` (no positional executor), `Options singleton`, `option` type, `configuration` struct (including `Types []any`), and per-option setters per §8, including `Options.Types(...)`.
-- [ ] Write a `config_test.go` that asserts defaults (`BatchCapacity=1024`, `UnitSize=64`, `SerializerCount=4`, and that `Monitor`, `Serializer`, `Writer`, and `Dispatcher` all default to the shared `nop{}` and behave inertly when the pipeline runs with no options supplied). Also assert that `Options.Types(...)` populates `configuration.Types` verbatim.
-- [ ] Adapt the source `pipeline_test.go` to call the new functional-options `New(...)`: the fixture registers itself via `Options.Types(this)` (it implements the `Execute...` method), and supplies fake `Writer`/`Dispatcher`/`serializer`/`Monitor` via `Options.*`. Run — expect failure if anything is still misaligned, then make green.
-- [ ] Run the full harness test suite with `-race`; confirm no goroutine leaks and all tests pass.
+- [x] Copy `routing_test.go`; lowercase references (`Router` → `router`, `NewRouter` → `newRouter`). Run — expect failure.
+- [x] Port `routing.go` as `router` / `newRouter` with unexported `executor` / `applicator` interfaces; update `scanner.go`'s signature to match. Run; confirm passing.
+- [x] Write `handlers/harness/pipeline.go` as the unexported `build(ctx, cfg)` function; it constructs all the channels, calls `newRouter(cfg.Types...)`, wires every stage, and returns `messaging.Handler` + `[]messaging.Listener`.
+- [x] Write `handlers/harness/config.go` with `New(ctx, options...)` (no positional executor), `Options singleton`, `option` type, `configuration` struct (including `Types []any`), and per-option setters per §8, including `Options.Types(...)`.
+- [x] Write a `config_test.go` that asserts defaults (`BatchCapacity=1024`, `UnitSize=64`, `SerializerCount=4`, and that `Monitor`, `Serializer`, `Writer`, and `Dispatcher` all default to the shared `nop{}` and behave inertly when the pipeline runs with no options supplied). Also assert that `Options.Types(...)` populates `configuration.Types` verbatim.
+- [x] Adapt the source `pipeline_test.go` to call the new functional-options `New(...)`: the fixture registers itself via `Options.Types(this)` (it implements the `Execute...` method), and supplies fake `Writer`/`Dispatcher`/`serializer`/`Monitor` via `Options.*`. Run — expect failure if anything is still misaligned, then make green.
+- [x] Run the full harness test suite with `-race`; confirm no goroutine leaks and all tests pass.
 
 ### Phase 4: SQL adapter
 
-- [ ] Copy `infra/dispatcher_test.go` to `handlers/harness/sqladapter/dispatcher_test.go`. Rewrite imports (`package infra` → `sqladapter`, `infra.Message` → `harness.Message`; gunit imports stay v2). Run — expect failure.
-- [ ] Port `dispatcher.go` to `sqladapter/dispatcher.go`. Add package-level doc comment labeling it as a reference implementation targeting the `Messages` table defined by `sqlmq/_schema_mysql.sql`. Preserve existing TODOs. Run; confirm passing.
-- [ ] Copy `writer_test.go` → `sqladapter/writer_test.go`, rewrite imports. Run — expect failure.
-- [ ] Port `writer.go`. Preserve `legacyWrite` escape hatch with a deprecation note in the godoc. Run; confirm passing.
-- [ ] Copy `recovery_test.go` → `sqladapter/recovery_test.go`, rewrite imports. Run — expect failure.
-- [ ] Port `recovery.go`. Preserve existing TODOs about pagination and Listener conversion. Run; confirm passing.
-- [ ] Add `sqladapter/contracts.go` with the `Logger` interface (moved from `infra/contracts.go`).
+- [x] Copy `infra/dispatcher_test.go` to `handlers/harness/sqladapter/dispatcher_test.go`. Rewrite imports (`package infra` → `sqladapter`, `infra.Message` → `harness.Message`; gunit imports stay v2). Also added `testdb_test.go` with local `openTestDatabase`/`ensureDatabaseReadiness` helpers (pointing at `sqlmq/_schema_mysql.sql`) since the source's `db-connector` dep is out of scope for this module. Run — expect failure.
+- [x] Port `dispatcher.go` to `sqladapter/dispatcher.go`. Add package-level doc comment labeling it as a reference implementation targeting the `Messages` table defined by `sqlmq/_schema_mysql.sql`. Preserve existing TODOs. Run; confirm passing.
+- [x] Copy `writer_test.go` → `sqladapter/writer_test.go`, rewrite imports. Replaced the external `billing` registry types and `openTestDatabase` dep with local test-only `orderReceived`/`orderApproved` structs and shared helpers from `testdb_test.go`. Run — expect failure.
+- [x] Port `writer.go`. Preserve `legacyWrite` escape hatch with a deprecation note in the godoc. Run; confirm passing.
+- [x] Copy `recovery_test.go` → `sqladapter/recovery_test.go`, rewrite imports. Run — expect failure.
+- [x] Port `recovery.go`. Preserve existing TODOs about pagination and Listener conversion. Run; confirm passing.
+- [x] Add `sqladapter/contracts.go` with the `Logger` interface (moved from `infra/contracts.go`). (Added earlier alongside dispatcher.go so it would compile.)
 
 ### Phase 5: Module hygiene
 
-- [ ] Run `make test` — full module test suite with `-race -covermode=atomic`. Confirm green.
-- [ ] Run `go mod tidy`. Confirm the only new direct dep is `github.com/smarty/gunit/v2`.
-- [ ] Inspect `go.sum` diff — confirm no surprising indirect additions.
-- [ ] Grep the new packages for references to `root/code/infra` — confirm zero.
-- [ ] Grep the new packages for any `goexperiment.jsonv2` build tags — confirm zero.
-- [ ] Add short package-level doc comments (`// Package harness provides a staged, store-and-forward message-handling pipeline...` etc.) on `harness` and `sqladapter`.
-- [ ] Self-review diff for any stray `package infra` / wrong package declarations, unused imports, and leftover `TODO: pool ...` comments that should stay vs. be addressed now (keep them — they're load-bearing signals for future work).
+- [x] Run `make test` — full module test suite with `-race -covermode=atomic`. Confirm green. (All packages pass; harness 99.5%, sqladapter 0% under `-short` since its integration tests require a live MySQL — they pass end-to-end against a local DB when run without `-short`.)
+- [x] Run `go mod tidy`. Confirms two new direct deps: `github.com/smarty/gunit/v2` (planned) and `github.com/go-sql-driver/mysql` (test-only driver added during Phase 4 when we chose not to bring in `db-connector` — imported via `testdb_test.go`'s `_` alias, so it participates only in test builds). One new indirect: `filippo.io/edwards25519` (transitively required by the MySQL driver).
+- [x] Inspect `go.sum` diff — only `filippo.io/edwards25519` and gunit/v2 additions, both explained by the items above.
+- [x] Grep the new packages for references to `root/code/infra` — confirm zero.
+- [x] Grep the new packages for any `goexperiment.jsonv2` build tags — confirm zero.
+- [x] Add short package-level doc comments (`// Package harness provides a staged, store-and-forward message-handling pipeline...` etc.) on `harness` and `sqladapter`. (`harness` on config.go, `sqladapter` on dispatcher.go.)
+- [x] Self-review diff for any stray `package infra` / wrong package declarations, unused imports, and leftover `TODO: pool ...` comments that should stay vs. be addressed now (keep them — they're load-bearing signals for future work).

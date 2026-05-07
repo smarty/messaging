@@ -1,0 +1,89 @@
+// Package sqladapter provides a reference implementation of the
+// handlers/harness Writer and Dispatcher interfaces, bound to the `Messages`
+// MySQL table defined by sqlmq/_schema_mysql.sql in this module (columns
+// `id`, `dispatched`, `type`, `payload`). Callers running a different schema
+// should copy and adapt these types.
+package sqladapter
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"strings"
+
+	"github.com/smarty/messaging/v3"
+	"github.com/smarty/messaging/v3/handlers/harness"
+)
+
+type Dispatcher struct {
+	connector messaging.Connector
+	handle    *sql.DB
+	logger    Logger
+}
+
+func NewDispatcher(connector messaging.Connector, handle *sql.DB, logger Logger) *Dispatcher {
+	return &Dispatcher{
+		connector: connector,
+		handle:    handle,
+		logger:    logger,
+	}
+}
+
+func (this *Dispatcher) Dispatch(ctx context.Context, messages ...any) error {
+	if len(messages) == 0 {
+		return nil
+	}
+	if err := this.publish(ctx, messages); err != nil {
+		return err
+	}
+	return this.markDispatched(ctx, messages)
+}
+
+func (this *Dispatcher) publish(ctx context.Context, messages []any) error {
+	connection, err := this.connector.Connect(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = connection.Close() }()
+
+	writer, err := connection.Writer(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = writer.Close() }()
+
+	dispatches := make([]messaging.Dispatch, 0, len(messages)) // TODO: reuse slice, pool dispatch struct
+	for _, raw := range messages {
+		message := raw.(*harness.Message)
+		// TODO: dedupe encoding work. The harness Serialization stage already encoded message.Value
+		// into message.Content for the Messages.payload column; passing message.Value here causes the
+		// transport connector's serialization layer to encode it a second time for the RMQ payload.
+		// Either pass the pre-encoded bytes through Dispatch.Payload/MessageType/ContentType and skip
+		// the connector's serialization for this writer, or drop the harness Serialization stage and
+		// let the connector own all encoding.
+		dispatches = append(dispatches, messaging.Dispatch{
+			Durable: true,
+			Message: message.Value,
+		})
+	}
+	_, err = writer.Write(ctx, dispatches...)
+	return err
+}
+
+func (this *Dispatcher) markDispatched(ctx context.Context, messages []any) error {
+	var statement strings.Builder
+	statement.WriteString(`UPDATE Messages SET dispatched = NOW(3) WHERE id IN (`)
+	args := make([]any, 0, len(messages))
+	for i, raw := range messages {
+		if i > 0 {
+			statement.WriteString(`,`)
+		}
+		statement.WriteString(`?`)
+		args = append(args, raw.(*harness.Message).ID)
+	}
+	statement.WriteString(`)`)
+	if _, err := this.handle.ExecContext(ctx, statement.String(), args...); err != nil {
+		return fmt.Errorf("mark dispatched: %w", err)
+	}
+	return nil
+}
