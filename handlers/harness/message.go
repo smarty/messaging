@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+// TODO: unexport?
+
 type Message struct {
 	// ID represents the unique ID of this message and its sequential place within a larger stream.
 	ID uint64
