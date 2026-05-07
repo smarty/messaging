@@ -21,19 +21,19 @@ type PipelineFixture struct {
 	ctx       context.Context
 	handler   messaging.Handler
 	listeners []messaging.Listener
-	wg        sync.WaitGroup
+	waiter    sync.WaitGroup
 
-	executeMu      sync.Mutex
+	executeLock    sync.Mutex
 	executeCalls   []any
 	executeOutputs [][]any
 
-	writeMu       sync.Mutex
+	writeLock     sync.Mutex
 	writeCalls    [][]any
-	dispatchMu    sync.Mutex
+	dispatchLock  sync.Mutex
 	dispatchCalls [][]any
 
-	trackMu sync.Mutex
-	tracked []any
+	trackLock sync.Mutex
+	tracked   []any
 }
 
 type commandType string
@@ -48,15 +48,15 @@ func (this *PipelineFixture) Setup() {
 		Options.Dispatcher(this),
 	)
 	for _, listener := range this.listeners {
-		this.wg.Go(listener.Listen)
+		this.waiter.Go(listener.Listen)
 	}
 }
 
 // ExecuteCommand is picked up by scan() as the Execute-prefixed method driving
 // the pipeline: every Handle(ctx, msg) call dispatches into this method.
 func (this *PipelineFixture) ExecuteCommand(_ commandType, broadcast func(...any)) {
-	this.executeMu.Lock()
-	defer this.executeMu.Unlock()
+	this.executeLock.Lock()
+	defer this.executeLock.Unlock()
 	if len(this.executeOutputs) == 0 {
 		return
 	}
@@ -68,9 +68,9 @@ func (this *PipelineFixture) ExecuteCommand(_ commandType, broadcast func(...any
 // Execute wraps the fixture so it also satisfies the package-private executor
 // interface directly — which is what scan() will pick up. We count calls here.
 func (this *PipelineFixture) Execute(message any, broadcast func(...any)) {
-	this.executeMu.Lock()
+	this.executeLock.Lock()
 	this.executeCalls = append(this.executeCalls, message)
-	this.executeMu.Unlock()
+	this.executeLock.Unlock()
 	this.ExecuteCommand(commandType(""), broadcast)
 }
 
@@ -81,8 +81,8 @@ func (this *PipelineFixture) Serialize(out io.Writer, _ any) error {
 
 func (this *PipelineFixture) Write(ctx context.Context, messages ...any) error {
 	this.So(ctx.Value("testing"), should.Equal, this.Name())
-	this.writeMu.Lock()
-	defer this.writeMu.Unlock()
+	this.writeLock.Lock()
+	defer this.writeLock.Unlock()
 	captured := make([]any, len(messages))
 	copy(captured, messages)
 	this.writeCalls = append(this.writeCalls, captured)
@@ -91,8 +91,8 @@ func (this *PipelineFixture) Write(ctx context.Context, messages ...any) error {
 
 func (this *PipelineFixture) Dispatch(ctx context.Context, messages ...any) error {
 	this.So(ctx.Value("testing"), should.Equal, this.Name())
-	this.dispatchMu.Lock()
-	defer this.dispatchMu.Unlock()
+	this.dispatchLock.Lock()
+	defer this.dispatchLock.Unlock()
 	captured := make([]any, len(messages))
 	copy(captured, messages)
 	this.dispatchCalls = append(this.dispatchCalls, captured)
@@ -100,14 +100,14 @@ func (this *PipelineFixture) Dispatch(ctx context.Context, messages ...any) erro
 }
 
 func (this *PipelineFixture) Track(observation any) {
-	this.trackMu.Lock()
-	defer this.trackMu.Unlock()
+	this.trackLock.Lock()
+	defer this.trackLock.Unlock()
 	this.tracked = append(this.tracked, observation)
 }
 
 func (this *PipelineFixture) countTracked() (batchInFlight, batchComplete, unitInFlight int) {
-	this.trackMu.Lock()
-	defer this.trackMu.Unlock()
+	this.trackLock.Lock()
+	defer this.trackLock.Unlock()
 	for _, observation := range this.tracked {
 		switch observation.(type) {
 		case BatchInFlight:
@@ -125,7 +125,7 @@ func (this *PipelineFixture) shutdown() {
 	closer, ok := this.handler.(io.Closer)
 	this.So(ok, better.BeTrue)
 	this.So(closer.Close(), should.BeNil)
-	this.wg.Wait()
+	this.waiter.Wait()
 }
 
 func (this *PipelineFixture) TestPipelineRoutesMessageThroughExecutionPersistenceBroadcast() {

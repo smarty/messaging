@@ -7,42 +7,42 @@ import (
 	"github.com/smarty/messaging/v3"
 )
 
-func build(ctx context.Context, cfg configuration) (messaging.Handler, []messaging.Listener) {
+func build(ctx context.Context, config configuration) (messaging.Handler, []messaging.Listener) {
 	var (
-		batches = make(chan *batch, cfg.BatchCapacity)
-		work1   = make(chan *unitOfWork, cfg.BatchCapacity)
-		work2   = make(chan *unitOfWork, cfg.BatchCapacity)
-		work3   = make(chan *unitOfWork, cfg.BatchCapacity)
-		work4   = make(chan *unitOfWork, cfg.BatchCapacity)
-		work5   = make(chan *unitOfWork, cfg.BatchCapacity)
+		batches = make(chan *batch, config.BatchCapacity)
+		work1   = make(chan *unitOfWork, config.BatchCapacity)
+		work2   = make(chan *unitOfWork, config.BatchCapacity)
+		work3   = make(chan *unitOfWork, config.BatchCapacity)
+		work4   = make(chan *unitOfWork, config.BatchCapacity)
+		work5   = make(chan *unitOfWork, config.BatchCapacity)
 	)
 
 	var (
-		entry       = newEntrypoint(cfg.Monitor, batches)
-		exec        = newExecution(cfg.Monitor, cfg.UnitSize, batches, work1, newRouter(cfg.Types...))
-		serializers = newFanOut(serializerFactory(cfg.Monitor, cfg.Serializer), cfg.SerializerCount, work1, work2)
-		persist     = newPersistence(ctx, cfg.Monitor, work2, work3, cfg.Writer, time.Sleep)
-		complete    = newCompletion(work3, work4)
-		bcast       = newBroadcast(ctx, cfg.Monitor, work4, work5, cfg.Dispatcher, time.Sleep)
-		term        = newTerminal(work5)
+		entrypoint  = newEntrypoint(config.Monitor, batches)
+		executor    = newExecution(config.Monitor, config.UnitSize, batches, work1, newRouter(config.Types...))
+		serializers = newFanOut(serializationFactory(config.Monitor, config.Serializer), config.SerializerCount, work1, work2)
+		persistence = newPersistence(ctx, config.Monitor, work2, work3, config.Writer, time.Sleep)
+		completion  = newCompletion(work3, work4)
+		broadcast   = newBroadcast(ctx, config.Monitor, work4, work5, config.Dispatcher, time.Sleep)
+		terminal    = newTerminal(work5)
 	)
 
 	var listeners []messaging.Listener
 	listeners = append(listeners,
-		entry,
-		exec,
+		entrypoint,
+		executor,
 	)
 	listeners = append(listeners, serializers...)
 	listeners = append(listeners,
-		persist,
-		complete,
-		bcast,
-		term,
+		persistence,
+		completion,
+		broadcast,
+		terminal,
 	)
-	return entry, listeners
+	return entrypoint, listeners
 }
 
-func serializerFactory(monitor Monitor, enc serializer) stationFactory {
+func serializationFactory(monitor Monitor, enc serializer) stationFactory {
 	return func(in, out chan *unitOfWork) messaging.Listener {
 		return newSerialization(monitor, enc, in, out)
 	}
