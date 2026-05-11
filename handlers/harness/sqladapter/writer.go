@@ -22,7 +22,7 @@ type Writer struct {
 // NewWriter builds a Writer that inserts rows into the `Messages` table and
 // invokes the supplied legacyWrite function inside the same transaction.
 //
-// Deprecated: the legacyWrite escape hatch is retained for migration from
+// Deprecation warning: the legacyWrite escape hatch is retained for migration from
 // other projects and will be removed in a later release; new callers
 // should supply a no-op function.
 func NewWriter(handle *sql.DB, typeNames map[reflect.Type]string, stride uint64, logger Logger, legacyWrite func(context.Context, *sql.Tx, ...any)) *Writer {
