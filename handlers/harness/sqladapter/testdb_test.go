@@ -67,9 +67,9 @@ func setupSchema(db *sql.DB) error {
 	return nil
 }
 
-// findSchemaFile locates sqlmq/_schema_mysql.sql relative to this test file,
+// findSchemaFile locates doc/mysql/schema.sql relative to this test file,
 // since tests run from the package directory regardless of CWD.
 func findSchemaFile() string {
 	_, thisFile, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "sqlmq", "_schema_mysql.sql")
+	return filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "doc", "mysql", "schema.sql")
 }

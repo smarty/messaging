@@ -1,6 +1,6 @@
 // Package sqladapter provides a reference implementation of the
 // handlers/harness Writer and Dispatcher interfaces, bound to the `Messages`
-// MySQL table defined by sqlmq/_schema_mysql.sql in this module (columns
+// MySQL table defined by doc/mysql/schema.sql in this module (columns
 // `id`, `dispatched`, `type`, `payload`). Callers running a different schema
 // should copy and adapt these types.
 package sqladapter
