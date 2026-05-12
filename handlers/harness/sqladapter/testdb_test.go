@@ -1,7 +1,6 @@
 package sqladapter
 
 import (
-	"cmp"
 	"database/sql"
 	"fmt"
 	"os"
@@ -14,14 +13,7 @@ import (
 
 // TODO: move away from environment variables for connection parameters (just use sensible defaults from db-connector)
 
-// Integration tests in this package require a local MySQL server. Connection
-// parameters are taken from environment variables (with sensible defaults):
-//
-//	HARNESS_TEST_MYSQL_DSN — overrides the full DSN
-//	MYSQL_HOST             — default 127.0.0.1
-//	MYSQL_PORT             — default 3306
-//	MYSQL_USER             — default root
-//	MYSQL_PASSWORD         — default (empty)
+// Integration tests in this package require a local MySQL server.
 //
 // Tests run against a throwaway schema (default `messaging_harness_test`) which
 // is dropped and re-created before each run.
@@ -56,14 +48,7 @@ func openDSN(dsn string) (*sql.DB, error) {
 }
 
 func buildDSN(schema string) string {
-	if override := os.Getenv("HARNESS_TEST_MYSQL_DSN"); override != "" {
-		return override
-	}
-	host := cmp.Or(os.Getenv("MYSQL_HOST"), "127.0.0.1")
-	port := cmp.Or(os.Getenv("MYSQL_PORT"), "3306")
-	user := cmp.Or(os.Getenv("MYSQL_USER"), "root")
-	password := os.Getenv("MYSQL_PASSWORD")
-	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?multiStatements=true&parseTime=true", user, password, host, port, schema)
+	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?multiStatements=true&parseTime=true", "root", "", "127.0.0.1", "3306", schema)
 }
 
 func setupSchema(db *sql.DB) error {
