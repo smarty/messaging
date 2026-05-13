@@ -100,8 +100,9 @@ func (this *DispatcherFixture) dispatchedTimestamp(id uint64) *string {
 // stubConnector mimics a transport connector.
 
 type stubConnector struct {
-	published []messaging.Dispatch
-	writeErr  error
+	published    []messaging.Dispatch
+	writeBatches []int
+	writeErr     error
 }
 
 func newStubConnector() *stubConnector {
@@ -131,6 +132,7 @@ func (this *stubWriter) Write(ctx context.Context, dispatches ...messaging.Dispa
 	if this.parent.writeErr != nil {
 		return 0, this.parent.writeErr
 	}
+	this.parent.writeBatches = append(this.parent.writeBatches, len(dispatches))
 	this.parent.published = append(this.parent.published, dispatches...)
 	return len(dispatches), nil
 }

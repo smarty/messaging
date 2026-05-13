@@ -9,13 +9,14 @@ import (
 )
 
 // Recover scans Messages WHERE dispatched IS NULL at startup, wraps each row
-// as a *harness.Message, and feeds them through the Dispatcher (publish + mark dispatched).
-// Intended to run synchronously during initialization, before the harness pipeline starts.
+// as a *harness.Message, and feeds them through the Dispatcher (publish + mark dispatched)
+// in pages of batchSize. Intended to run synchronously during initialization, before
+// the harness pipeline starts.
 //
-// TODO: pagination/streaming for large backlogs (currently loads everything into memory).
 // TODO: make this a Listener
 // TODO: retry w/ backoff
-func Recover(ctx context.Context, handle *sql.DB, dispatcher *Dispatcher, logger Logger) error {
+func Recover(ctx context.Context, handle *sql.DB, dispatcher *Dispatcher, logger Logger, batchSize int) error {
+	logger.Printf("[INFO] Recovering undispatched message(s) from previous run...")
 	rows, err := handle.QueryContext(ctx, `
 		SELECT id, type, payload
 		  FROM Messages
@@ -26,6 +27,7 @@ func Recover(ctx context.Context, handle *sql.DB, dispatcher *Dispatcher, logger
 	}
 	defer func() { _ = rows.Close() }()
 
+	var total int
 	var messages []any
 	for rows.Next() {
 		var (
@@ -36,12 +38,21 @@ func Recover(ctx context.Context, handle *sql.DB, dispatcher *Dispatcher, logger
 		if err := rows.Scan(&id, &typeName, &payload); err != nil {
 			return err
 		}
+		total++
 		messages = append(messages, &harness.Message{
 			ID:          id,
 			Type:        typeName,
 			Content:     bytes.NewBuffer(payload),
 			ContentType: "application/json",
 		})
+		if len(messages) >= batchSize {
+			err := dispatcher.Dispatch(ctx, messages...)
+			if err != nil {
+				return err
+			}
+			clear(messages)
+			messages = messages[:0]
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return err
@@ -49,6 +60,7 @@ func Recover(ctx context.Context, handle *sql.DB, dispatcher *Dispatcher, logger
 	if len(messages) == 0 {
 		return nil
 	}
-	logger.Printf("[INFO] Recovering %d undispatched message(s) from previous run.", len(messages))
-	return dispatcher.Dispatch(ctx, messages...)
+	err = dispatcher.Dispatch(ctx, messages...)
+	logger.Printf("[INFO] Recovering %d total undispatched message(s) from previous run.", total)
+	return err
 }

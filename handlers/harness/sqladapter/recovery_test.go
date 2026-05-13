@@ -57,7 +57,7 @@ func (this *RecoveryFixture) seedDispatched(typeName string, payload string) uin
 }
 
 func (this *RecoveryFixture) TestRecover_NoOrphans_NoOp() {
-	err := Recover(context.Background(), this.handle, this.dispatcher, log.New(os.Stderr, "", 0))
+	err := Recover(context.Background(), this.handle, this.dispatcher, log.New(os.Stderr, "", 0), 1024)
 
 	this.So(err, should.BeNil)
 	this.So(len(this.connector.published), should.Equal, 0)
@@ -68,7 +68,7 @@ func (this *RecoveryFixture) TestRecover_DispatchesUndispatchedRowsInIDOrder() {
 	id2 := this.seedUndispatched("order-approved", `{"order":2}`)
 	_ = this.seedDispatched("order-received", `{"order":3}`) // already dispatched, must be skipped
 
-	err := Recover(context.Background(), this.handle, this.dispatcher, log.New(os.Stderr, "", 0))
+	err := Recover(context.Background(), this.handle, this.dispatcher, log.New(os.Stderr, "", 0), 1024)
 
 	this.So(err, should.BeNil)
 	this.So(len(this.connector.published), should.Equal, 2)
@@ -79,12 +79,42 @@ func (this *RecoveryFixture) TestRecover_DispatchesUndispatchedRowsInIDOrder() {
 func (this *RecoveryFixture) TestRecover_PassesPayloadAndTypeIntoMessage() {
 	this.seedUndispatched("order-received", `{"order":1}`)
 
-	err := Recover(context.Background(), this.handle, this.dispatcher, log.New(os.Stderr, "", 0))
+	err := Recover(context.Background(), this.handle, this.dispatcher, log.New(os.Stderr, "", 0), 1024)
 
 	this.So(err, should.BeNil)
 	this.So(len(this.connector.published), should.Equal, 1)
 	dispatch := this.connector.published[0]
 	this.So(dispatch.Durable, should.BeTrue)
+}
+
+func (this *RecoveryFixture) TestRecover_RowsExceedBatchSize_FlushesInBatchesAndDispatchesAll() {
+	const batchSize = 3
+	const total = 7 // 3 + 3 + 1
+	ids := make([]uint64, 0, total)
+	for i := 0; i < total; i++ {
+		ids = append(ids, this.seedUndispatched("order-received", `{}`))
+	}
+
+	err := Recover(context.Background(), this.handle, this.dispatcher, log.New(os.Stderr, "", 0), batchSize)
+
+	this.So(err, should.BeNil)
+	this.So(len(this.connector.published), should.Equal, total)
+	for _, id := range ids {
+		this.So(this.dispatchedTimestamp(id), should.NOT.BeNil)
+	}
+}
+
+func (this *RecoveryFixture) TestRecover_RowCountIsMultipleOfBatchSize_FlushesUniformBatches() {
+	const batchSize = 3
+	const total = 6 // exactly 2 batches of 3
+	for i := 0; i < total; i++ {
+		this.seedUndispatched("order-received", `{}`)
+	}
+
+	err := Recover(context.Background(), this.handle, this.dispatcher, log.New(os.Stderr, "", 0), batchSize)
+
+	this.So(err, should.BeNil)
+	this.So(this.connector.writeBatches, should.Equal, []int{3, 3})
 }
 
 func (this *RecoveryFixture) dispatchedTimestamp(id uint64) *string {
