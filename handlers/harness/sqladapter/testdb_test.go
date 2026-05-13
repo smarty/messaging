@@ -11,8 +11,6 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-// TODO: move away from environment variables for connection parameters (just use sensible defaults from db-connector)
-
 // Integration tests in this package require a local MySQL server.
 //
 // Tests run against a throwaway schema (default `messaging_harness_test`) which
