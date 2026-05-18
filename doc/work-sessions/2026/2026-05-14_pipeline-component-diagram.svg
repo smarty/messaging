@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 960 1240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pipeline component diagram">
+  <style>
+    .small { font-size: 12.8px; fill: #5b6670; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .label { font-size: 11px; font-family: "JetBrains Mono", Menlo, monospace; }
+    .stage-title { font-size: 13px; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .stage-sub { font-size: 10.5px; fill: #5b6670; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#1f2328"/>
+    </marker>
+    <marker id="arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b6670"/>
+    </marker>
+  </defs>
+
+  <!--
+    Layout:
+      Center column (stages + channels): x=320, w=280
+      Right collaborators: x=680, w=200
+      Left Monitor sidebar: x=40, w=200
+  -->
+
+  <!-- =========== CENTER VERTICAL FLOW =========== -->
+
+  <!-- Caller -->
+  <g>
+    <rect x="320" y="20" width="280" height="55" rx="6" fill="#ffe8e8" stroke="#c0392b" stroke-width="1.8"/>
+    <text x="460" y="44" text-anchor="middle" class="stage-title">Caller</text>
+    <text x="460" y="62" text-anchor="middle" class="stage-sub">Handle(ctx, messages...)</text>
+  </g>
+
+  <!-- entrypoint -->
+  <g>
+    <rect x="320" y="110" width="280" height="70" rx="6" fill="#e8efff" stroke="#4a6cf7" stroke-width="1.8"/>
+    <text x="460" y="132" text-anchor="middle" class="stage-title">00 entrypoint</text>
+    <text x="460" y="150" text-anchor="middle" class="stage-sub">wraps messages &#8594; *batch</text>
+    <text x="460" y="165" text-anchor="middle" class="stage-sub">tracks BatchInFlight</text>
+  </g>
+
+  <!-- batches -->
+  <g>
+    <rect x="370" y="210" width="180" height="42" rx="6" fill="#fff4d6" stroke="#c79a1f" stroke-width="1.6"/>
+    <text x="460" y="228" text-anchor="middle" class="stage-title" font-size="12">batches</text>
+    <text x="460" y="244" text-anchor="middle" class="stage-sub">chan *batch</text>
+  </g>
+
+  <!-- execution -->
+  <g>
+    <rect x="320" y="285" width="280" height="70" rx="6" fill="#e8efff" stroke="#4a6cf7" stroke-width="1.8"/>
+    <text x="460" y="307" text-anchor="middle" class="stage-title">01 execution</text>
+    <text x="460" y="325" text-anchor="middle" class="stage-sub">router.Execute(msg, broadcast)</text>
+    <text x="460" y="340" text-anchor="middle" class="stage-sub">accumulates *Message &#8594; *unitOfWork</text>
+  </g>
+
+  <!-- work1 -->
+  <g>
+    <rect x="370" y="385" width="180" height="42" rx="6" fill="#fff4d6" stroke="#c79a1f" stroke-width="1.6"/>
+    <text x="460" y="403" text-anchor="middle" class="stage-title" font-size="12">work1</text>
+    <text x="460" y="419" text-anchor="middle" class="stage-sub">chan *unitOfWork</text>
+  </g>
+
+  <!-- serialization -->
+  <g>
+    <rect x="320" y="460" width="280" height="70" rx="6" fill="#e8efff" stroke="#4a6cf7" stroke-width="1.8"/>
+    <text x="460" y="482" text-anchor="middle" class="stage-title">02 serialization</text>
+    <text x="460" y="500" text-anchor="middle" class="stage-sub">Serializer.Serialize(out, value)</text>
+    <text x="460" y="515" text-anchor="middle" class="stage-sub">fan-out workers + fanIn (not shown)</text>
+  </g>
+
+  <!-- work2 -->
+  <g>
+    <rect x="370" y="560" width="180" height="42" rx="6" fill="#fff4d6" stroke="#c79a1f" stroke-width="1.6"/>
+    <text x="460" y="578" text-anchor="middle" class="stage-title" font-size="12">work2</text>
+    <text x="460" y="594" text-anchor="middle" class="stage-sub">chan *unitOfWork</text>
+  </g>
+
+  <!-- persistence -->
+  <g>
+    <rect x="320" y="635" width="280" height="70" rx="6" fill="#e8efff" stroke="#4a6cf7" stroke-width="1.8"/>
+    <text x="460" y="657" text-anchor="middle" class="stage-title">03 persistence</text>
+    <text x="460" y="675" text-anchor="middle" class="stage-sub">Writer.Write(ctx, msgs...)</text>
+    <text x="460" y="690" text-anchor="middle" class="stage-sub">retry forever w/ sleep</text>
+  </g>
+
+  <!-- work3 -->
+  <g>
+    <rect x="370" y="735" width="180" height="42" rx="6" fill="#fff4d6" stroke="#c79a1f" stroke-width="1.6"/>
+    <text x="460" y="753" text-anchor="middle" class="stage-title" font-size="12">work3</text>
+    <text x="460" y="769" text-anchor="middle" class="stage-sub">chan *unitOfWork</text>
+  </g>
+
+  <!-- completion -->
+  <g>
+    <rect x="320" y="810" width="280" height="70" rx="6" fill="#e8efff" stroke="#4a6cf7" stroke-width="1.8"/>
+    <text x="460" y="832" text-anchor="middle" class="stage-title">04 completion</text>
+    <text x="460" y="850" text-anchor="middle" class="stage-sub">invokes per-batch complete()</text>
+    <text x="460" y="865" text-anchor="middle" class="stage-sub">tracks BatchComplete</text>
+  </g>
+
+  <!-- work4 -->
+  <g>
+    <rect x="370" y="910" width="180" height="42" rx="6" fill="#fff4d6" stroke="#c79a1f" stroke-width="1.6"/>
+    <text x="460" y="928" text-anchor="middle" class="stage-title" font-size="12">work4</text>
+    <text x="460" y="944" text-anchor="middle" class="stage-sub">chan *unitOfWork</text>
+  </g>
+
+  <!-- broadcast -->
+  <g>
+    <rect x="320" y="985" width="280" height="70" rx="6" fill="#e8efff" stroke="#4a6cf7" stroke-width="1.8"/>
+    <text x="460" y="1007" text-anchor="middle" class="stage-title">05 broadcast</text>
+    <text x="460" y="1025" text-anchor="middle" class="stage-sub">Dispatcher.Dispatch(ctx, msgs...)</text>
+    <text x="460" y="1040" text-anchor="middle" class="stage-sub">retry forever w/ sleep</text>
+  </g>
+
+  <!-- work5 -->
+  <g>
+    <rect x="370" y="1085" width="180" height="42" rx="6" fill="#fff4d6" stroke="#c79a1f" stroke-width="1.6"/>
+    <text x="460" y="1103" text-anchor="middle" class="stage-title" font-size="12">work5</text>
+    <text x="460" y="1119" text-anchor="middle" class="stage-sub">chan *unitOfWork</text>
+  </g>
+
+  <!-- terminal -->
+  <g>
+    <rect x="320" y="1160" width="280" height="60" rx="6" fill="#e8efff" stroke="#4a6cf7" stroke-width="1.8"/>
+    <text x="460" y="1183" text-anchor="middle" class="stage-title">06 terminal</text>
+    <text x="460" y="1201" text-anchor="middle" class="stage-sub">drains the final channel</text>
+  </g>
+
+  <!-- =========== CENTER FLOW ARROWS =========== -->
+  <g stroke="#1f2328" stroke-width="1.6" fill="none">
+    <line x1="460" y1="75"  x2="460" y2="108" marker-end="url(#arrow)"/>
+    <line x1="460" y1="180" x2="460" y2="208" marker-end="url(#arrow)"/>
+    <line x1="460" y1="252" x2="460" y2="283" marker-end="url(#arrow)"/>
+    <line x1="460" y1="355" x2="460" y2="383" marker-end="url(#arrow)"/>
+    <line x1="460" y1="427" x2="460" y2="458" marker-end="url(#arrow)"/>
+    <line x1="460" y1="530" x2="460" y2="558" marker-end="url(#arrow)"/>
+    <line x1="460" y1="602" x2="460" y2="633" marker-end="url(#arrow)"/>
+    <line x1="460" y1="705" x2="460" y2="733" marker-end="url(#arrow)"/>
+    <line x1="460" y1="777" x2="460" y2="808" marker-end="url(#arrow)"/>
+    <line x1="460" y1="880" x2="460" y2="908" marker-end="url(#arrow)"/>
+    <line x1="460" y1="952" x2="460" y2="983" marker-end="url(#arrow)"/>
+    <line x1="460" y1="1055" x2="460" y2="1083" marker-end="url(#arrow)"/>
+    <line x1="460" y1="1127" x2="460" y2="1158" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- =========== RIGHT-SIDE SUBORDINATE COMPONENTS =========== -->
+
+  <!-- router (subordinate to execution) -->
+  <g>
+    <rect x="680" y="285" width="240" height="70" rx="6" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.6" stroke-dasharray="4,3"/>
+    <text x="800" y="307" text-anchor="middle" class="stage-title">router</text>
+    <text x="800" y="325" text-anchor="middle" class="stage-sub">Execute*/Apply* methods</text>
+    <text x="800" y="340" text-anchor="middle" class="stage-sub">discovered from Options.Types</text>
+  </g>
+
+  <!-- Serializer (subordinate to serialization) -->
+  <g>
+    <rect x="680" y="460" width="240" height="70" rx="6" fill="#eaf6ec" stroke="#2f9e44" stroke-width="1.6"/>
+    <text x="800" y="482" text-anchor="middle" class="stage-title">Serializer</text>
+    <text x="800" y="500" text-anchor="middle" class="stage-sub">caller-supplied</text>
+    <text x="800" y="515" text-anchor="middle" class="stage-sub">Serialize(io.Writer, any) error</text>
+  </g>
+
+  <!-- Writer (subordinate to persistence) -->
+  <g>
+    <rect x="680" y="635" width="240" height="70" rx="6" fill="#eaf6ec" stroke="#2f9e44" stroke-width="1.6"/>
+    <text x="800" y="657" text-anchor="middle" class="stage-title">Writer</text>
+    <text x="800" y="675" text-anchor="middle" class="stage-sub">caller-supplied</text>
+    <text x="800" y="690" text-anchor="middle" class="stage-sub">Write(ctx, ...any) error</text>
+  </g>
+
+  <!-- Dispatcher (subordinate to broadcast) -->
+  <g>
+    <rect x="680" y="985" width="240" height="70" rx="6" fill="#eaf6ec" stroke="#2f9e44" stroke-width="1.6"/>
+    <text x="800" y="1007" text-anchor="middle" class="stage-title">Dispatcher</text>
+    <text x="800" y="1025" text-anchor="middle" class="stage-sub">caller-supplied</text>
+    <text x="800" y="1040" text-anchor="middle" class="stage-sub">Dispatch(ctx, ...any) error</text>
+  </g>
+
+  <!-- Right-side "uses" arrows: stage right-edge -> subordinate left-edge -->
+  <g stroke="#5b6670" stroke-width="1.4" stroke-dasharray="4,3" fill="none">
+    <line x1="600" y1="320" x2="678" y2="320" marker-end="url(#arrow-muted)"/>
+    <line x1="600" y1="495" x2="678" y2="495" marker-end="url(#arrow-muted)"/>
+    <line x1="600" y1="670" x2="678" y2="670" marker-end="url(#arrow-muted)"/>
+    <line x1="600" y1="1020" x2="678" y2="1020" marker-end="url(#arrow-muted)"/>
+  </g>
+
+  <!-- =========== LEFT-SIDE: MONITOR =========== -->
+
+  <g>
+    <rect x="40" y="600" width="200" height="160" rx="6" fill="#eaf6ec" stroke="#2f9e44" stroke-width="1.6"/>
+    <text x="140" y="624" text-anchor="middle" class="stage-title">Monitor</text>
+    <text x="140" y="644" text-anchor="middle" class="stage-sub">Track(observation)</text>
+    <text x="140" y="664" text-anchor="middle" class="stage-sub">Batch{In,Complete}</text>
+    <text x="140" y="679" text-anchor="middle" class="stage-sub">UnitOfWork{In,Complete}</text>
+    <text x="140" y="694" text-anchor="middle" class="stage-sub">SerializationError</text>
+    <text x="140" y="709" text-anchor="middle" class="stage-sub">PersistenceError</text>
+    <text x="140" y="724" text-anchor="middle" class="stage-sub">BroadcastError</text>
+    <text x="140" y="748" text-anchor="middle" class="small" font-style="italic">observed by all stages</text>
+  </g>
+
+  <!-- Dotted lines from each stage's left edge to the Monitor -->
+  <g stroke="#5b6670" stroke-width="1" stroke-dasharray="2,3" fill="none">
+    <line x1="320" y1="145" x2="240" y2="660"/>
+    <line x1="320" y1="320" x2="240" y2="660"/>
+    <line x1="320" y1="495" x2="240" y2="660"/>
+    <line x1="320" y1="670" x2="240" y2="680"/>
+    <line x1="320" y1="845" x2="240" y2="700"/>
+    <line x1="320" y1="1020" x2="240" y2="720"/>
+  </g>
+
+  <!-- Caller WaitGroup: dashed back-edge from completion up to caller -->
+  <path d="M 320 845 C 250 845, 250 50, 320 50"
+        stroke="#c0392b" stroke-width="1.3" stroke-dasharray="3,3" fill="none"
+        marker-end="url(#arrow-muted)"/>
+  <text x="270" y="448" class="small" fill="#c0392b" transform="rotate(-90 270 448)">complete() releases caller's WaitGroup</text>
+
+  <!-- Footer -->
+  <text x="460" y="1235" text-anchor="middle" class="small">Channel buffer capacity = config.BatchCapacity (default 1024)</text>
+</svg>
