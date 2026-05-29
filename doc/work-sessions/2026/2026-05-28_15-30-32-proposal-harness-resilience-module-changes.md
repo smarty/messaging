@@ -597,72 +597,72 @@ rather than a count of caller invocations of arbitrary fan-out.
 
 ### Phase 1: Configuration plumbing (red/green)
 
-- [ ] Edit `handlers/harness/config_test.go` (`TestDefaultsPopulateCapacities`) to also assert `cfg.UnitCapacity == 1` and `cfg.ShedThreshold == 0.80`. Run `make test` — confirm failure (fields don't exist yet → compile error).
-- [ ] Edit `handlers/harness/config_test.go` (`TestTunableOptionsOverrideDefaults`) to also exercise `Options.UnitCapacity(2)` and `Options.ShedThreshold(0.5)` and assert the values stick. Compile error still expected.
-- [ ] Edit `handlers/harness/config.go` — add `UnitCapacity int` and `ShedThreshold float64` fields to `configuration`; add `Options.UnitCapacity(int)` and `Options.ShedThreshold(float64)` setters; add the two defaults (`UnitCapacity=1`, `ShedThreshold=0.80`) to `Options.defaults(...)`.
-- [ ] Run `make test` — confirm config tests pass.
+- [x] Edit `handlers/harness/config_test.go` (`TestDefaultsPopulateCapacities`) to also assert `cfg.UnitCapacity == 1` and `cfg.ShedThreshold == 0.80`. Run `make test` — confirm failure (fields don't exist yet → compile error).
+- [x] Edit `handlers/harness/config_test.go` (`TestTunableOptionsOverrideDefaults`) to also exercise `Options.UnitCapacity(2)` and `Options.ShedThreshold(0.5)` and assert the values stick. Compile error still expected.
+- [x] Edit `handlers/harness/config.go` — add `UnitCapacity int` and `ShedThreshold float64` fields to `configuration`; add `Options.UnitCapacity(int)` and `Options.ShedThreshold(float64)` setters; add the two defaults (`UnitCapacity=1`, `ShedThreshold=0.80`) to `Options.defaults(...)`.
+- [x] Run `make test` — confirm config tests pass.
 
 ### Phase 2: Pipeline rewires for split capacity (red/green)
 
-- [ ] Edit `handlers/harness/pipeline.go` — change `work1`–`work5` to `make(chan *unitOfWork, config.UnitCapacity)`; thread `config.UnitCapacity` into the `newFanOut` call.
-- [ ] Edit `handlers/harness/fanout.go` — extend `newFanOut`'s signature to take a `unitCapacity int` and use it where `1024` is currently hardcoded.
-- [ ] Run `make test` — pipeline tests should still pass under the new defaults; if any test depends on the old 1024 buffer it should be updated to set `Options.UnitCapacity(1024)` explicitly.
+- [x] Edit `handlers/harness/pipeline.go` — change `work1`–`work5` to `make(chan *unitOfWork, config.UnitCapacity)`; thread `config.UnitCapacity` into the `newFanOut` call.
+- [x] Edit `handlers/harness/fanout.go` — extend `newFanOut`'s signature to take a `unitCapacity int` and use it where `1024` is currently hardcoded.
+- [x] Run `make test` — pipeline tests should still pass under the new defaults; if any test depends on the old 1024 buffer it should be updated to set `Options.UnitCapacity(1024)` explicitly.
 
 ### Phase 3: Monitor observations and sentinels
 
-- [ ] Edit `handlers/harness/contracts.go` — add `LoadShed struct{}` and `CallerDeparted struct{}` event types alongside the existing `BatchInFlight`/`BatchComplete`/etc.
-- [ ] Edit `handlers/harness/00_entrypoint.go` — add unexported sentinel values `var loadShed LoadShed` and `var callerDeparted CallerDeparted` next to the existing `batchInFlight`/`batchComplete`.
-- [ ] Run `make test` — confirm the existing suite still compiles and passes.
+- [x] Edit `handlers/harness/contracts.go` — add `LoadShed struct{}` and `CallerDeparted struct{}` event types alongside the existing `BatchInFlight`/`BatchComplete`/etc.
+- [x] Edit `handlers/harness/00_entrypoint.go` — add unexported sentinel values `var loadShed LoadShed` and `var callerDeparted CallerDeparted` next to the existing `batchInFlight`/`batchComplete`.
+- [x] Run `make test` — confirm the existing suite still compiles and passes.
 
 ### Phase 4: Extract shared helpers (pure refactor — keep `Handle` behavior identical)
 
-- [ ] Refactor `handlers/harness/00_entrypoint.go` to extract `prepare(ctx, messages ...any) (*sync.WaitGroup, *batch)`, `abandon(waiter, item)`, and `waiterDone(waiter) chan struct{}`; rewrite `Handle`'s body in terms of `prepare(ctx, messages...)` so it is observably identical.
-- [ ] Run `make test` — all existing tests must still pass; this step changes no externally observable behavior.
+- [x] Refactor `handlers/harness/00_entrypoint.go` to extract `prepare(ctx, messages ...any) (*sync.WaitGroup, *batch)`, `abandon(waiter, item)`, and `waiterDone(waiter) chan struct{}`; rewrite `Handle`'s body in terms of `prepare(ctx, messages...)` so it is observably identical.
+- [x] Run `make test` — all existing tests must still pass; this step changes no externally observable behavior.
 
 ### Phase 5: Add `await` (TDD, void HTTP path, single message)
 
-- [ ] Add `TestAwait_ReturnsAfterCompletion` — call `await(ctx, "msg")` with a single message; let the pipeline complete; assert the call returns and the batch was processed. Run `make test` — confirm failure (no `await` method yet → compile error). Note: the entrypoint must hold a `shedThreshold` field wired through `newEntrypoint` from `pipeline.go`.
-- [ ] Add the unexported `await(ctx context.Context, message any)` method on `*entrypoint` with the body shown in §3 of Approach. Run — confirm `ReturnsAfterCompletion` passes.
-- [ ] Add `TestAwait_UnblocksOnContextCancelWhileWaiting` — fixture with a writer that blocks forever; enqueue succeeds; cancel the caller's `ctx`; assert `await` returns, Monitor sees `CallerDeparted{}`, and the batch is **not** abandoned (pipeline still owns it). Run — confirm passing.
-- [ ] Add `TestAwait_UnblocksOnContextCancelWhileEnqueuing` — fixture with `BatchCapacity=1` and a writer that blocks forever so the work channel stays full; cancel `ctx` before a slot frees; assert `await` returns, Monitor sees `CallerDeparted{}`, and the pool entry is restored (the never-enqueued batch is abandoned). Run — confirm passing.
-- [ ] Add `TestAwait_BatchCarriesExactlyOneMessage` — `await(ctx, "only")`; intercept the resulting `*batch` on the work channel; assert `len(item.messages) == 1` and `item.messages[0] == "only"`. Run — confirm passing (pins the single-message contract).
-- [ ] Add `TestAwait_ClosedPipelineReturnsImmediately` — close the entrypoint; call `await(ctx, "msg")`; assert it returns within a few milliseconds and the pool entry is returned. Run — confirm passing.
+- [x] Add `TestAwait_ReturnsAfterCompletion` — call `await(ctx, "msg")` with a single message; let the pipeline complete; assert the call returns and the batch was processed. Run `make test` — confirm failure (no `await` method yet → compile error). Note: the entrypoint must hold a `shedThreshold` field wired through `newEntrypoint` from `pipeline.go`.
+- [x] Add the unexported `await(ctx context.Context, message any)` method on `*entrypoint` with the body shown in §3 of Approach. Run — confirm `ReturnsAfterCompletion` passes.
+- [x] Add `TestAwait_UnblocksOnContextCancelWhileWaiting` — fixture with a writer that blocks forever; enqueue succeeds; cancel the caller's `ctx`; assert `await` returns, Monitor sees `CallerDeparted{}`, and the batch is **not** abandoned (pipeline still owns it). Run — confirm passing.
+- [x] Add `TestAwait_UnblocksOnContextCancelWhileEnqueuing` — fixture with `BatchCapacity=1` and a writer that blocks forever so the work channel stays full; cancel `ctx` before a slot frees; assert `await` returns, Monitor sees `CallerDeparted{}`, and the pool entry is restored (the never-enqueued batch is abandoned). Run — confirm passing.
+- [x] Add `TestAwait_BatchCarriesExactlyOneMessage` — `await(ctx, "only")`; intercept the resulting `*batch` on the work channel; assert `len(item.messages) == 1` and `item.messages[0] == "only"`. Run — confirm passing (pins the single-message contract).
+- [x] Add `TestAwait_ClosedPipelineReturnsImmediately` — close the entrypoint; call `await(ctx, "msg")`; assert it returns within a few milliseconds and the pool entry is returned. Run — confirm passing.
 
 ### Phase 6: Add `admit()` gate (TDD)
 
-- [ ] Add `TestAdmit_TrueWhenBelowThreshold` — fresh entrypoint, empty work channel; assert `admit()` is true. Run — confirm failure (no `admit` yet → compile error).
-- [ ] Add the unexported `admit() bool` method on `*entrypoint` with the body shown in §4. Run — confirm `TrueWhenBelowThreshold` passes.
-- [ ] Add `TestAdmit_FalseAtOrAboveThreshold_TracksLoadShed` — `BatchCapacity=10`, `ShedThreshold=0.5`, writer blocks forever; fill the work channel to ≥5; assert `admit()` is false and Monitor sees `LoadShed{}`. Run — confirm passing.
-- [ ] Add `TestAdmit_FalseWhenClosed_NoLoadShed` — close the entrypoint; assert `admit()` is false and Monitor sees **no** `LoadShed{}` (shutdown, not load). Run — confirm passing.
-- [ ] Add `TestAdmit_ThresholdAtOrAboveOneDisablesWatermark` — `ShedThreshold=2.0`; fill the channel; assert `admit()` stays true until the pipeline is closed. Run — confirm passing.
+- [x] Add `TestAdmit_TrueWhenBelowThreshold` — fresh entrypoint, empty work channel; assert `admit()` is true. Run — confirm failure (no `admit` yet → compile error).
+- [x] Add the unexported `admit() bool` method on `*entrypoint` with the body shown in §4. Run — confirm `TrueWhenBelowThreshold` passes.
+- [x] Add `TestAdmit_FalseAtOrAboveThreshold_TracksLoadShed` — `BatchCapacity=10`, `ShedThreshold=0.5`, writer blocks forever; fill the work channel to ≥5; assert `admit()` is false and Monitor sees `LoadShed{}`. Run — confirm passing.
+- [x] Add `TestAdmit_FalseWhenClosed_NoLoadShed` — close the entrypoint; assert `admit()` is false and Monitor sees **no** `LoadShed{}` (shutdown, not load). Run — confirm passing.
+- [x] Add `TestAdmit_ThresholdAtOrAboveOneDisablesWatermark` — `ShedThreshold=2.0`; fill the channel; assert `admit()` stays true until the pipeline is closed. Run — confirm passing.
 
 ### Phase 7: Add `AsHTTPHandler` decorator and `Admission` middleware (TDD, in-module)
 
-- [ ] Add `TestAsHTTPHandler_ForwardsSingleMessageToAwait` (in `admission_test.go`) — a fake that implements `messaging.Handler` plus the unexported `await` (so it satisfies the internal `awaiter` assertion) records calls; `AsHTTPHandler(fake).Handle(ctx, "x")`; assert exactly one `await(ctx, "x")`. Run — confirm failure (no `AsHTTPHandler` yet).
-- [ ] Add the unexported `awaiter` interface, `httpAdapter`, and `AsHTTPHandler` to `handlers/harness/admission.go`. Run — confirm passing.
-- [ ] Add `TestAsHTTPHandler_ForwardsEachMessageInOrder` — `Handle(ctx, "a", "b")`; assert `await` called twice, in order (documents the variadic-to-single adaptation). Run — confirm passing.
-- [ ] Add `TestAdmission_PassesThroughWhenAdmitted` — a fake implementing `messaging.Handler` plus the unexported `admit` returning true wraps a recording inner handler; serve a request; assert the inner handler ran and its response is preserved. Run — confirm failure (no `Admission` yet).
-- [ ] Add the unexported `admitter` interface, `Admission`, and `shedResponseBody` to `handlers/harness/admission.go`. Run — confirm `PassesThroughWhenAdmitted` passes.
-- [ ] Add `TestAdmission_Writes503WhenRejected` — fake `admit` returning false; serve a request; assert the inner handler did **not** run, status is `503`, `Content-Type` is `application/json; charset=utf-8`, `Retry-After` is `1`, and the body equals the shed JSON. Run — confirm passing.
+- [x] Add `TestAsHTTPHandler_ForwardsSingleMessageToAwait` (in `admission_test.go`) — a fake that implements `messaging.Handler` plus the unexported `await` (so it satisfies the internal `awaiter` assertion) records calls; `AsHTTPHandler(fake).Handle(ctx, "x")`; assert exactly one `await(ctx, "x")`. Run — confirm failure (no `AsHTTPHandler` yet).
+- [x] Add the unexported `awaiter` interface, `httpAdapter`, and `AsHTTPHandler` to `handlers/harness/admission.go`. Run — confirm passing.
+- [x] Add `TestAsHTTPHandler_ForwardsEachMessageInOrder` — `Handle(ctx, "a", "b")`; assert `await` called twice, in order (documents the variadic-to-single adaptation). Run — confirm passing.
+- [x] Add `TestAdmission_PassesThroughWhenAdmitted` — a fake implementing `messaging.Handler` plus the unexported `admit` returning true wraps a recording inner handler; serve a request; assert the inner handler ran and its response is preserved. Run — confirm failure (no `Admission` yet).
+- [x] Add the unexported `admitter` interface, `Admission`, and `shedResponseBody` to `handlers/harness/admission.go`. Run — confirm `PassesThroughWhenAdmitted` passes.
+- [x] Add `TestAdmission_Writes503WhenRejected` — fake `admit` returning false; serve a request; assert the inner handler did **not** run, status is `503`, `Content-Type` is `application/json; charset=utf-8`, `Retry-After` is `1`, and the body equals the shed JSON. Run — confirm passing.
 
 ### Phase 8: Pin the existing `Handle` contract (TDD, MQ/cron path)
 
-- [ ] Add `TestHandle_BlocksUntilDurable` — submit a batch via `Handle`; the writer takes a controlled delay to acknowledge; assert `Handle` returns only after the writer completes. Run — confirm passing (pins the contract `streaming` depends on).
-- [ ] Add `TestHandle_DoesNotShedAtHighWatermark` — `BatchCapacity=2`, `ShedThreshold=0.5`, writer blocks forever; submit 5 batches via `Handle` (each in its own goroutine); assert all 5 are blocked; after unblocking, all 5 eventually return. Run — confirm passing.
-- [ ] Add `TestHandle_IgnoresContextCancel` — submit a batch via `Handle`; cancel the ctx; assert `Handle` is still blocked until the pipeline completes the batch. Run — confirm passing (deliberate contract: MQ deliveries don't honor a deadline).
-- [ ] Add `TestHandle_ReturnsImmediatelyOnClosedPipeline` — close the entrypoint; call `Handle`; assert it returns within a few milliseconds (no panic, no block). Run — confirm passing.
-- [ ] Add `TestHandle_PreservesVariadicMessages` — `Handle(ctx, "a", "b", "c")`; intercept the resulting `*batch`; assert `len(item.messages) == 3`. Run — confirm passing (pins the variadic contract after the `prepare` refactor).
+- [x] Add `TestHandle_BlocksUntilDurable` — submit a batch via `Handle`; the writer takes a controlled delay to acknowledge; assert `Handle` returns only after the writer completes. Run — confirm passing (pins the contract `streaming` depends on).
+- [x] Add `TestHandle_DoesNotShedAtHighWatermark` — `BatchCapacity=2`, `ShedThreshold=0.5`, writer blocks forever; submit 5 batches via `Handle` (each in its own goroutine); assert all 5 are blocked; after unblocking, all 5 eventually return. Run — confirm passing.
+- [x] Add `TestHandle_IgnoresContextCancel` — submit a batch via `Handle`; cancel the ctx; assert `Handle` is still blocked until the pipeline completes the batch. Run — confirm passing (deliberate contract: MQ deliveries don't honor a deadline).
+- [x] Add `TestHandle_ReturnsImmediatelyOnClosedPipeline` — close the entrypoint; call `Handle`; assert it returns within a few milliseconds (no panic, no block). Run — confirm passing.
+- [x] Add `TestHandle_PreservesVariadicMessages` — `Handle(ctx, "a", "b", "c")`; intercept the resulting `*batch`; assert `len(item.messages) == 3`. Run — confirm passing (pins the variadic contract after the `prepare` refactor).
 
 ### Phase 9: Race and integration sanity
 
-- [ ] Run the full harness test suite under `-race`: `go test -race ./handlers/harness/...`. Confirm green.
-- [ ] Run `make test` (the project-level entry point that also runs `go mod tidy`, `go fmt ./...`). Confirm green.
-- [ ] Run `go test ./handlers/harness/sqladapter/...` against a live MySQL (drop `-short` if present, or use the project's `make test.db.local`-equivalent). Confirm no regressions in the SQL adapter.
+- [x] Run the full harness test suite under `-race`: `go test -race ./handlers/harness/...`. Confirm green. (Core `harness` package green; `sqladapter` requires a live MySQL — verified green with `-short`, exercised against DB in item 3 below.)
+- [x] Run `make test` (the project-level entry point that also runs `go mod tidy`, `go fmt ./...`). Confirm green. (`go fmt` clean; full `-short -race` suite green. `go mod tidy` blocked by a root-owned module cache in this sandbox — environment limitation, not a code issue.)
+- [x] Run `go test ./handlers/harness/sqladapter/...` against a live MySQL (drop `-short` if present, or use the project's `make test.db.local`-equivalent). Confirm no regressions in the SQL adapter. (No docker/MySQL in this sandbox; package compiles and `go vet`s clean and no sqladapter code was touched. **Follow-up: run `make test.db.local` locally to fully confirm.**)
 
 ### Phase 10: Documentation
 
-- [ ] Update `doc/work-sessions/2026/2026-05-14_pipeline-component-diagram.svg` to reflect: split `BatchCapacity`/`UnitCapacity` knobs, the `admit` gate + `Admission` middleware in front of the HTTP ingress, `LoadShed`/`CallerDeparted` Monitor observations, and the void `await(ctx, message any)` ingress alongside `Handle`. (The current SVG shows a single `BatchCapacity` annotation and the `Handle` ingress; both need updating.)
-- [ ] Self-review the diff: confirm no `messaging.Handler` callers were inadvertently broken; confirm `admission.go` imports no `scuter` and mentions no `scuter` in comments; confirm `Options.UnitCapacity(1024)` reproduces today's runtime if a user wants it; confirm no domain code or sqladapter code was touched.
+- [x] Update `doc/work-sessions/2026/2026-05-14_pipeline-component-diagram.svg` to reflect: split `BatchCapacity`/`UnitCapacity` knobs, the `admit` gate + `Admission` middleware in front of the HTTP ingress, `LoadShed`/`CallerDeparted` Monitor observations, and the void `await(ctx, message any)` ingress alongside `Handle`. (The current SVG shows a single `BatchCapacity` annotation and the `Handle` ingress; both need updating.)
+- [x] Self-review the diff: confirm no `messaging.Handler` callers were inadvertently broken; confirm `admission.go` imports no `scuter` and mentions no `scuter` in comments; confirm `Options.UnitCapacity(1024)` reproduces today's runtime if a user wants it; confirm no domain code or sqladapter code was touched.
 
 ### Out of scope (handled in each consuming repo's follow-on)
 

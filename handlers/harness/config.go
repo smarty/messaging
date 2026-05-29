@@ -45,8 +45,10 @@ type configuration struct {
 	Dispatcher      Dispatcher
 	Types           []any
 	BatchCapacity   int
+	UnitCapacity    int
 	UnitSize        int
 	SerializerCount int
+	ShedThreshold   float64
 }
 
 // Types registers the domain objects whose Execute.../Apply... methods drive
@@ -69,11 +71,17 @@ func (singleton) Dispatcher(value Dispatcher) option {
 func (singleton) BatchCapacity(value int) option {
 	return func(this *configuration) { this.BatchCapacity = value }
 }
+func (singleton) UnitCapacity(value int) option {
+	return func(this *configuration) { this.UnitCapacity = value }
+}
 func (singleton) UnitSize(value int) option {
 	return func(this *configuration) { this.UnitSize = value }
 }
 func (singleton) SerializerCount(value int) option {
 	return func(this *configuration) { this.SerializerCount = value }
+}
+func (singleton) ShedThreshold(value float64) option {
+	return func(this *configuration) { this.ShedThreshold = value }
 }
 
 func (singleton) defaults(options ...option) []option {
@@ -84,8 +92,10 @@ func (singleton) defaults(options ...option) []option {
 		Options.Writer(blank),
 		Options.Dispatcher(blank),
 		Options.BatchCapacity(1024),
+		Options.UnitCapacity(1),
 		Options.UnitSize(64),
 		Options.SerializerCount(4),
+		Options.ShedThreshold(0.80),
 	}, options...)
 }
 

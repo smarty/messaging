@@ -28,8 +28,10 @@ func (this *ConfigFixture) apply(options ...option) configuration {
 func (this *ConfigFixture) TestDefaultsPopulateCapacities() {
 	cfg := this.apply()
 	this.So(cfg.BatchCapacity, should.Equal, 1024)
+	this.So(cfg.UnitCapacity, should.Equal, 1)
 	this.So(cfg.UnitSize, should.Equal, 64)
 	this.So(cfg.SerializerCount, should.Equal, 4)
+	this.So(cfg.ShedThreshold, should.Equal, 0.80)
 }
 
 func (this *ConfigFixture) TestDefaultCollaboratorsAreNop() {
@@ -48,12 +50,16 @@ func (this *ConfigFixture) TestTypesOptionStoresValuesVerbatim() {
 func (this *ConfigFixture) TestTunableOptionsOverrideDefaults() {
 	cfg := this.apply(
 		Options.BatchCapacity(2),
+		Options.UnitCapacity(2),
 		Options.UnitSize(8),
 		Options.SerializerCount(3),
+		Options.ShedThreshold(0.5),
 	)
 	this.So(cfg.BatchCapacity, should.Equal, 2)
+	this.So(cfg.UnitCapacity, should.Equal, 2)
 	this.So(cfg.UnitSize, should.Equal, 8)
 	this.So(cfg.SerializerCount, should.Equal, 3)
+	this.So(cfg.ShedThreshold, should.Equal, 0.5)
 }
 
 func (this *ConfigFixture) TestCollaboratorOptionsOverrideDefaults() {

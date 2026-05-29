@@ -8,13 +8,13 @@ import (
 
 type stationFactory func(in, out chan *unitOfWork) messaging.Listener
 
-func newFanOut(factory stationFactory, workerCount int, input, finalOutput chan *unitOfWork) []messaging.Listener {
+func newFanOut(factory stationFactory, workerCount, unitCapacity int, input, finalOutput chan *unitOfWork) []messaging.Listener {
 	var (
 		listeners = make([]messaging.Listener, workerCount)
 		outputs   = make([]chan *unitOfWork, workerCount)
 	)
 	for i := range workerCount {
-		outputs[i] = make(chan *unitOfWork, 1024)
+		outputs[i] = make(chan *unitOfWork, unitCapacity)
 		listeners[i] = factory(input, outputs[i])
 	}
 	return append(listeners, newFanIn(outputs, finalOutput))

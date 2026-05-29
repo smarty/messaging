@@ -40,6 +40,8 @@ type (
 type (
 	BatchInFlight      struct{}
 	BatchComplete      struct{}
+	LoadShed           struct{}
+	CallerDeparted     struct{}
 	UnitOfWorkInFlight struct{}
 	UnitOfWorkComplete struct{}
 	SerializationError struct {

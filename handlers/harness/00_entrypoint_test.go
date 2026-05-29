@@ -5,6 +5,7 @@ import (
 	"io"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/smarty/gunit/v2"
 	"github.com/smarty/gunit/v2/assert/should"
@@ -27,7 +28,7 @@ type EntrypointFixture struct {
 func (this *EntrypointFixture) Setup() {
 	this.ctx = context.WithValue(this.Context(), "testing", this.Name())
 	this.work = make(chan *batch, 4)
-	this.subject = newEntrypoint(this, this.work)
+	this.subject = newEntrypoint(this, this.work, 0.80)
 }
 
 func (this *EntrypointFixture) Track(observation any) {
@@ -91,6 +92,249 @@ func (this *EntrypointFixture) TestHandleSerializesMultipleConcurrentCalls() {
 		}
 	}
 	this.So(inFlight, should.Equal, 0)
+}
+
+func (this *EntrypointFixture) TestAwait_ReturnsAfterCompletion() {
+	done := make(chan struct{})
+	go func() {
+		this.subject.await(this.ctx, "msg")
+		close(done)
+	}()
+
+	item := <-this.work
+	this.So(item.messages, should.Equal, []any{"msg"})
+
+	select {
+	case <-done:
+		this.Fatal("await returned before complete() was invoked")
+	default:
+	}
+
+	item.complete()
+	<-done
+
+	this.So(this.tracked, should.Contain, BatchInFlight{})
+	this.So(this.tracked, should.Contain, BatchComplete{})
+}
+
+func (this *EntrypointFixture) TestAwait_UnblocksOnContextCancelWhileWaiting() {
+	ctx, cancel := context.WithCancel(this.ctx)
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		this.subject.await(ctx, "msg")
+		close(done)
+	}()
+
+	item := <-this.work // enqueue succeeded; pipeline now owns the batch.
+
+	select {
+	case <-done:
+		this.Fatal("await returned before the caller departed or completion")
+	default:
+	}
+
+	cancel()
+	<-done
+
+	this.So(this.tracked, should.Contain, BatchInFlight{})
+	this.So(this.tracked, should.Contain, CallerDeparted{})
+
+	// The batch was NOT abandoned: the pipeline still owns it and will invoke
+	// complete() later. await must not have Put it back to the pool.
+	item.complete()
+	this.So(this.tracked, should.Contain, BatchComplete{})
+}
+
+func (this *EntrypointFixture) TestAwait_UnblocksOnContextCancelWhileEnqueuing() {
+	work := make(chan *batch, 1)
+	subject := newEntrypoint(this, work, 0.80)
+	work <- &batch{} // fill the channel so the next enqueue blocks.
+
+	ctx, cancel := context.WithCancel(this.ctx)
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		subject.await(ctx, "msg")
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		this.Fatal("await returned before the enqueue could block")
+	default:
+	}
+
+	cancel()
+	<-done
+
+	this.So(this.tracked, should.Contain, CallerDeparted{})
+	this.So(this.tracked, should.NOT.Contain, BatchInFlight{})
+
+	// The never-enqueued batch was abandoned and returned to the pool.
+	this.So(this.tracked, should.NOT.Contain, BatchComplete{})
+}
+
+func (this *EntrypointFixture) TestAwait_BatchCarriesExactlyOneMessage() {
+	go this.subject.await(this.ctx, "only")
+
+	item := <-this.work
+	this.So(item.messages, should.HaveLength, 1)
+	this.So(item.messages[0], should.Equal, "only")
+
+	item.complete()
+}
+
+func (this *EntrypointFixture) TestAwait_ClosedPipelineReturnsImmediately() {
+	this.So(this.subject.Close(), should.BeNil)
+
+	done := make(chan struct{})
+	go func() {
+		this.subject.await(this.ctx, "msg")
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		this.Fatal("await did not return on a closed pipeline")
+	}
+
+	this.So(this.tracked, should.BeEmpty)
+}
+
+func (this *EntrypointFixture) TestAdmit_TrueWhenBelowThreshold() {
+	this.So(this.subject.admit(), should.BeTrue)
+}
+
+func (this *EntrypointFixture) TestAdmit_FalseAtOrAboveThreshold_TracksLoadShed() {
+	work := make(chan *batch, 10)
+	subject := newEntrypoint(this, work, 0.5)
+	for range 5 {
+		work <- &batch{}
+	}
+	this.So(subject.admit(), should.BeFalse)
+	this.So(this.tracked, should.Contain, LoadShed{})
+}
+
+func (this *EntrypointFixture) TestAdmit_FalseWhenClosed_NoLoadShed() {
+	this.So(this.subject.Close(), should.BeNil)
+	this.So(this.subject.admit(), should.BeFalse)
+	this.So(this.tracked, should.NOT.Contain, LoadShed{})
+}
+
+func (this *EntrypointFixture) TestAdmit_ThresholdAtOrAboveOneDisablesWatermark() {
+	work := make(chan *batch, 4)
+	subject := newEntrypoint(this, work, 2.0)
+	for range 4 {
+		work <- &batch{}
+	}
+	this.So(subject.admit(), should.BeTrue)
+	this.So(this.tracked, should.NOT.Contain, LoadShed{})
+
+	this.So(subject.Close(), should.BeNil)
+	this.So(subject.admit(), should.BeFalse)
+}
+
+func (this *EntrypointFixture) TestHandle_BlocksUntilDurable() {
+	done := make(chan struct{})
+	go func() {
+		this.subject.Handle(this.ctx, "msg")
+		close(done)
+	}()
+
+	item := <-this.work
+
+	select {
+	case <-done:
+		this.Fatal("Handle returned before the batch was completed")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	item.complete()
+	<-done
+}
+
+func (this *EntrypointFixture) TestHandle_DoesNotShedAtHighWatermark() {
+	work := make(chan *batch, 2)
+	subject := newEntrypoint(this, work, 0.5)
+
+	done := make(chan struct{}, 5)
+	for range 5 {
+		go func() {
+			subject.Handle(this.ctx, "msg")
+			done <- struct{}{}
+		}()
+	}
+
+	// None should return while the work is unconsumed: Handle blocks on send
+	// (no shedding) and then waits for completion.
+	select {
+	case <-done:
+		this.Fatal("Handle returned before the batch was completed")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	for range 5 {
+		item := <-work
+		item.complete()
+	}
+	for range 5 {
+		<-done
+	}
+
+	this.So(this.tracked, should.NOT.Contain, LoadShed{})
+}
+
+func (this *EntrypointFixture) TestHandle_IgnoresContextCancel() {
+	ctx, cancel := context.WithCancel(this.ctx)
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		this.subject.Handle(ctx, "msg")
+		close(done)
+	}()
+
+	item := <-this.work
+	cancel()
+
+	select {
+	case <-done:
+		this.Fatal("Handle returned on context cancel; MQ deliveries must not honor a deadline")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	item.complete()
+	<-done
+}
+
+func (this *EntrypointFixture) TestHandle_ReturnsImmediatelyOnClosedPipeline() {
+	this.So(this.subject.Close(), should.BeNil)
+
+	done := make(chan struct{})
+	go func() {
+		this.subject.Handle(this.ctx, "msg")
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		this.Fatal("Handle did not return on a closed pipeline")
+	}
+}
+
+func (this *EntrypointFixture) TestHandle_PreservesVariadicMessages() {
+	go this.subject.Handle(this.ctx, "a", "b", "c")
+
+	item := <-this.work
+	this.So(item.messages, should.HaveLength, 3)
+	this.So(item.messages, should.Equal, []any{"a", "b", "c"})
+
+	item.complete()
 }
 
 func (this *EntrypointFixture) TestCloseReleasesListenAndClosesWorkChannel() {
