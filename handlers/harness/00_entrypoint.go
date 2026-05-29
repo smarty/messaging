@@ -54,36 +54,36 @@ func (this *entrypoint) waiterDone(waiter *sync.WaitGroup) (done chan struct{}) 
 }
 
 func (this *entrypoint) Handle(ctx context.Context, messages ...any) {
-	waiter, item := this.prepare(ctx, messages...)
-	defer this.waiters.Put(waiter)
-
 	this.lock.RLock()
 	if this.closed {
 		this.lock.RUnlock()
-		this.abandon(waiter, item)
 		return
 	}
+
+	waiter, item := this.prepare(ctx, messages...)
+	defer this.waiters.Put(waiter)
+
 	this.work <- item
-	this.monitor.Track(batchInFlight)
 	this.lock.RUnlock()
+	this.monitor.Track(batchInFlight)
 
 	waiter.Wait()
 }
 
 func (this *entrypoint) await(ctx context.Context, message any) {
-	waiter, item := this.prepare(ctx, message)
-	defer this.waiters.Put(waiter)
-
 	this.lock.RLock()
 	if this.closed {
 		this.lock.RUnlock()
-		this.abandon(waiter, item)
 		return
 	}
+
+	waiter, item := this.prepare(ctx, message)
+	defer this.waiters.Put(waiter)
+
 	select {
 	case this.work <- item:
-		this.monitor.Track(batchInFlight)
 		this.lock.RUnlock()
+		this.monitor.Track(batchInFlight)
 	case <-ctx.Done():
 		this.lock.RUnlock()
 		this.abandon(waiter, item)
