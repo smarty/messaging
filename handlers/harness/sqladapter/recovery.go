@@ -57,10 +57,9 @@ func Recover(ctx context.Context, handle *sql.DB, dispatcher *Dispatcher, logger
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	if len(messages) == 0 {
-		return nil
+	if len(messages) > 0 {
+		err = dispatcher.Dispatch(ctx, messages...)
 	}
-	err = dispatcher.Dispatch(ctx, messages...)
 	logger.Printf("[INFO] Recovering %d total undispatched message(s) from previous run.", total)
 	return err
 }
