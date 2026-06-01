@@ -127,7 +127,9 @@ func (this *entrypoint) Close() error {
 	return nil
 }
 
-var batchInFlight BatchInFlight
-var batchComplete BatchComplete
-var loadShed LoadShed
-var callerDeparted CallerDeparted
+var (
+	batchInFlight  BatchInFlight
+	batchComplete  BatchComplete
+	loadShed       LoadShed
+	callerDeparted CallerDeparted
+)
