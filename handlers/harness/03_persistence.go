@@ -12,43 +12,49 @@ type persistence struct {
 	input   chan *unitOfWork
 	output  chan *unitOfWork
 	writer  Writer
-	sleep   func(time.Duration)
+	wait    func(context.Context, time.Duration) error
 	buffer  []any
 }
 
-func newPersistence(ctx context.Context, monitor Monitor, input, output chan *unitOfWork, writer Writer, sleep func(time.Duration)) *persistence {
+func newPersistence(ctx context.Context, monitor Monitor, input, output chan *unitOfWork, writer Writer, wait func(context.Context, time.Duration) error) *persistence {
 	return &persistence{
 		ctx:     ctx,
 		monitor: monitor,
 		input:   input,
 		output:  output,
 		writer:  writer,
-		sleep:   sleep,
+		wait:    wait,
 		buffer:  make([]any, 0, 1024),
 	}
 }
 
 func (this *persistence) Listen() {
-	var failure PersistenceError
-
 	defer close(this.output)
 	for unit := range this.input {
 		for _, message := range unit.results {
 			this.buffer = append(this.buffer, message)
 		}
-		for attempt := 1; ; attempt++ {
-			err := this.writer.Write(this.ctx, this.buffer...)
-			if err == nil {
-				failure.Attempt = 0
-				failure.Error = nil
-				break
-			}
-			failure.Attempt = attempt
-			failure.Error = fmt.Errorf("%w: %w", ErrPersistence, err)
-			this.monitor.Track(failure)
-			this.sleep(time.Second) // TODO: exponential back-off w/ jitter
+		stored := this.store()
+		this.buffer = this.buffer[:0]
+		if !stored {
+			continue // shutdown before durable write: do NOT forward (no ack); MQ redelivers
 		}
 		this.output <- unit
-		this.buffer = this.buffer[:0]
+	}
+}
+func (this *persistence) store() (stored bool) {
+	var failure PersistenceError
+	for attempt := 1; ; attempt++ {
+		err := this.writer.Write(this.ctx, this.buffer...)
+		if err == nil {
+			return true
+		}
+		failure.Attempt = attempt
+		failure.Error = fmt.Errorf("%w: %w", ErrPersistence, err)
+		this.monitor.Track(failure)
+		if this.wait(this.ctx, time.Second) != nil { // TODO: exponential back-off w/ jitter
+			this.monitor.Track(PersistenceAbandoned{Attempts: attempt})
+			return false
+		}
 	}
 }

@@ -10,6 +10,11 @@
 //
 // The only exported entry point is New(ctx, options...); every internal stage
 // type is unexported and cannot be constructed directly by callers.
+//
+// The persistence and broadcast stages retry their collaborators on failure;
+// those retry loops abort when the context passed to New(ctx, ...) is cancelled,
+// so consumers must cancel it on shutdown to avoid hanging the drain. Custom
+// Writer and Dispatcher implementations must honor the context they are given.
 package harness
 
 import (

@@ -20,7 +20,8 @@ type BroadcastFixture struct {
 	ctx     context.Context
 	input   chan *unitOfWork
 	output  chan *unitOfWork
-	sleeps  []time.Duration
+	waits   []time.Duration
+	waitErr error
 	subject *broadcast
 
 	dispatchMu        sync.Mutex
@@ -34,11 +35,12 @@ func (this *BroadcastFixture) Setup() {
 	this.ctx = context.WithValue(this.Context(), "testing", this.Name())
 	this.input = make(chan *unitOfWork, 4)
 	this.output = make(chan *unitOfWork, 4)
-	this.subject = newBroadcast(this.ctx, this, this.input, this.output, this, this.sleep)
+	this.subject = newBroadcast(this.ctx, this, this.input, this.output, this, this.wait)
 }
 
-func (this *BroadcastFixture) sleep(d time.Duration) {
-	this.sleeps = append(this.sleeps, d)
+func (this *BroadcastFixture) wait(_ context.Context, d time.Duration) error {
+	this.waits = append(this.waits, d)
+	return this.waitErr
 }
 
 func (this *BroadcastFixture) Track(observation any) {
@@ -78,7 +80,7 @@ func (this *BroadcastFixture) TestDispatchesAllResultsThenForwardsUnit() {
 	this.So(len(units), should.Equal, 1)
 	this.So(len(this.dispatchCalls), should.Equal, 1)
 	this.So(this.dispatchCalls[0], should.Equal, []any{m1, m2})
-	this.So(this.sleeps, should.BeEmpty)
+	this.So(this.waits, should.BeEmpty)
 	this.So(this.tracked, should.BeEmpty)
 }
 
@@ -123,7 +125,7 @@ func (this *BroadcastFixture) TestRetriesUntilDispatchSucceeds() {
 	units := this.drain()
 	this.So(len(units), should.Equal, 1)
 	this.So(len(this.dispatchCalls), should.Equal, 3)
-	this.So(this.sleeps, should.Equal, []time.Duration{time.Second, time.Second})
+	this.So(this.waits, should.Equal, []time.Duration{time.Second, time.Second})
 	this.So(this.tracked, should.HaveLength, 2)
 	for n, observation := range this.tracked {
 		failure, ok := observation.(BroadcastError)
@@ -131,6 +133,27 @@ func (this *BroadcastFixture) TestRetriesUntilDispatchSucceeds() {
 		this.So(failure.Error, should.WrapError, ErrBroadcast)
 		this.So(failure.Attempt, should.Equal, n+1)
 	}
+}
+
+func (this *BroadcastFixture) TestBroadcastAbandonsOnContextCancelButStillForwards() {
+	this.dispatchFailCount = 1 << 30 // always fail
+	this.waitErr = context.Canceled
+	unit := &unitOfWork{results: []*Message{{Value: "abandoned"}}}
+	this.input <- unit
+	close(this.input)
+
+	go this.subject.Listen()
+
+	units := this.drain()
+	this.So(units, should.Equal, []*unitOfWork{unit})
+	this.So(len(this.dispatchCalls), should.Equal, 1)
+	this.So(this.waits, should.Equal, []time.Duration{time.Second})
+	this.So(this.tracked, should.HaveLength, 2)
+	failure, ok := this.tracked[0].(BroadcastError)
+	this.So(ok, should.BeTrue)
+	this.So(failure.Error, should.WrapError, ErrBroadcast)
+	this.So(failure.Attempt, should.Equal, 1)
+	this.So(this.tracked[1], should.Equal, BroadcastAbandoned{Attempts: 1})
 }
 
 func (this *BroadcastFixture) TestClosedInputClosesOutput() {

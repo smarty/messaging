@@ -20,7 +20,8 @@ type PersistenceFixture struct {
 	ctx     context.Context
 	input   chan *unitOfWork
 	output  chan *unitOfWork
-	sleeps  []time.Duration
+	waits   []time.Duration
+	waitErr error
 	subject *persistence
 
 	writeMu        sync.Mutex
@@ -34,11 +35,12 @@ func (this *PersistenceFixture) Setup() {
 	this.ctx = context.WithValue(this.Context(), "testing", this.Name())
 	this.input = make(chan *unitOfWork, 4)
 	this.output = make(chan *unitOfWork, 4)
-	this.subject = newPersistence(this.ctx, this, this.input, this.output, this, this.sleep)
+	this.subject = newPersistence(this.ctx, this, this.input, this.output, this, this.wait)
 }
 
-func (this *PersistenceFixture) sleep(d time.Duration) {
-	this.sleeps = append(this.sleeps, d)
+func (this *PersistenceFixture) wait(_ context.Context, d time.Duration) error {
+	this.waits = append(this.waits, d)
+	return this.waitErr
 }
 
 func (this *PersistenceFixture) Track(observation any) {
@@ -78,7 +80,7 @@ func (this *PersistenceFixture) TestWritesAllResultsThenForwardsUnit() {
 	this.So(len(units), should.Equal, 1)
 	this.So(len(this.writeCalls), should.Equal, 1)
 	this.So(this.writeCalls[0], should.Equal, []any{m1, m2})
-	this.So(this.sleeps, should.BeEmpty)
+	this.So(this.waits, should.BeEmpty)
 	this.So(this.tracked, should.BeEmpty)
 }
 
@@ -123,7 +125,7 @@ func (this *PersistenceFixture) TestRetriesUntilWriteSucceeds() {
 	units := this.drain()
 	this.So(len(units), should.Equal, 1)
 	this.So(len(this.writeCalls), should.Equal, 3)
-	this.So(this.sleeps, should.Equal, []time.Duration{time.Second, time.Second})
+	this.So(this.waits, should.Equal, []time.Duration{time.Second, time.Second})
 	this.So(this.tracked, should.HaveLength, 2)
 	for n, observation := range this.tracked {
 		failure, ok := observation.(PersistenceError)
@@ -131,6 +133,27 @@ func (this *PersistenceFixture) TestRetriesUntilWriteSucceeds() {
 		this.So(failure.Error, should.WrapError, ErrPersistence)
 		this.So(failure.Attempt, should.Equal, n+1)
 	}
+}
+
+func (this *PersistenceFixture) TestPersistenceAbandonsOnContextCancelAndDropsUnit() {
+	this.writeFailCount = 1 << 30 // always fail
+	this.waitErr = context.Canceled
+	unit := &unitOfWork{results: []*Message{{Value: "abandoned"}}}
+	this.input <- unit
+	close(this.input)
+
+	go this.subject.Listen()
+
+	units := this.drain()
+	this.So(units, should.BeEmpty)
+	this.So(len(this.writeCalls), should.Equal, 1)
+	this.So(this.waits, should.Equal, []time.Duration{time.Second})
+	this.So(this.tracked, should.HaveLength, 2)
+	failure, ok := this.tracked[0].(PersistenceError)
+	this.So(ok, should.BeTrue)
+	this.So(failure.Error, should.WrapError, ErrPersistence)
+	this.So(failure.Attempt, should.Equal, 1)
+	this.So(this.tracked[1], should.Equal, PersistenceAbandoned{Attempts: 1})
 }
 
 func (this *PersistenceFixture) TestClosedInputClosesOutput() {

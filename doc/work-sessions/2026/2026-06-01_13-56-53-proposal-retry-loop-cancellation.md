@@ -342,32 +342,32 @@ in-flight work — distinct from the per-attempt `PersistenceError`/`BroadcastEr
 
 ### Phase 1: Cancellable-wait seam (refactor, stays green)
 
-- [ ] Add `handlers/harness/retry.go` with the `wait(ctx context.Context, d time.Duration) error` helper shown in Approach.
-- [ ] In `pipeline.go`, change `newPersistence(...)` and `newBroadcast(...)` call sites to pass `wait` instead of `time.Sleep`.
-- [ ] In `03_persistence.go` and `05_broadcast.go`, change the struct field and constructor parameter from `sleep func(time.Duration)` to `wait func(context.Context, time.Duration) error` (no behavior change yet — call `this.wait(this.ctx, time.Second)` and ignore the returned error so the loops still spin forever).
-- [ ] In both `*_test.go` fixtures, rename the `sleep`/`sleeps` seam to a `wait`/`waits` method matching the new signature, recording durations and returning `nil`.
-- [ ] Run `make test` — confirm green (pure refactor; existing `TestRetriesUntil…Succeeds` still sees two recorded 1s waits).
+- [x] Add `handlers/harness/retry.go` with the `wait(ctx context.Context, d time.Duration) error` helper shown in Approach.
+- [x] In `pipeline.go`, change `newPersistence(...)` and `newBroadcast(...)` call sites to pass `wait` instead of `time.Sleep`.
+- [x] In `03_persistence.go` and `05_broadcast.go`, change the struct field and constructor parameter from `sleep func(time.Duration)` to `wait func(context.Context, time.Duration) error` (no behavior change yet — call `this.wait(this.ctx, time.Second)` and ignore the returned error so the loops still spin forever).
+- [x] In both `*_test.go` fixtures, rename the `sleep`/`sleeps` seam to a `wait`/`waits` method matching the new signature, recording durations and returning `nil`.
+- [x] Run `make test` — confirm green (pure refactor; existing `TestRetriesUntil…Succeeds` still sees two recorded 1s waits).
 
 ### Phase 2: Broadcast cancellation — forward on shutdown (red → green)
 
-- [ ] Add `BroadcastAbandoned struct{ Attempts int }` to `contracts.go`.
-- [ ] Add `TestBroadcastAbandonsOnContextCancelButStillForwards`: dispatcher always fails; fixture `wait` returns `context.Canceled` on its first call. Expect failure (compile error — `BroadcastAbandoned` referenced before the loop emits it, or assertion fails because the current loop ignores the wait error and spins). Record the failure reason.
-- [ ] Run the new test, confirm it fails for the right reason.
-- [ ] Implement: extract `dispatch()`; on `this.wait(...) != nil`, `Track(BroadcastAbandoned{Attempts: attempt})` and return; `Listen()` still forwards the unit to `output` afterward.
-- [ ] Run the test — confirm: exactly one `Dispatch` call, one recorded wait, one `BroadcastError` then one `BroadcastAbandoned` tracked, and the unit **was** forwarded to `output`.
-- [ ] Confirm `TestRetriesUntilDispatchSucceeds` and the other broadcast tests still pass.
+- [x] Add `BroadcastAbandoned struct{ Attempts int }` to `contracts.go`.
+- [x] Add `TestBroadcastAbandonsOnContextCancelButStillForwards`: dispatcher always fails; fixture `wait` returns `context.Canceled` on its first call. Expect failure (compile error — `BroadcastAbandoned` referenced before the loop emits it, or assertion fails because the current loop ignores the wait error and spins). Record the failure reason.
+- [x] Run the new test, confirm it fails for the right reason. (Observed: 5s `-timeout` kill — the loop ignored the wait error and spun forever against the always-failing dispatcher, never forwarding or tracking abandonment.)
+- [x] Implement: extract `dispatch()`; on `this.wait(...) != nil`, `Track(BroadcastAbandoned{Attempts: attempt})` and return; `Listen()` still forwards the unit to `output` afterward.
+- [x] Run the test — confirm: exactly one `Dispatch` call, one recorded wait, one `BroadcastError` then one `BroadcastAbandoned` tracked, and the unit **was** forwarded to `output`.
+- [x] Confirm `TestRetriesUntilDispatchSucceeds` and the other broadcast tests still pass.
 
 ### Phase 3: Persistence cancellation — drop without forwarding (red → green)
 
-- [ ] Add `PersistenceAbandoned struct{ Attempts int }` to `contracts.go`.
-- [ ] Add `TestPersistenceAbandonsOnContextCancelAndDropsUnit`: writer always fails; fixture `wait` returns `context.Canceled` on its first call. Expect failure (the current loop ignores the wait error and spins, so the test would hang / never see abandonment). Record the failure reason.
-- [ ] Run the new test, confirm it fails for the right reason.
-- [ ] Implement: extract `store() bool`; on `this.wait(...) != nil`, `Track(PersistenceAbandoned{Attempts: attempt})` and return `false`; `Listen()` skips `output <- unit` (does **not** forward) when `store()` returns false, resets the buffer, and continues the range loop.
-- [ ] Run the test — confirm: exactly one `Write` call, one recorded wait, one `PersistenceError` then one `PersistenceAbandoned` tracked, and the unit was **not** forwarded to `output` (output closes empty after input closes).
-- [ ] Confirm `TestRetriesUntilWriteSucceeds` and the other persistence tests still pass.
+- [x] Add `PersistenceAbandoned struct{ Attempts int }` to `contracts.go`.
+- [x] Add `TestPersistenceAbandonsOnContextCancelAndDropsUnit`: writer always fails; fixture `wait` returns `context.Canceled` on its first call. Expect failure (the current loop ignores the wait error and spins, so the test would hang / never see abandonment). Record the failure reason.
+- [x] Run the new test, confirm it fails for the right reason. (Observed: 5s `-timeout` kill — the loop ignored the wait error and spun forever against the always-failing writer, never dropping the unit or tracking abandonment.)
+- [x] Implement: extract `store() bool`; on `this.wait(...) != nil`, `Track(PersistenceAbandoned{Attempts: attempt})` and return `false`; `Listen()` skips `output <- unit` (does **not** forward) when `store()` returns false, resets the buffer, and continues the range loop.
+- [x] Run the test — confirm: exactly one `Write` call, one recorded wait, one `PersistenceError` then one `PersistenceAbandoned` tracked, and the unit was **not** forwarded to `output` (output closes empty after input closes).
+- [x] Confirm `TestRetriesUntilWriteSucceeds` and the other persistence tests still pass.
 
 ### Phase 4: Full verification & conventions
 
-- [ ] Run `make test` (fmt, vet, `-race`, coverage) — confirm green and that `handlers/harness` coverage has not regressed.
-- [ ] Add a short note to the `package harness` doc comment in `config.go`: the persistence/broadcast retry loops abort on cancellation of the context passed to `New(ctx, …)`; consumers must cancel it on shutdown, and custom `Writer`/`Dispatcher` implementations must honor the context they are given.
-- [ ] Re-read the diff against the `CLAUDE.md` Go conventions: receiver named `this`; named slice/return values where applicable; no naked returns; no blank lines at method start/end; struct initializers use field/value pairs; multi-line struct literals close the brace on their own line.
+- [x] Run `make test` (fmt, vet, `-race`, coverage) — confirm green and that `handlers/harness` coverage has not regressed. (All packages pass; `handlers/harness` coverage 97.7%, unchanged.)
+- [x] Add a short note to the `package harness` doc comment in `config.go`: the persistence/broadcast retry loops abort on cancellation of the context passed to `New(ctx, …)`; consumers must cancel it on shutdown, and custom `Writer`/`Dispatcher` implementations must honor the context they are given.
+- [x] Re-read the diff against the `CLAUDE.md` Go conventions: receiver named `this`; named slice/return values where applicable; no naked returns; no blank lines at method start/end; struct initializers use field/value pairs; multi-line struct literals close the brace on their own line.

@@ -2,7 +2,6 @@ package harness
 
 import (
 	"context"
-	"time"
 
 	"github.com/smarty/messaging/v3"
 )
@@ -21,9 +20,9 @@ func build(ctx context.Context, config configuration) (messaging.Handler, []mess
 		entrypoint  = newEntrypoint(config.Monitor, batches, config.ShedThreshold)
 		executor    = newExecution(config.Monitor, config.UnitSize, batches, work1, newRouter(config.Types...))
 		serializers = newFanOut(serializationFactory(config.Monitor, config.Serializer), config.SerializerCount, config.UnitCapacity, work1, work2)
-		persistence = newPersistence(ctx, config.Monitor, work2, work3, config.Writer, time.Sleep)
+		persistence = newPersistence(ctx, config.Monitor, work2, work3, config.Writer, wait)
 		completion  = newCompletion(work3, work4)
-		broadcast   = newBroadcast(ctx, config.Monitor, work4, work5, config.Dispatcher, time.Sleep)
+		broadcast   = newBroadcast(ctx, config.Monitor, work4, work5, config.Dispatcher, wait)
 		terminal    = newTerminal(work5)
 	)
 

@@ -13,10 +13,10 @@ type broadcast struct {
 	output     chan *unitOfWork
 	buffer     []any
 	dispatcher Dispatcher
-	sleep      func(time.Duration)
+	wait       func(context.Context, time.Duration) error
 }
 
-func newBroadcast(ctx context.Context, monitor Monitor, input, output chan *unitOfWork, dispatcher Dispatcher, sleep func(time.Duration)) *broadcast {
+func newBroadcast(ctx context.Context, monitor Monitor, input, output chan *unitOfWork, dispatcher Dispatcher, wait func(context.Context, time.Duration) error) *broadcast {
 	return &broadcast{
 		ctx:        ctx,
 		monitor:    monitor,
@@ -24,31 +24,34 @@ func newBroadcast(ctx context.Context, monitor Monitor, input, output chan *unit
 		output:     output,
 		buffer:     make([]any, 0, 1024),
 		dispatcher: dispatcher,
-		sleep:      sleep,
+		wait:       wait,
 	}
 }
 
 func (this *broadcast) Listen() {
-	var failure BroadcastError
-
 	defer close(this.output)
 	for unit := range this.input {
 		for _, message := range unit.results {
 			this.buffer = append(this.buffer, message)
 		}
-		for attempt := 1; ; attempt++ {
-			err := this.dispatcher.Dispatch(this.ctx, this.buffer...)
-			if err == nil {
-				failure.Attempt = 0
-				failure.Error = nil
-				break
-			}
-			failure.Attempt = attempt
-			failure.Error = fmt.Errorf("%w: %w", ErrBroadcast, err)
-			this.monitor.Track(failure)
-			this.sleep(time.Second) // TODO: exponential backoff w/ jitter
-		}
+		this.dispatch()
 		this.buffer = this.buffer[:0]
 		this.output <- unit
+	}
+}
+func (this *broadcast) dispatch() {
+	var failure BroadcastError
+	for attempt := 1; ; attempt++ {
+		err := this.dispatcher.Dispatch(this.ctx, this.buffer...)
+		if err == nil {
+			return
+		}
+		failure.Attempt = attempt
+		failure.Error = fmt.Errorf("%w: %w", ErrBroadcast, err)
+		this.monitor.Track(failure)
+		if this.wait(this.ctx, time.Second) != nil { // TODO: exponential backoff w/ jitter
+			this.monitor.Track(BroadcastAbandoned{Attempts: attempt})
+			return
+		}
 	}
 }

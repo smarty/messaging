@@ -52,10 +52,12 @@ type (
 		Attempt int
 		Error   error
 	}
-	BroadcastError struct {
+	PersistenceAbandoned struct{ Attempts int }
+	BroadcastError       struct {
 		Attempt int
 		Error   error
 	}
+	BroadcastAbandoned struct{ Attempts int }
 )
 
 var (
