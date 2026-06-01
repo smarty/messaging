@@ -105,7 +105,32 @@ according to each stage's recoverability (the asymmetry above):
   proceeds. Forwarding here is *not* an option: it would reach the completion
   stage, ack the caller, and lose a message that was never stored.
 
-QUESTION: You've addressed MQ deliveries, but does this approach also account for units originating from HTTP clients?
+#### HTTP-origin units (the `await` path)
+
+The drop decision is identical for HTTP-submitted units, but the *recovery*
+mechanism differs, because there is no broker to redeliver. When persistence
+drops an HTTP-origin unit on shutdown:
+
+- `complete()` never fires, so the in-flight `await` caller is **not** unblocked
+  via the completion path. It unblocks instead when its own request context is
+  cancelled (the `case <-ctx.Done()` arm of `await`'s second select), tracking
+  `CallerDeparted` — exactly today's departed-caller behavior. Whether that
+  request context is actually cancelled at shutdown is a consumer-side graceful-
+  shutdown concern (does the HTTP server cancel active request contexts?), out of
+  scope here.
+- Recovery relies on **client retry + domain idempotency**, the model the
+  resilience proposal already established for the HTTP path: a client whose
+  request did not durably succeed retries, and once the merged domain-layer
+  idempotency change is in place repeated retries collapse to no-ops after the
+  first applies. There is no `sqladapter.Recover` safety net for an un-stored
+  unit (recovery only re-dispatches rows that *were* stored), so the client retry
+  is the sole recovery path — which is why dropping (rather than forwarding) is
+  still the correct choice: forwarding would unblock the caller as though the
+  write succeeded, falsely confirming a message that was never stored.
+
+There is no regression versus today: an HTTP request in flight against a dead
+database currently hangs until SIGKILL just the same; this change makes the
+process shut down cleanly instead.
 
 A new interruptible backoff replaces the uninterruptible sleep, so shutdown
 aborts the delay promptly instead of waiting out a full second per attempt.
@@ -137,12 +162,26 @@ func wait(ctx context.Context, d time.Duration) error {
 }
 ```
 
-QUESTION: why not still pass the duration to broadcast and persistence and just call the `wait` func from there?
-
 `pipeline.go` passes `wait` where it currently passes `time.Sleep`. Tests inject
 a fixture method that records the requested durations (preserving the existing
 `sleeps`-style assertions) and can simulate cancellation by returning a non-nil
 error.
+
+> **Why inject the wait function rather than a duration?** A reasonable
+> alternative is to keep `wait` as a plain free function, store only a
+> `time.Duration` on each stage, and have the stage call `wait(this.ctx, this.delay)`
+> directly. That is cleaner production code. It is rejected for one reason: the
+> **test seam**. The stages today inject `sleep func(time.Duration)` precisely so
+> the fixtures can (a) record how many times and for how long the loop backed off
+> and (b) run instantly without real 1-second sleeps. If we called the real `wait`
+> directly, every retry test would block on actual wall-clock time and could not
+> observe the backoff. Keeping the injected-function seam preserves the existing
+> `TestRetriesUntil…Succeeds` assertions verbatim and lets a fixture simulate
+> cancellation synchronously by returning an error on a chosen attempt. The free
+> `wait` function still exists — it is simply the production value wired in at
+> `pipeline.go`, while tests substitute their own. (When exponential backoff lands
+> later, the *duration* moves inside `wait`/its production implementation; the
+> injected-function seam stays, so this decision does not block that work.)
 
 This keeps the fixed 1-second delay; **exponential back-off with jitter remains a
 separate, orthogonal TODO** and is out of scope here — this change is strictly
