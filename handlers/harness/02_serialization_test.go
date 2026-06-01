@@ -111,9 +111,14 @@ func (this *SerializationFixture) TestClosedInputClosesOutput() {
 	this.So(this.tracked, should.BeEmpty)
 }
 
-func (this *SerializationFixture) TestSerializerErrorIsTracked() {
+func (this *SerializationFixture) TestSerializerErrorIsTracked_FallbackToFmtSprintfEncoding() {
+	type TestMessage struct {
+		Value string `json:"value"`
+	}
 	boom := errors.New("boom")
-	value := "unserializable"
+	value := TestMessage{
+		Value: "unserializable",
+	}
 	this.serializeFail[value] = boom
 	unit := &unitOfWork{results: []*Message{
 		{Value: value, Content: bytes.NewBuffer(nil)},
@@ -130,4 +135,5 @@ func (this *SerializationFixture) TestSerializerErrorIsTracked() {
 	this.So(ok, should.BeTrue)
 	this.So(observation.Error, should.WrapError, ErrSerialization)
 	this.So(observation.Value, should.Equal, value)
+	this.So(units[0].results[0].Content.String(), should.Equal, `harness.TestMessage{Value:"unserializable"}`)
 }

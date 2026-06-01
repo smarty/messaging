@@ -31,6 +31,10 @@ func (this *serialization) Listen() {
 				failure.Error = fmt.Errorf("%w: %w", ErrSerialization, err)
 				failure.Value = message.Value
 				this.monitor.Track(failure)
+
+				message.Content.Reset()
+				message.ContentType = "go fmt.Sprintf(%#v)"
+				_, _ = fmt.Fprintf(message.Content, "%#v", message.Value) // Not JSON, but it will have to do...
 			}
 			failure.Error = nil
 			failure.Value = nil
