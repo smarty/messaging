@@ -177,6 +177,47 @@ func (this *EntrypointFixture) TestAwait_UnblocksOnContextCancelWhileEnqueuing()
 	this.So(this.tracked, should.NOT.Contain, BatchComplete{})
 }
 
+func (this *EntrypointFixture) TestAwait_DepartedInFlightDoesNotCorruptPooledWaiter() {
+	const workers = 8
+	const perWorker = 2000
+
+	work := make(chan *batch, 64)
+	subject := newEntrypoint(this, work, 0.80)
+
+	// Drainer: take ownership of each enqueued batch and complete it promptly,
+	// driving the waiter's count to zero concurrently with new awaits that recycle
+	// waiters from the pool. If a departed await recycles a still-in-use waiter, a
+	// later prepare()'s Add(1) races the detached Wait()'s return -- tripping the
+	// runtime's WaitGroup misuse detector.
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		for item := range work {
+			item.complete()
+		}
+	}()
+
+	var clients sync.WaitGroup
+	for range workers {
+		clients.Add(1)
+		go func() {
+			defer clients.Done()
+			for range perWorker {
+				ctx, cancel := context.WithCancel(this.ctx)
+				go cancel() // depart at an arbitrary moment relative to processing.
+				subject.await(ctx, "msg")
+			}
+		}()
+	}
+	clients.Wait()
+
+	this.So(subject.Close(), should.BeNil)
+	<-drained
+
+	this.So(this.tracked, should.Contain, CallerDeparted{})
+	this.So(this.tracked, should.Contain, BatchComplete{})
+}
+
 func (this *EntrypointFixture) TestAwait_BatchCarriesExactlyOneMessage() {
 	go this.subject.await(this.ctx, "only")
 

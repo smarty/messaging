@@ -204,7 +204,7 @@ take the larger Option B cleanup now?
 
 ### Phase 1: Capture the corruption (red)
 
-- [ ] Add `TestAwait_DepartedInFlightDoesNotCorruptPooledWaiter` to
+- [x] Add `TestAwait_DepartedInFlightDoesNotCorruptPooledWaiter` to
   `handlers/harness/00_entrypoint_test.go`. The test, in a loop sized for
   reliable surfacing (e.g. a few thousand iterations), should: (1) start an
   `await` whose context it cancels *after* the batch is received from
@@ -212,36 +212,43 @@ take the larger Option B cleanup now?
   background goroutine; (2) concurrently issue fresh `await`/`Handle` calls on
   the **same** entrypoint that drive `prepare()` (and thus pool `Get`/`Add`),
   completing each; so a recycled-too-early waiter is exercised by a new request.
-- [ ] Run `go test -race -run TestAwait_DepartedInFlightDoesNotCorruptPooledWaiter ./handlers/harness/`
+  (Implemented as 8 worker goroutines × 2000 departing `await`s against a
+  concurrent drainer that completes each enqueued batch — this produces the
+  recycle/reuse race more reliably than a sequential loop.)
+- [x] Run `go test -race -run TestAwait_DepartedInFlightDoesNotCorruptPooledWaiter ./handlers/harness/`
   and confirm it fails for the right reason: a `sync: WaitGroup ...` misuse panic
   or a race report on the waiter (NOT a generic assertion mismatch). Record the
   observed failure mode in the PR description.
+  **Observed:** `WARNING: DATA RACE` on the waiter (read in `await` at
+  `00_entrypoint.go:80` vs. write from the detached `waiterDone` goroutine) and
+  `panic: sync: WaitGroup is reused before previous Wait has returned`.
 
 ### Phase 2: Apply the lifecycle fix (green)
 
-- [ ] In `00_entrypoint.go`, remove `defer this.waiters.Put(waiter)` from
+- [x] In `00_entrypoint.go`, remove `defer this.waiters.Put(waiter)` from
   `await`.
-- [ ] In `await`, add `this.waiters.Put(waiter)` immediately after
+- [x] In `await`, add `this.waiters.Put(waiter)` immediately after
   `this.abandon(waiter, item)` on the enqueue-failed branch.
-- [ ] In `await`, add `this.waiters.Put(waiter)` in the
+- [x] In `await`, add `this.waiters.Put(waiter)` in the
   `case <-this.waiterDone(waiter):` branch (normal completion).
-- [ ] In `await`, in the `case <-ctx.Done():` branch of the second `select`,
+- [x] In `await`, in the `case <-ctx.Done():` branch of the second `select`,
   add the explanatory comment documenting why the waiter is intentionally NOT
   recycled there.
-- [ ] Confirm `Handle` is unchanged and still recycles via its inline-`Wait()`
+- [x] Confirm `Handle` is unchanged and still recycles via its inline-`Wait()`
   `defer this.waiters.Put(waiter)`.
 
 ### Phase 3: Verify (green) and guard regressions
 
-- [ ] Run `go test -race -run TestAwait_DepartedInFlightDoesNotCorruptPooledWaiter ./handlers/harness/`
+- [x] Run `go test -race -run TestAwait_DepartedInFlightDoesNotCorruptPooledWaiter ./handlers/harness/`
   and confirm it now passes with no panic and a clean race report.
-- [ ] Confirm the existing departed-path tests still pass unchanged:
+- [x] Confirm the existing departed-path tests still pass unchanged:
   `TestAwait_UnblocksOnContextCancelWhileWaiting` (departed-while-waiting still
   completes and tracks `CallerDeparted` + later `BatchComplete`) and
   `TestAwait_UnblocksOnContextCancelWhileEnqueuing` (abandon path still tracks
   `CallerDeparted`, no `BatchInFlight`/`BatchComplete`).
-- [ ] Run the full package suite: `make test` (exercises `go fmt`, `go vet`,
-  `-race`, coverage). Confirm green.
-- [ ] Re-read the diff against `## CLAUDE.md` Go conventions: receiver named
+- [x] Run the full package suite: `make test` (exercises `go fmt`, `go vet`,
+  `-race`, coverage). Confirm green. (All packages pass; `handlers/harness`
+  coverage 99.6%.)
+- [x] Re-read the diff against `## CLAUDE.md` Go conventions: receiver named
   `this`, no naked returns, no new blank lines at method start/end, struct
   initializers use field/value pairs (no new initializers introduced here).

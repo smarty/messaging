@@ -28,18 +28,18 @@ func newEntrypoint(monitor Monitor, work chan *batch, shedThreshold float64) *en
 	}
 }
 
-func (this *entrypoint) prepare(ctx context.Context, messages ...any) (waiter *sync.WaitGroup, item *batch) {
+func (this *entrypoint) prepare(ctx context.Context, messages ...any) (waiter *sync.WaitGroup, batch *batch) {
 	waiter = this.waiters.Get()
 	waiter.Add(1)
-	item = this.batches.Get()
-	item.ctx = ctx
-	item.messages = messages
-	item.complete = func() {
+	batch = this.batches.Get()
+	batch.ctx = ctx
+	batch.messages = messages
+	batch.complete = func() {
 		waiter.Done()
 		this.monitor.Track(batchComplete)
-		this.batches.Put(item)
+		this.batches.Put(batch)
 	}
-	return waiter, item
+	return waiter, batch
 }
 
 func (this *entrypoint) abandon(waiter *sync.WaitGroup, item *batch) {
@@ -77,24 +77,31 @@ func (this *entrypoint) await(ctx context.Context, message any) {
 		return
 	}
 
-	waiter, item := this.prepare(ctx, message)
-	defer this.waiters.Put(waiter)
+	waiter, batch := this.prepare(ctx, message)
 
 	select {
-	case this.work <- item:
+	case this.work <- batch:
 		this.lock.RUnlock()
 		this.monitor.Track(batchInFlight)
 	case <-ctx.Done():
 		this.lock.RUnlock()
-		this.abandon(waiter, item)
+		this.abandon(waiter, batch)
+		this.waiters.Put(waiter) // safe: abandon() called Done() (count 0); no detached waiter.
 		this.monitor.Track(callerDeparted)
 		return
 	}
 
 	select {
 	case <-this.waiterDone(waiter):
+		this.waiters.Put(waiter) // safe: detached Wait() returned before done was closed (count 0).
 	case <-ctx.Done():
 		this.monitor.Track(callerDeparted)
+		// Intentionally do NOT recycle the waiter here: complete() is still pending
+		// and the detached waiterDone goroutine is still inside Wait(). Returning it
+		// to the pool now would let a later prepare() Add(1) before this Wait()
+		// returns -- documented sync.WaitGroup misuse. Get() already removed the
+		// pool's reference, so declining to Put() leaves nothing pool-held; the
+		// waiter is released to GC once complete() fires.
 	}
 }
 
