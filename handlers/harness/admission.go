@@ -18,10 +18,9 @@ type (
 
 // Admission refuses overloaded requests before the wrapped handler runs,
 // writing an inline 503. Wrap each mutating route with it.
-func Admission(handler messaging.Handler, inner http.Handler) http.Handler {
-	gate := handler.(admitter)
+func Admission(handler admitter, inner http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if gate.admit() {
+		if handler.admit() {
 			inner.ServeHTTP(response, request)
 			return
 		}
@@ -37,8 +36,8 @@ var shedResponseBody = []byte(`{"errors":[{"message":"service overloaded"}]}`)
 // AsHTTPHandler adapts the void, context-honoring await to the
 // messaging.Handler the HTTP shells already depend on, so no shell (and no
 // shell test) changes.
-func AsHTTPHandler(handler messaging.Handler) messaging.Handler {
-	return &httpAdapter{target: handler.(awaiter)}
+func AsHTTPHandler(handler awaiter) messaging.Handler {
+	return &httpAdapter{target: handler}
 }
 
 type httpAdapter struct {
