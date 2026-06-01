@@ -300,13 +300,14 @@ in-flight work — distinct from the per-attempt `PersistenceError`/`BroadcastEr
 
 ## Trade-offs & Risks
 
-- **Open question for the reviewer (the key decision):** on shutdown with a dead
-  database, should `persistence` **(B, recommended)** stop and drop the in-flight
-  unit (clean shutdown; MQ redelivers), or **(A)** keep retrying forever
-  (SIGKILL-bounded; never voluntarily gives up a write)? The rest of the proposal is
-  unaffected by this choice; broadcast is unambiguous either way.
+- **Decision (settled): persistence drops the in-flight unit on shutdown.** On
+  shutdown with a dead database, `persistence` stops retrying and drops the
+  in-flight unit (clean shutdown; the un-acked MQ delivery is redelivered, or the
+  HTTP client retries). The rejected alternative — keep retrying forever, bounded
+  only by orchestrator SIGKILL — is retained in *Alternatives considered* for the
+  record. Broadcast is unaffected by this choice (forward-on-cancel either way).
 
-- **Dropped-unit caller blocks until process exit (option B).** When persistence
+- **Dropped-unit caller blocks until process exit.** When persistence
   drops a unit on shutdown, its `complete()` never fires, so an in-flight
   `Handle`/`await` caller stays blocked on `waiter.Wait()`. This is acceptable during
   shutdown — the consumer cancels `this.ctx`, the MQ delivery framework tears those
@@ -370,4 +371,3 @@ in-flight work — distinct from the per-attempt `PersistenceError`/`BroadcastEr
 - [ ] Run `make test` (fmt, vet, `-race`, coverage) — confirm green and that `handlers/harness` coverage has not regressed.
 - [ ] Add a short note to the `package harness` doc comment in `config.go`: the persistence/broadcast retry loops abort on cancellation of the context passed to `New(ctx, …)`; consumers must cancel it on shutdown, and custom `Writer`/`Dispatcher` implementations must honor the context they are given.
 - [ ] Re-read the diff against the `CLAUDE.md` Go conventions: receiver named `this`; named slice/return values where applicable; no naked returns; no blank lines at method start/end; struct initializers use field/value pairs; multi-line struct literals close the brace on their own line.
-```
