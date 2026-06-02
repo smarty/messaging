@@ -49,7 +49,6 @@ func (this *EntrypointFixture) TestHandlePushesBatchAndBlocksUntilCompletion() {
 	}()
 
 	item := <-this.work
-	this.So(item.ctx.Value("testing"), should.Equal, this.Name())
 	this.So(item.messages, should.Equal, []any{"msg-1", "msg-2"})
 
 	select {
@@ -74,7 +73,6 @@ func (this *EntrypointFixture) TestHandleSerializesMultipleConcurrentCalls() {
 
 	for range 3 {
 		item := <-this.work
-		this.So(item.ctx.Value("testing"), should.Equal, this.Name())
 		item.complete()
 		<-done
 	}

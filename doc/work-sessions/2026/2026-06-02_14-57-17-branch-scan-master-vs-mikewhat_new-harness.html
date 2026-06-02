@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Branch Scan: master vs mikewhat/new-harness</title>
+<style>
+  body { font-family: sans-serif; max-width: 900px; margin: 2em auto; padding: 0 1em; }
+  [id]::before { content: "#" attr(id) " "; font-size: 0.75em; color: #aaa; }
+  li[id] { list-style: none; }
+  pre { background: #f5f5f5; padding: 1em; overflow-x: auto; }
+  h3 { margin-top: 1.5em; }
+</style>
+</head>
+<body>
+<h1 id="title">Branch Scan: master vs mikewhat/new-harness</h1>
+
+<h2 id="summary">Summary</h2>
+<p>
+  This branch introduces a new <code>handlers/harness</code> package: a staged, store-and-forward
+  message-handling pipeline composed of seven goroutine stages connected by buffered channels
+  (<code>entrypoint → execution → serialization → persistence → completion → broadcast → terminal</code>).
+  It also adds <code>handlers/harness/sqladapter</code>, a reference MySQL implementation of the
+  <code>Writer</code> and <code>Dispatcher</code> interfaces, backed by a new <code>Messages</code>
+  schema in <code>doc/mysql/schema.sql</code>.
+  Supporting infrastructure includes a Docker Compose file for local MySQL testing, new
+  <code>Makefile</code> targets for database-backed integration tests, and updated <code>go.mod</code>/
+  <code>go.sum</code> adding <code>github.com/go-sql-driver/mysql</code> and
+  <code>github.com/smarty/gunit/v2</code>.
+  All 30 commits are additions only — no existing code was modified.
+  Test coverage is extensive: every pipeline stage, the router/scanner, the admission adapter,
+  the SQL writer, dispatcher, and recovery function all have unit or integration tests.
+</p>
+
+<h2 id="changed-files">Changed Files</h2>
+<ul>
+  <li id="change-1"><strong>Makefile</strong> — adds <code>test.db</code> and <code>test.db.local</code> targets for running integration tests with and without a local Docker MySQL instance.</li>
+  <li id="change-2"><strong>doc/docker-compose.yml</strong> — MySQL 8.0 service definition with a health check used by <code>test.db.local</code>.</li>
+  <li id="change-3"><strong>doc/mysql/schema.sql</strong> (renamed from <code>sqlmq/_schema_mysql.sql</code>) — <code>Messages</code> table schema plus a unique index on <code>(dispatched, id)</code>.</li>
+  <li id="change-4"><strong>go.mod / go.sum</strong> — adds <code>github.com/go-sql-driver/mysql v1.10.0</code>, <code>github.com/smarty/gunit/v2 v2.1.0</code>, and their transitive dependency <code>filippo.io/edwards25519</code>.</li>
+  <li id="change-5"><strong>handlers/harness/contracts.go</strong> — exported interfaces (<code>Writer</code>, <code>Dispatcher</code>, <code>Monitor</code>), unexported internal interfaces, all monitor observation types, sentinel errors, and shared value types (<code>batch</code>, <code>unitOfWork</code>).</li>
+  <li id="change-6"><strong>handlers/harness/message.go</strong> — exported <code>Message</code> struct carrying id, value, type, serialized content, content-type, encoding, and timestamps.</li>
+  <li id="change-7"><strong>handlers/harness/config.go</strong> — package-level doc comment; <code>New(ctx, options...)</code> constructor; <code>Options</code> singleton with typed option setters; <code>nop</code> zero-value implementation of all collaborator interfaces.</li>
+  <li id="change-8"><strong>handlers/harness/pipeline.go</strong> — <code>build(ctx, cfg)</code> wires all stages and returns the handler+listeners.</li>
+  <li id="change-9"><strong>handlers/harness/00_entrypoint.go</strong> — <code>entrypoint</code>: implements <code>messaging.Handler</code> and <code>io.Closer</code>; exposes <code>Handle</code> (blocks until durable), <code>await</code> (context-cancellable), <code>admit</code> (load-shedding check), and <code>Listen</code> (blocks until closed).</li>
+  <li id="change-10"><strong>handlers/harness/01_execution.go</strong> — <code>execution</code>: reads batches, calls executor per message, flushes to <code>unitOfWork</code> at max size.</li>
+  <li id="change-11"><strong>handlers/harness/02_serialization.go</strong> — <code>serialization</code>: serializes each result value; on error falls back to <code>fmt.Sprintf("%#v")</code> and tracks <code>SerializationError</code>.</li>
+  <li id="change-12"><strong>handlers/harness/03_persistence.go</strong> — <code>persistence</code>: writes results to <code>Writer</code>, retries on failure; drops unit if context is cancelled before success.</li>
+  <li id="change-13"><strong>handlers/harness/04_completion.go</strong> — <code>completion</code>: fires all completion callbacks (acknowledging upstream batches) before forwarding.</li>
+  <li id="change-14"><strong>handlers/harness/05_broadcast.go</strong> — <code>broadcast</code>: dispatches results to <code>Dispatcher</code>, retries on failure; forwards unit even if abandoned (context cancelled).</li>
+  <li id="change-15"><strong>handlers/harness/06_terminal.go</strong> — <code>terminal</code>: drains the final channel to allow upstream close propagation.</li>
+  <li id="change-16"><strong>handlers/harness/admission.go</strong> — <code>Admission</code> HTTP middleware wrapping the load-shedding check; <code>AsHTTPHandler</code> adapter bridging <code>awaiter</code> to <code>messaging.Handler</code>.</li>
+  <li id="change-17"><strong>handlers/harness/routing.go</strong> + <strong>scanner.go</strong> — <code>router</code> and <code>scan</code>: reflective discovery of <code>Execute*</code>/<code>Apply*</code> methods on registered domain types; self-applicator exclusion logic.</li>
+  <li id="change-18"><strong>handlers/harness/fanout.go</strong> — <code>newFanOut</code> + <code>fanIn</code>: fan-out serialization workers with merged output.</li>
+  <li id="change-19"><strong>handlers/harness/pool.go</strong> — generic <code>poolT[T]</code> wrapper around <code>sync.Pool</code>.</li>
+  <li id="change-20"><strong>handlers/harness/retry.go</strong> — <code>wait(ctx, d)</code> helper: sleeps for <code>d</code> or returns early on context cancellation.</li>
+  <li id="change-21"><strong>handlers/harness/*_test.go</strong> — unit tests for every stage, the router, the pipeline integration, config defaults, and the admission middleware.</li>
+  <li id="change-22"><strong>handlers/harness/sqladapter/writer.go</strong> — <code>Writer</code>: transactional INSERT into <code>Messages</code>, populates <code>Message.ID</code> from auto-increment; supports a <code>legacyWrite</code> escape hatch within the same transaction.</li>
+  <li id="change-23"><strong>handlers/harness/sqladapter/dispatcher.go</strong> — <code>Dispatcher</code>: publishes pre-encoded payloads via <code>messaging.Connector</code>, then marks rows dispatched.</li>
+  <li id="change-24"><strong>handlers/harness/sqladapter/recovery.go</strong> — <code>Recover</code>: at-startup scan for undispatched rows, re-dispatches in pages.</li>
+  <li id="change-25"><strong>handlers/harness/sqladapter/*_test.go</strong> — integration tests for Writer, Dispatcher, and Recover against a real MySQL database.</li>
+  <li id="change-26"><strong>doc/work-sessions/2026/ (proposals and proposals-as-HTML)</strong> — five research/proposal documents tracking the design iteration for this feature (not production code).</li>
+</ul>
+
+<h2 id="concerns">Concerns</h2>
+<ul>
+  <li id="concern-1">
+    <strong>Asymmetric retry semantics between persistence and broadcast.</strong>
+    <code>persistence.store()</code> returns <code>false</code> and skips forwarding the unit if the
+    context is cancelled — this means the batch is not acknowledged and the MQ will redeliver.
+    <code>broadcast.dispatch()</code> on the other hand always forwards the unit even when abandoned
+    (<code>BroadcastAbandoned</code>), meaning the batch <em>is</em> acknowledged via
+    <code>completion</code> even though dispatch was skipped. The comment in <code>03_persistence.go</code>
+    explicitly notes "do NOT forward (no ack); MQ redelivers", but there is no equivalent comment in
+    <code>05_broadcast.go</code> explaining the intentional difference. If this asymmetry is deliberate
+    (a "at-least-once write, best-effort dispatch" guarantee), it should be documented prominently
+    before merge — it is a subtle and consequential contract that future maintainers will need to
+    understand.
+  </li>
+  <li id="concern-2">
+    <strong>Unchecked <code>waiter.Put</code> after <code>Handle</code> returns.</strong>
+    In <code>entrypoint.Handle</code> (<code>00_entrypoint.go:70</code>), <code>defer this.waiters.Put(waiter)</code>
+    recycles the waiter immediately after <code>waiter.Wait()</code> returns. This is correct because
+    <code>Handle</code> does not honor context cancellation and always waits for <code>complete()</code>.
+    However the method comment does not state this invariant. The contrast with <code>await</code>'s
+    careful non-put-on-departure logic (well-commented) makes <code>Handle</code>'s unconditional defer
+    look like a potential oversight to a reader. A brief comment on <code>Handle</code> explaining
+    "Handle ignores context cancellation and always waits — safe to defer Put here" would close this
+    gap.
+  </li>
+  <li id="concern-3">
+    <strong><code>sqladapter.Recover</code> has a hardcoded <code>ContentType</code>.</strong>
+    In <code>sqladapter/recovery.go:46</code>, recovered messages are stamped with
+    <code>ContentType: "application/json"</code> unconditionally, with a comment noting
+    "no content_type column exists to record otherwise". If the schema ever gains a
+    <code>content_type</code> column, this default will silently misdeclare non-JSON payloads.
+    The <code>TODO: make this a Listener</code> and <code>TODO: retry w/ backoff</code> comments
+    confirm this code is not intended to be its final form; however, the hardcoded content-type is
+    a data-correctness issue that should be tracked explicitly (e.g., a TODO or a schema change),
+    not just left as a silent assumption.
+  </li>
+  <li id="concern-4">
+    <strong>Stride-based ID assignment in <code>sqladapter.Writer</code> relies on fragile MySQL behavior.</strong>
+    <code>sqladapter/writer.go:84–89</code> assigns <code>Message.ID</code> values as
+    <code>firstID + i * stride</code>, citing the MySQL docs that <code>LAST_INSERT_ID()</code>
+    returns the first auto-increment value of a multi-row insert. This is only reliable when
+    <code>innodb_autoinc_lock_mode = 1</code> (the default in MySQL 5.x) or when
+    <code>auto_increment_increment = stride</code>. Under MySQL 8.x with
+    <code>innodb_autoinc_lock_mode = 2</code> (the new default), IDs for a bulk insert are
+    guaranteed to be allocated in sequence, but this is internal behavior — the MySQL manual
+    explicitly warns that applications should not depend on consecutive IDs from a single INSERT
+    when in interleaved lock mode. The existing comment and the stride feature are clearly
+    deliberate; adding a comment documenting the MySQL lock-mode requirement would prevent a
+    future breakage that would be difficult to diagnose.
+  </li>
+  <li id="concern-5">
+    <strong>No upper bound on retry loops in <code>persistence</code> and <code>broadcast</code>.</strong>
+    Both <code>persistence.store()</code> and <code>broadcast.dispatch()</code> loop forever until
+    success or context cancellation. The commit message for <code>574396f</code> ("Bound the
+    unbounded retry loops") and the inline <code>TODO: exponential back-off w/ jitter</code>
+    comments confirm this is a known gap. This is an acknowledged TODO, but it is worth flagging
+    in review since an unresponsive Writer or Dispatcher with a live context will hold a pipeline
+    stage open indefinitely, blocking all downstream acknowledgements.
+  </li>
+  <li id="concern-6">
+    <strong><code>fanIn.Listen</code> closes the output channel before all goroutines have drained.</strong>
+    In <code>fanout.go</code>, <code>fanIn.Listen</code> has:
+    <pre>defer close(this.output)
+defer wg.Wait()</pre>
+    Deferred calls execute in LIFO order, so <code>wg.Wait()</code> runs <em>before</em>
+    <code>close(this.output)</code> — which is the correct and intended behavior. However, the
+    ordering is non-obvious and a future edit (e.g., swapping the defer lines) would silently
+    introduce a race where the output channel is closed before all goroutines have finished
+    forwarding to it. Consider merging into a single explicit sequence at the end of the function
+    body, or adding a comment documenting the required defer order.
+  </li>
+  <li id="concern-7">
+    <strong>Docker Compose service creates a database named <code>accounting</code>, but tests use <code>messaging_harness_test</code>.</strong>
+    <code>doc/docker-compose.yml</code> sets <code>MYSQL_DATABASE: accounting</code>.
+    <code>testdb_test.go</code> ignores this and creates/drops its own <code>messaging_harness_test</code>
+    schema. The <code>accounting</code> database is never used and its presence may confuse readers.
+    It is probably a copy-paste artifact and should either be removed or renamed to something neutral
+    (e.g., <code>MYSQL_DATABASE: harness_bootstrap</code>).
+  </li>
+</ul>
+</body>
+</html>

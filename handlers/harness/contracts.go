@@ -71,7 +71,6 @@ var (
 
 type (
 	batch struct {
-		ctx      context.Context
 		messages []any
 		complete func()
 	}

@@ -40,10 +40,12 @@ func Recover(ctx context.Context, handle *sql.DB, dispatcher *Dispatcher, logger
 		}
 		total++
 		messages = append(messages, &harness.Message{
-			ID:          id,
-			Type:        typeName,
-			Content:     bytes.NewBuffer(payload),
-			ContentType: "application/json", // stored bytes are JSON; no content_type column exists to record otherwise
+			ID:      id,
+			Type:    typeName,
+			Content: bytes.NewBuffer(payload),
+			// Hard-coded until the Messages schema gains a content_type column;
+			// all payloads written by Writer are JSON so this is correct for now.
+			ContentType: "application/json",
 		})
 		if len(messages) >= batchSize {
 			err := dispatcher.Dispatch(ctx, messages...)

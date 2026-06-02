@@ -36,6 +36,9 @@ func (this *broadcast) Listen() {
 		}
 		this.dispatch()
 		this.buffer = this.buffer[:0]
+		// Unlike persistence (which drops the unit on abandonment so MQ redelivers),
+		// broadcast always forwards: the batch is already durably stored, so we ack
+		// upstream regardless of whether dispatch succeeded.
 		this.output <- unit
 	}
 }
@@ -49,7 +52,9 @@ func (this *broadcast) dispatch() {
 		failure.Attempt = attempt
 		failure.Error = fmt.Errorf("%w: %w", ErrBroadcast, err)
 		this.monitor.Track(failure)
-		if this.wait(this.ctx, time.Second) != nil { // TODO: exponential backoff w/ jitter
+		// Retries forever (until the process restarts) unless the context is cancelled.
+		// TODO: exponential backoff w/ jitter
+		if this.wait(this.ctx, time.Second) != nil {
 			this.monitor.Track(BroadcastAbandoned{Attempts: attempt})
 			return
 		}

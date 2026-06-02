@@ -52,7 +52,9 @@ func (this *persistence) store() (stored bool) {
 		failure.Attempt = attempt
 		failure.Error = fmt.Errorf("%w: %w", ErrPersistence, err)
 		this.monitor.Track(failure)
-		if this.wait(this.ctx, time.Second) != nil { // TODO: exponential back-off w/ jitter
+		// Retries forever (until the process restarts) unless the context is cancelled.
+		// TODO: exponential back-off w/ jitter
+		if this.wait(this.ctx, time.Second) != nil {
 			this.monitor.Track(PersistenceAbandoned{Attempts: attempt})
 			return false
 		}

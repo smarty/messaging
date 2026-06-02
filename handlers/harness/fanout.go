@@ -34,13 +34,13 @@ func newFanIn(inputs []chan *unitOfWork, output chan *unitOfWork) *fanIn {
 
 func (this *fanIn) Listen() {
 	defer close(this.output)
-	var wg sync.WaitGroup
-	defer wg.Wait()
+	var waiter sync.WaitGroup
 	for _, input := range this.inputs {
-		wg.Go(func() {
+		waiter.Go(func() {
 			for unit := range input {
 				this.output <- unit
 			}
 		})
 	}
+	waiter.Wait()
 }

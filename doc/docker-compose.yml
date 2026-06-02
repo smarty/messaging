@@ -3,7 +3,7 @@ services:
     image: mysql:8.0
     environment:
       MYSQL_ALLOW_EMPTY_PASSWORD: 1
-      MYSQL_DATABASE: accounting
+      MYSQL_DATABASE: messaging
     ports:
       - 3306:3306
     healthcheck:

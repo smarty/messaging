@@ -28,11 +28,10 @@ func newEntrypoint(monitor Monitor, work chan *batch, shedThreshold float64) *en
 	}
 }
 
-func (this *entrypoint) prepare(ctx context.Context, messages ...any) (waiter *sync.WaitGroup, batch *batch) {
+func (this *entrypoint) prepare(messages ...any) (waiter *sync.WaitGroup, batch *batch) {
 	waiter = this.waiters.Get()
 	waiter.Add(1)
 	batch = this.batches.Get()
-	batch.ctx = ctx
 	batch.messages = messages
 	batch.complete = func() {
 		waiter.Done()
@@ -53,21 +52,20 @@ func (this *entrypoint) waiterDone(waiter *sync.WaitGroup) (done chan struct{}) 
 	return done
 }
 
-func (this *entrypoint) Handle(ctx context.Context, messages ...any) {
+func (this *entrypoint) Handle(_ context.Context, messages ...any) {
 	this.lock.RLock()
 	if this.closed {
 		this.lock.RUnlock()
 		return
 	}
 
-	waiter, item := this.prepare(ctx, messages...)
-	defer this.waiters.Put(waiter)
-
+	waiter, item := this.prepare(messages...)
 	this.work <- item
 	this.lock.RUnlock()
 	this.monitor.Track(batchInFlight)
 
 	waiter.Wait()
+	this.waiters.Put(waiter)
 }
 
 func (this *entrypoint) await(ctx context.Context, message any) {
@@ -77,7 +75,7 @@ func (this *entrypoint) await(ctx context.Context, message any) {
 		return
 	}
 
-	waiter, batch := this.prepare(ctx, message)
+	waiter, batch := this.prepare(message)
 
 	select {
 	case this.work <- batch:

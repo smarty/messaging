@@ -13,10 +13,10 @@ import (
 
 // Integration tests in this package require a local MySQL server.
 //
-// Tests run against a throwaway schema (default `messaging_harness_test`) which
+// Tests run against a throwaway schema (default `messaging`) which
 // is dropped and re-created before each run.
 
-const testSchemaName = "messaging_harness_test"
+const testSchemaName = "messaging"
 
 func ensureDatabaseReadiness(t *testing.T) {
 	bootstrap, err := openDSN(buildDSN(""))
