@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Proposal: Stop double-encoding payloads across dispatch and recovery</title>
+<style>
+  body { font-family: sans-serif; max-width: 900px; margin: 2em auto; padding: 0 1em; }
+  [id]::before { content: "#" attr(id) " "; font-size: 0.75em; color: #aaa; }
+  li[id] { list-style: none; }
+  pre { background: #f5f5f5; padding: 1em; overflow-x: auto; }
+  .done { opacity: 0.5; text-decoration: line-through; }
+  .user-turn { border-left: 3px solid #f90; padding-left: 0.5em; background: #fffbe6; }
+</style>
+</head>
+<body>
+<h1 id="title">Proposal: Stop double-encoding payloads across dispatch and recovery</h1>
+
+<h2 id="background">Background</h2>
+<p>
+  The harness pipeline is store-and-forward: each message is serialized once
+  (stage 02), durably stored (stage 03), then published to the broker (stage 05
+  via <code>Dispatcher.Dispatch</code>). On startup, <code>sqladapter.Recover</code>
+  re-publishes any row whose <code>dispatched</code> column is still <code>NULL</code>.
+</p>
+<p>
+  The bytes stored in the <code>Messages.payload</code> column <strong>must</strong>
+  be byte-identical to the bytes published to the broker — otherwise a recovery
+  re-publishes a different message than the original send, silently. Today the
+  code does not guarantee this, and in one configuration it cannot publish a
+  recovered row at all.
+</p>
+<p>
+  There are three connected defects across <code>handlers/harness/02_serialization.go</code>,
+  <code>handlers/harness/sqladapter/dispatcher.go</code>, and
+  <code>handlers/harness/sqladapter/recovery.go</code>. They are usually invisible
+  (the production serializer is JSON, which makes the bug benign) and they are masked
+  by the unit-test stub connector — but they are real, and recovery against a real
+  RabbitMQ writer is broken today.
+</p>
+
+<h3 id="background-defect1">Defect 1: payload is encoded twice on the happy path</h3>
+<p>
+  <code>02_serialization.go:29</code> encodes <code>message.Value</code> into
+  <code>message.Content</code> (these are the bytes destined for the durable row).
+</p>
+<p>
+  <code>sqladapter/dispatcher.go:64-67</code> then builds a <code>messaging.Dispatch</code>
+  with <code>Message: message.Value</code> (the in-memory Go struct) and passes it to the
+  transport <code>Writer</code>. The transport writer is the <code>serialization.defaultWriter</code>
+  (<code>serialization/connector.go:103</code>), which loops calls into
+  <code>defaultDispatchEncoder.Encode</code> (<code>serialization/dispatch_encoder.go:30</code>).
+  That encoder sees <code>dispatch.Payload</code> is empty and <code>dispatch.Message</code>
+  is non-nil, and <strong>runs the same <code>Serializer.Serialize</code> again</strong>
+  to produce <code>dispatch.Payload</code>/<code>dispatch.ContentType</code>/<code>dispatch.MessageType</code>.
+</p>
+<p>
+  So the value is serialized once for the DB, then again for the broker. Both encodings
+  happen with the same <code>Serializer</code>, so the resulting bytes <em>are</em> equal,
+  but the harness has no guarantee of that — anyone who plugs in a serializer with side
+  effects, IDs, or timestamps will get divergent stored vs. published bytes. And it is
+  wasted CPU on every send.
+</p>
+<p>
+  The TODO at <code>dispatcher.go:58-63</code> calls this out and asks for one of two fixes:
+  either pass the pre-encoded bytes through <code>Dispatch.Payload/MessageType/ContentType</code>
+  and skip the connector's serialization for this writer, or drop the harness Serialization
+  stage and let the connector own all encoding.
+</p>
+
+<h3 id="background-defect2">Defect 2: <code>Message.ContentType</code> is never populated on the happy path</h3>
+<p>
+  <code>harness.Message</code> already has <code>ContentType</code> and <code>ContentEncoding</code>
+  fields (<code>message.go:22-28</code>) — but <code>02_serialization.go</code> only writes
+  <code>message.ContentType</code> on the <strong>fallback</strong> path (when the user's
+  serializer returned an error and we fall back to <code>fmt.Sprintf("%#v")</code>).
+  On the success path <code>message.ContentType</code> is left as the zero value <code>""</code>.
+</p>
+<p>
+  This is fine <em>today</em> because <code>dispatcher.go</code> re-encodes via the connector
+  (Defect 1), so the connector reapplies its own <code>ContentType()</code>. The moment we
+  fix Defect 1 by passing pre-encoded bytes through, we must know what the content type is —
+  and the harness never recorded it. The fix: stage 02 stamps <code>message.ContentType</code>
+  from <code>serializer.ContentType()</code> so the dispatcher (next stage in the same process)
+  can read it. <strong>No schema change.</strong>
+</p>
+
+<h3 id="background-defect3">Defect 3: recovery hands the dispatcher a malformed message and breaks against a real broker</h3>
+<p>
+  <code>recovery.go:42-47</code> builds a <code>harness.Message</code> from the row with
+  <code>Value</code> left nil. The dispatcher today (per Defect 1) passes
+  <code>Message: message.Value</code> to the connector — which means recovery passes
+  <code>Message: nil</code> and <code>Payload: nil</code>. The connector's encoder takes its
+  <code>dispatch.Message == nil</code> early-return (<code>dispatch_encoder.go:31</code>) and
+  <strong>never sets <code>Topic</code> / <code>MessageType</code> / <code>ContentType</code></strong>.
+  The RabbitMQ writer then rejects with <code>ErrEmptyDispatchTopic</code>
+  (<code>rabbitmq/writer.go:38</code>). So in the only production configuration that uses
+  <code>topicFromMessageType=true</code>, recovery can't publish a single row.
+</p>
+<p>
+  Defect 3 is <strong>fixed automatically</strong> once Defect 1 is fixed: the new dispatcher
+  reads <code>Type</code> / <code>ContentType</code> / <code>Content</code> (which recovery
+  already populates) from the <code>*harness.Message</code> and hands them to the connector as
+  pre-populated <code>MessageType</code> / <code>ContentType</code> / <code>Payload</code> /
+  <code>Topic</code>. The connector encoder's <code>len(Payload) &gt; 0</code> early-return
+  then leaves everything alone, and the broker gets a complete dispatch.
+</p>
+
+<h2 id="approach">Approach</h2>
+<p>
+  We pick the "pass-through" arm of the TODO: the harness Serialization stage remains the
+  single source of truth for encoded bytes and content type; the sqladapter Dispatcher hands
+  those pre-encoded bytes to the connector via <code>Dispatch.Payload</code> /
+  <code>MessageType</code> / <code>ContentType</code>; the connector encoder short-circuits
+  because <code>Payload</code> is non-empty. Recovery does the same pass-through — using the
+  row's stored <code>type</code> and the project-wide assumption that stored bytes are
+  <code>application/json</code>.
+</p>
+<p>
+  The alternative (delete the harness Serialization stage entirely and let the connector own
+  all encoding) would require persistence to also call the connector's encoder and would
+  entangle the harness with the connector. Rejected on those grounds.
+</p>
+
+<h3 id="approach-change-a">Change A — <code>02_serialization.go</code>: record content type on success</h3>
+<p>
+  Extend the internal <code>serializer</code> interface in <code>contracts.go:34</code>:
+</p>
+<pre><code>serializer interface {
+    Serialize(out io.Writer, in any) error
+    ContentType() string
+}</code></pre>
+<p>
+  Then in <code>serialization.Listen</code>, on the success branch:
+</p>
+<pre><code>err := this.serializer.Serialize(message.Content, message.Value)
+if err == nil {
+    message.ContentType = this.serializer.ContentType()
+} else {
+    // existing fallback unchanged: ContentType set to "go fmt.Sprintf(%#v)"
+}</code></pre>
+<p>
+  The <code>nop</code> serializer in <code>config.go:112</code> gains
+  <code>ContentType() string { return "" }</code>. The test fixture in
+  <code>02_serialization_test.go:40</code> gains the same stub. The production wiring
+  (callers pass <code>serialization.Serializer</code> from the <code>serialization</code>
+  package, which already exposes <code>ContentType() string</code> at
+  <code>contracts.go:9-11</code>) needs no changes.
+</p>
+
+<h3 id="approach-change-b">Change B — <code>sqladapter/dispatcher.go</code>: pass pre-encoded fields</h3>
+<p>
+  Replace the current <code>messaging.Dispatch</code> literal (which passes <code>Message: message.Value</code>)
+  with:
+</p>
+<pre><code>dispatches = append(dispatches, messaging.Dispatch{
+    Durable:     true,
+    MessageType: message.Type,
+    ContentType: message.ContentType,
+    Payload:     message.Content.Bytes(),
+    Topic:       message.Type,
+})</code></pre>
+<p>
+  <code>Topic: message.Type</code> is required because the connector encoder normally sets
+  <code>Topic = MessageType</code> only when its <code>topicFromMessageType</code> flag is on
+  (<code>dispatch_encoder.go:55</code>). With <code>Payload</code> already populated, the
+  encoder takes its <code>len(dispatch.Payload) &gt; 0</code> early-return
+  (<code>dispatch_encoder.go:31</code>) and never runs the topic-population block. So the
+  dispatcher must populate <code>Topic</code> itself. A one-line comment cross-references
+  <code>serialization/dispatch_encoder_test.go:TestWhenDispatchAlreadyContainsSerializedPayload_Nop</code>
+  to explain why.
+</p>
+
+<h3 id="approach-change-c">Change C — <code>sqladapter/recovery.go</code>: comment-only</h3>
+<p>
+  No functional change. Replace the inline framing of <code>ContentType: "application/json"</code>
+  with a comment that states the assumption: the project's serializer is JSON; the durable
+  bytes are recorded without a content-type column, so recovery carries that assumption
+  forward.
+</p>
+
+<h3 id="approach-files">Files modified</h3>
+<table>
+  <thead>
+    <tr>
+      <th style="text-align:left; min-width:350px">File</th>
+      <th style="text-align:left">Change</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>handlers/harness/contracts.go</code></td><td>Extend internal <code>serializer</code> interface with <code>ContentType() string</code>.</td></tr>
+    <tr><td><code>handlers/harness/02_serialization.go</code></td><td>On success, set <code>message.ContentType = this.serializer.ContentType()</code>.</td></tr>
+    <tr><td><code>handlers/harness/02_serialization_test.go</code></td><td>Update fixture serializer to satisfy <code>ContentType() string</code>; assert ContentType propagates.</td></tr>
+    <tr><td><code>handlers/harness/config.go</code></td><td><code>nop.ContentType() string { return "" }</code>.</td></tr>
+    <tr><td><code>handlers/harness/sqladapter/dispatcher.go</code></td><td>Pass <code>Payload</code>/<code>MessageType</code>/<code>ContentType</code>/<code>Topic</code> from <code>*harness.Message</code>; remove TODO.</td></tr>
+    <tr><td><code>handlers/harness/sqladapter/dispatcher_test.go</code></td><td>Assert published Dispatch carries Payload/MessageType/ContentType/Topic; tighten stub connector.</td></tr>
+    <tr><td><code>handlers/harness/sqladapter/recovery.go</code></td><td>Comment-only: state the JSON content-type assumption inline.</td></tr>
+    <tr><td><code>handlers/harness/sqladapter/recovery_test.go</code></td><td>Add regression test asserting recovered Dispatch carries Topic/MessageType/Payload/ContentType.</td></tr>
+  </tbody>
+</table>
+<p>No schema files (<code>doc/mysql/schema.sql</code>, <code>testdb_test.go</code>) are touched.</p>
+
+<h2 id="tradeoffs">Trade-offs &amp; Risks</h2>
+<ul>
+  <li>
+    <strong>Recovery carries a JSON assumption, not a recorded fact.</strong>
+    With no <code>content_type</code> column on <code>Messages</code>, recovery cannot know
+    what serializer was in effect when a row was written; it assumes
+    <code>application/json</code>. If the configured serializer is ever changed, in-flight
+    rows persisted under the old serializer will be re-dispatched tagged
+    <code>application/json</code> regardless of what they actually contain.
+    Mitigation: drain the queue before swapping serializers. Acceptable risk because the
+    project has historically used JSON and has no current plan to change.
+  </li>
+  <li>
+    <strong>Topic = MessageType is now hardcoded in the sqladapter Dispatcher.</strong>
+    This matches the connector's default behavior for existing deployments
+    (<code>topicFromMessageType=true</code>) but removes the option flag's reach for the
+    pre-encoded path. If a future deployment needs <code>Topic != MessageType</code>, the
+    rule has to be wired explicitly into the dispatcher.
+  </li>
+  <li>
+    <strong>The connector encoder's <code>len(Payload) &gt; 0</code> early-return is now
+    load-bearing for correctness, not just optimization.</strong> The contract becomes:
+    "if Payload is set, leave the dispatch alone; the caller has populated everything the
+    broker needs." That's already its behavior (<code>dispatch_encoder.go:31</code>), and
+    <code>TestWhenDispatchAlreadyContainsSerializedPayload_Nop</code> already asserts it;
+    we'll cross-reference it in a comment but not duplicate it.
+  </li>
+  <li>
+    <strong>The dispatcher unit test that previously asserted <code>published[0].Message</code>
+    must change</strong> — after the change the dispatcher passes <code>Payload</code> and
+    leaves <code>Message</code> nil. The test becomes: assert <code>Payload</code> is the
+    persisted bytes, <code>MessageType</code> is the registered name, <code>ContentType</code>
+    is what the harness recorded, <code>Topic</code> equals <code>MessageType</code>,
+    <code>Durable</code> is true.
+  </li>
+  <li>
+    <strong>Coverage and shape of behavior tests are otherwise unchanged.</strong>
+    No new goroutine semantics, no concurrency-shape changes; this is a pure data-flow
+    refactor — strictly in-process, no schema migration.
+  </li>
+</ul>
+
+<h2 id="your-turn">Your Turn</h2>
+<p>
+  The step marked &#x1F91D; in the checklist is reserved for you to implement.
+  It was chosen because it is the most interesting production-code contribution
+  in this proposal — the kind of work worth doing yourself.
+</p>
+<h3 id="your-turn-task">What to implement</h3>
+<p>
+  In <code>handlers/harness/sqladapter/dispatcher.go</code>, replace the
+  <code>messaging.Dispatch</code> literal that currently passes
+  <code>Message: message.Value</code> with one that passes the pre-encoded fields.
+  Drop the TODO comment block. The new literal is:
+</p>
+<pre><code>dispatches = append(dispatches, messaging.Dispatch{
+    Durable:     true,
+    MessageType: message.Type,
+    ContentType: message.ContentType,
+    Payload:     message.Content.Bytes(),
+    Topic:       message.Type,
+})</code></pre>
+<p>
+  Add a one-line comment above the <code>Topic</code> field (or the append call) explaining
+  that <code>Topic = Type</code> because the connector encoder is bypassed when
+  <code>Payload</code> is pre-populated — cross-reference
+  <code>serialization/dispatch_encoder_test.go:TestWhenDispatchAlreadyContainsSerializedPayload_Nop</code>.
+</p>
+<h3 id="your-turn-context">Context and interfaces</h3>
+<p>
+  The relevant area is <code>handlers/harness/sqladapter/dispatcher.go:55-71</code>.
+  <code>message</code> is a <code>*harness.Message</code>; by the time Change A is
+  complete, <code>message.ContentType</code> will be the string returned by the
+  serializer's <code>ContentType()</code> method, and <code>message.Content</code> is the
+  <code>*bytes.Buffer</code> holding the encoded bytes.
+  <code>messaging.Dispatch</code> is defined in the <code>messaging</code> package —
+  <code>Payload []byte</code>, <code>MessageType string</code>,
+  <code>ContentType string</code>, <code>Topic string</code>, <code>Durable bool</code>,
+  <code>Message any</code>. Leave <code>Message</code> unset (nil).
+</p>
+<h3 id="your-turn-success">What success looks like</h3>
+<p>
+  <code>TestDispatch_PublishesPreEncodedPayloadAndMetadata</code> in
+  <code>handlers/harness/sqladapter/dispatcher_test.go</code> passes. It will assert:
+</p>
+<ul>
+  <li><code>published[0].Payload</code> equals <code>message.Content.Bytes()</code></li>
+  <li><code>published[0].MessageType</code> equals <code>message.Type</code></li>
+  <li><code>published[0].ContentType</code> equals <code>message.ContentType</code> (e.g. <code>"application/json"</code>)</li>
+  <li><code>published[0].Topic</code> equals <code>message.Type</code></li>
+  <li><code>published[0].Durable</code> is <code>true</code></li>
+  <li><code>published[0].Message</code> is <code>nil</code></li>
+</ul>
+
+<h2 id="checklist">Implementation Checklist</h2>
+
+<h3 id="phase-serializer-interface">Phase 1: ContentType on the internal serializer interface (red → green)</h3>
+<ul>
+  <li id="step-1"><input type="checkbox"> Extend <code>02_serialization_test.go</code> fixture: add <code>ContentType() string { return "test/content-type" }</code> and a new test <code>TestSerializesEachResultValueIntoContent_PopulatesContentTypeOnSuccess</code> asserting <code>units[0].results[0].ContentType == "test/content-type"</code>.</li>
+  <li id="step-2"><input type="checkbox"> Run tests, confirm failure (assertion fails: success path leaves <code>ContentType</code> empty).</li>
+  <li id="step-3"><input type="checkbox"> Extend <code>serializer</code> interface in <code>handlers/harness/contracts.go</code> to include <code>ContentType() string</code>.</li>
+  <li id="step-4"><input type="checkbox"> Add <code>ContentType() string { return "" }</code> to <code>nop</code> in <code>config.go</code> so the default still satisfies the interface.</li>
+  <li id="step-5"><input type="checkbox"> In <code>02_serialization.go</code>, on the success branch, set <code>message.ContentType = this.serializer.ContentType()</code>. Leave the fallback branch's existing <code>"go fmt.Sprintf(%#v)"</code> assignment alone.</li>
+  <li id="step-6"><input type="checkbox"> Run tests, confirm green. Verify the fallback test (<code>TestSerializerErrorIsTracked_FallbackToFmtSprintfEncoding</code>) still asserts the <code>"go fmt.Sprintf(%#v)"</code> ContentType.</li>
+</ul>
+
+<h3 id="phase-dispatcher-passthrough">Phase 2: Dispatcher pass-through (red → green)</h3>
+<ul>
+  <li id="step-7"><input type="checkbox"> Add <code>TestDispatch_PublishesPreEncodedPayloadAndMetadata</code> to <code>dispatcher_test.go</code>: extend the <code>seedMessage</code> helper (or inline setup) so the <code>*harness.Message</code> carries <code>Type</code>, <code>ContentType</code> (e.g. <code>"application/json"</code>), and a pre-encoded <code>Content</code> buffer. Assert the recorded <code>messaging.Dispatch</code> has <code>Payload == message.Content.Bytes()</code>, <code>MessageType == message.Type</code>, <code>ContentType == message.ContentType</code>, <code>Topic == message.Type</code>, <code>Durable == true</code>, and <code>Message == nil</code>.</li>
+  <li id="step-8"><input type="checkbox"> Run tests, confirm failure (today the dispatcher sends <code>Message: message.Value</code> and leaves Payload/MessageType/ContentType/Topic blank).</li>
+  <li id="step-9" class="user-turn"><input type="checkbox"> &#x1F91D; Edit <code>sqladapter/dispatcher.go:55-71</code>: drop the TODO comment block; change the <code>messaging.Dispatch</code> literal to pass <code>Durable</code>, <code>MessageType</code>, <code>ContentType</code>, <code>Payload</code>, and <code>Topic</code> from the <code>*harness.Message</code>; add a one-line comment explaining Topic = Type — see <a href="#your-turn">Your Turn</a> for the full spec.</li>
+  <li id="step-10"><input type="checkbox"> Run tests, confirm green. Update <code>TestDispatch_PublishesAndMarksDispatched</code> so its <code>published[0].Message</code> assertion is replaced with assertions on Payload/MessageType/ContentType/Topic.</li>
+  <li id="step-11"><input type="checkbox"> Confirm <code>TestDispatch_PublishFails_ReturnsErrorWithoutMarkingDispatched</code> and <code>TestDispatch_NoMessages_NoOp</code> still pass.</li>
+</ul>
+
+<h3 id="phase-recovery-regression">Phase 3: Recovery regression test + comment (red → green)</h3>
+<ul>
+  <li id="step-12"><input type="checkbox"> Add <code>TestRecover_PublishesDispatchWithTopicMessageTypeAndPayload</code>: seed an undispatched row with <code>type='order-received'</code> and a JSON payload; run <code>Recover</code>; assert the resulting <code>messaging.Dispatch</code> has <code>Topic == "order-received"</code>, <code>MessageType == "order-received"</code>, <code>ContentType == "application/json"</code>, <code>Payload == &lt;the row's payload bytes&gt;</code>, <code>Durable == true</code>, and <code>Message == nil</code>.</li>
+  <li id="step-13"><input type="checkbox"> Run the test. With Phase 2 in place, this test should already pass (recovery's <code>*harness.Message</code> is well-formed and the new dispatcher reads it correctly). If it fails, that is the right reason to fix it before continuing.</li>
+  <li id="step-14"><input type="checkbox"> Edit <code>sqladapter/recovery.go:42-47</code>: replace the inline framing of <code>ContentType: "application/json"</code> with a comment stating the assumption — the project's serializer is JSON; the durable bytes are recorded without a content-type column, so recovery carries that assumption forward.</li>
+  <li id="step-15"><input type="checkbox"> Run tests, confirm green. Confirm <code>TestRecover_NoOrphans_NoOp</code>, <code>TestRecover_DispatchesUndispatchedRowsInIDOrder</code>, <code>TestRecover_PassesPayloadAndTypeIntoMessage</code>, <code>TestRecover_RowsExceedBatchSize_FlushesInBatchesAndDispatchesAll</code>, and <code>TestRecover_RowCountIsMultipleOfBatchSize_FlushesUniformBatches</code> all still pass.</li>
+</ul>
+
+<h3 id="phase-verification">Phase 4: Full verification</h3>
+<ul>
+  <li id="step-16"><input type="checkbox"> Run <code>make test</code> (fmt, vet, <code>-race</code>, coverage). Confirm green and that <code>handlers/harness</code> and <code>handlers/harness/sqladapter</code> coverage have not regressed.</li>
+  <li id="step-17"><input type="checkbox"> Re-read the diff against the <code>CLAUDE.md</code> Go conventions: receiver named <code>this</code>; named slice/return values where applicable; no naked returns; no blank lines at method start/end; struct initializers use field/value pairs; multi-line struct literals close the brace on their own line.</li>
+  <li id="step-18"><input type="checkbox"> Sanity-check the diffs against the three defects: (a) no double encode — dispatcher passes pre-encoded bytes; connector encoder short-circuits on <code>len(Payload) &gt; 0</code>; (b) ContentType propagates in-process from serialization → message → dispatch; (c) recovery's <code>*harness.Message</code> now flows through the dispatcher to a well-formed broker dispatch (no more <code>ErrEmptyDispatchTopic</code>).</li>
+  <li id="step-19"><input type="checkbox"> Confirm package doc comment in <code>handlers/harness/sqladapter/dispatcher.go</code> still accurately describes the columns it depends on (<code>id</code>, <code>dispatched</code>, <code>type</code>, <code>payload</code>); it has not changed.</li>
+</ul>
+
+</body>
+</html>
