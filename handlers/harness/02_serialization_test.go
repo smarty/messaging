@@ -52,6 +52,10 @@ func (this *SerializationFixture) Serialize(out io.Writer, in any) error {
 	return nil
 }
 
+func (this *SerializationFixture) ContentType() string {
+	return "test/content-type"
+}
+
 func (this *SerializationFixture) drain() (results []*unitOfWork) {
 	for unit := range this.output {
 		results = append(results, unit)
@@ -109,6 +113,20 @@ func (this *SerializationFixture) TestClosedInputClosesOutput() {
 	_, open := <-this.output
 	this.So(open, should.BeFalse)
 	this.So(this.tracked, should.BeEmpty)
+}
+
+func (this *SerializationFixture) TestSerializesEachResultValueIntoContent_PopulatesContentTypeOnSuccess() {
+	unit := &unitOfWork{results: []*Message{
+		{Value: "hello", Content: bytes.NewBuffer(nil)},
+	}}
+	this.input <- unit
+	close(this.input)
+
+	go this.subject.Listen()
+
+	units := this.drain()
+	this.So(len(units), should.Equal, 1)
+	this.So(units[0].results[0].ContentType, should.Equal, "test/content-type")
 }
 
 func (this *SerializationFixture) TestSerializerErrorIsTracked_FallbackToFmtSprintfEncoding() {

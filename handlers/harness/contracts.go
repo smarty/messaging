@@ -32,6 +32,7 @@ type (
 	}
 	serializer interface {
 		Serialize(out io.Writer, in any) error
+		ContentType() string
 	}
 )
 

@@ -110,5 +110,6 @@ type nop struct{}
 
 func (nop) Track(any)                              {}
 func (nop) Serialize(io.Writer, any) error         { return nil }
+func (nop) ContentType() string                    { return "" }
 func (nop) Write(context.Context, ...any) error    { return nil }
 func (nop) Dispatch(context.Context, ...any) error { return nil }

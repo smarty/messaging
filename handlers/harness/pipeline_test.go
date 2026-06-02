@@ -79,6 +79,8 @@ func (this *PipelineFixture) Serialize(out io.Writer, _ any) error {
 	return nil
 }
 
+func (this *PipelineFixture) ContentType() string { return "" }
+
 func (this *PipelineFixture) Write(ctx context.Context, messages ...any) error {
 	this.So(ctx.Value("testing"), should.Equal, this.Name())
 	this.writeLock.Lock()

@@ -1,6 +1,7 @@
 package sqladapter
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -53,7 +54,29 @@ func (this *DispatcherFixture) seedMessage(value any) *harness.Message {
 	this.So(err, should.BeNil)
 	id, err := result.LastInsertId()
 	this.So(err, should.BeNil)
-	return &harness.Message{ID: uint64(id), Value: value}
+	return &harness.Message{
+		ID:          uint64(id),
+		Type:        "order-received",
+		ContentType: "application/json",
+		Content:     bytes.NewBufferString(`{}`),
+		Value:       value,
+	}
+}
+
+func (this *DispatcherFixture) TestDispatch_PublishesPreEncodedPayloadAndMetadata() {
+	message := this.seedMessage(dispatcherTestEvent{AccountID: 1, OrderID: 2})
+
+	err := this.subject.Dispatch(context.Background(), message)
+
+	this.So(err, should.BeNil)
+	this.So(len(this.connector.published), should.Equal, 1)
+	published := this.connector.published[0]
+	this.So(published.Payload, should.Equal, message.Content.Bytes())
+	this.So(published.MessageType, should.Equal, message.Type)
+	this.So(published.ContentType, should.Equal, message.ContentType)
+	this.So(published.Topic, should.Equal, message.Type)
+	this.So(published.Durable, should.BeTrue)
+	this.So(published.Message, should.BeNil)
 }
 
 func (this *DispatcherFixture) TestDispatch_PublishesAndMarksDispatched() {
@@ -64,8 +87,13 @@ func (this *DispatcherFixture) TestDispatch_PublishesAndMarksDispatched() {
 
 	this.So(err, should.BeNil)
 	this.So(len(this.connector.published), should.Equal, 1)
-	this.So(this.connector.published[0].Message, should.Equal, event)
-	this.So(this.connector.published[0].Durable, should.BeTrue)
+	published := this.connector.published[0]
+	this.So(published.Payload, should.Equal, message.Content.Bytes())
+	this.So(published.MessageType, should.Equal, message.Type)
+	this.So(published.ContentType, should.Equal, message.ContentType)
+	this.So(published.Topic, should.Equal, message.Type)
+	this.So(published.Durable, should.BeTrue)
+	this.So(published.Message, should.BeNil)
 	this.So(this.dispatchedTimestamp(message.ID), should.NOT.BeNil)
 }
 

@@ -35,6 +35,8 @@ func (this *serialization) Listen() {
 				message.Content.Reset()
 				message.ContentType = "go fmt.Sprintf(%#v)"
 				_, _ = fmt.Fprintf(message.Content, "%#v", message.Value) // Not JSON, but it will have to do...
+			} else {
+				message.ContentType = this.serializer.ContentType()
 			}
 			failure.Error = nil
 			failure.Value = nil

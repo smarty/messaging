@@ -87,6 +87,22 @@ func (this *RecoveryFixture) TestRecover_PassesPayloadAndTypeIntoMessage() {
 	this.So(dispatch.Durable, should.BeTrue)
 }
 
+func (this *RecoveryFixture) TestRecover_PublishesDispatchWithTopicMessageTypeAndPayload() {
+	this.seedUndispatched("order-received", `{"order":1}`)
+
+	err := Recover(context.Background(), this.handle, this.dispatcher, log.New(os.Stderr, "", 0), 1024)
+
+	this.So(err, should.BeNil)
+	this.So(len(this.connector.published), should.Equal, 1)
+	dispatch := this.connector.published[0]
+	this.So(dispatch.Topic, should.Equal, "order-received")
+	this.So(dispatch.MessageType, should.Equal, "order-received")
+	this.So(dispatch.ContentType, should.Equal, "application/json")
+	this.So(dispatch.Payload, should.Equal, []byte(`{"order":1}`))
+	this.So(dispatch.Durable, should.BeTrue)
+	this.So(dispatch.Message, should.BeNil)
+}
+
 func (this *RecoveryFixture) TestRecover_RowsExceedBatchSize_FlushesInBatchesAndDispatchesAll() {
 	const batchSize = 3
 	const total = 7 // 3 + 3 + 1

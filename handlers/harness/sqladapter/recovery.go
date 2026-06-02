@@ -43,7 +43,7 @@ func Recover(ctx context.Context, handle *sql.DB, dispatcher *Dispatcher, logger
 			ID:          id,
 			Type:        typeName,
 			Content:     bytes.NewBuffer(payload),
-			ContentType: "application/json",
+			ContentType: "application/json", // stored bytes are JSON; no content_type column exists to record otherwise
 		})
 		if len(messages) >= batchSize {
 			err := dispatcher.Dispatch(ctx, messages...)

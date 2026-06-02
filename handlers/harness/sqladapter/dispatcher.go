@@ -55,15 +55,12 @@ func (this *Dispatcher) publish(ctx context.Context, messages []any) error {
 	dispatches := make([]messaging.Dispatch, 0, len(messages)) // TODO: reuse slice, pool dispatch struct
 	for _, raw := range messages {
 		message := raw.(*harness.Message)
-		// TODO: dedupe encoding work. The harness Serialization stage already encoded message.Value
-		// into message.Content for the Messages.payload column; passing message.Value here causes the
-		// transport connector's serialization layer to encode it a second time for the RMQ payload.
-		// Either pass the pre-encoded bytes through Dispatch.Payload/MessageType/ContentType and skip
-		// the connector's serialization for this writer, or drop the harness Serialization stage and
-		// let the connector own all encoding.
 		dispatches = append(dispatches, messaging.Dispatch{
-			Durable: true,
-			Message: message.Value,
+			Durable:     true,
+			MessageType: message.Type,
+			ContentType: message.ContentType,
+			Payload:     message.Content.Bytes(),
+			Topic:       message.Type, // When payload is populated, the connector's encoder skips setting the topic.
 		})
 	}
 	_, err = writer.Write(ctx, dispatches...)
