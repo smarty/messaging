@@ -61,30 +61,60 @@ type configuration struct {
 func (singleton) Types(value ...any) option {
 	return func(this *configuration) { this.Types = value }
 }
+
+// Monitor sets the Monitor collaborator that receives pipeline observations
+// (BatchInFlight, BatchComplete, LoadShed, SerializationError, etc.).
 func (singleton) Monitor(value Monitor) option {
 	return func(this *configuration) { this.Monitor = value }
 }
+
+// Serializer sets the collaborator used to encode outgoing messages into bytes.
 func (singleton) Serializer(value serializer) option {
 	return func(this *configuration) { this.Serializer = value }
 }
+
+// Writer sets the collaborator that persists encoded messages (e.g. to a database or message store).
 func (singleton) Writer(value Writer) option {
 	return func(this *configuration) { this.Writer = value }
 }
+
+// Dispatcher sets the collaborator that broadcasts outgoing messages to downstream consumers.
 func (singleton) Dispatcher(value Dispatcher) option {
 	return func(this *configuration) { this.Dispatcher = value }
 }
-func (singleton) BatchCapacity(value int) option {
+
+// BurstCapacity sets the buffer size of the channel between the entrypoint and
+// execution stages. Larger values absorb more burst traffic before back-pressure
+// reaches callers. Default: 1024.
+func (singleton) BurstCapacity(value int) option {
 	return func(this *configuration) { this.BatchCapacity = value }
 }
-func (singleton) UnitCapacity(value int) option {
+
+// PipelineBufferCapacity sets the buffer size of the channels connecting all pipeline
+// stages after execution (serialization → persistence → completion → broadcast →
+// terminal). Default: 4.
+func (singleton) PipelineBufferCapacity(value int) option {
 	return func(this *configuration) { this.UnitCapacity = value }
 }
-func (singleton) UnitSize(value int) option {
+
+// ExecutionUnitSize sets the maximum number of batches coalesced into a single unit of
+// work before the execution stage flushes downstream. Higher values increase
+// throughput at the cost of latency per batch. Default: 64.
+func (singleton) ExecutionUnitSize(value int) option {
 	return func(this *configuration) { this.UnitSize = value }
 }
+
+// SerializerCount sets the number of concurrent serialization goroutines.
+// Default: 4.
 func (singleton) SerializerCount(value int) option {
 	return func(this *configuration) { this.SerializerCount = value }
 }
+
+// ShedThreshold sets the load-shedding threshold as a fraction of BurstCapacity
+// in the range [0, 1]. When the batch channel fill ratio meets or exceeds this
+// value, new callers are refused (Admission returns 503; Handle is a no-op).
+// This option only affects HTTP callers.
+// Default: 0.80.
 func (singleton) ShedThreshold(value float64) option {
 	return func(this *configuration) { this.ShedThreshold = value }
 }
@@ -96,9 +126,9 @@ func (singleton) defaults(options ...option) []option {
 		Options.Serializer(blank),
 		Options.Writer(blank),
 		Options.Dispatcher(blank),
-		Options.BatchCapacity(1024),
-		Options.UnitCapacity(4),
-		Options.UnitSize(64),
+		Options.BurstCapacity(1024),
+		Options.PipelineBufferCapacity(4),
+		Options.ExecutionUnitSize(64),
 		Options.SerializerCount(4),
 		Options.ShedThreshold(0.80),
 	}, options...)

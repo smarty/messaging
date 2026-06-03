@@ -58,9 +58,9 @@ func (this *ConfigFixture) TestTypesOptionStoresValuesVerbatim() {
 
 func (this *ConfigFixture) TestTunableOptionsOverrideDefaults() {
 	cfg := this.apply(
-		Options.BatchCapacity(2),
-		Options.UnitCapacity(2),
-		Options.UnitSize(8),
+		Options.BurstCapacity(2),
+		Options.PipelineBufferCapacity(2),
+		Options.ExecutionUnitSize(8),
 		Options.SerializerCount(3),
 		Options.ShedThreshold(0.5),
 	)
