@@ -97,7 +97,7 @@ func (singleton) defaults(options ...option) []option {
 		Options.Writer(blank),
 		Options.Dispatcher(blank),
 		Options.BatchCapacity(1024),
-		Options.UnitCapacity(1),
+		Options.UnitCapacity(4),
 		Options.UnitSize(64),
 		Options.SerializerCount(4),
 		Options.ShedThreshold(0.80),
