@@ -25,6 +25,15 @@ func (this *ConfigFixture) apply(options ...option) configuration {
 	return cfg
 }
 
+func (this *ConfigFixture) TestNop() {
+	var n nop
+	this.So(func() { n.Track(nil) }, should.NOT.Panic)
+	this.So(n.Serialize(nil, nil), should.BeNil)
+	this.So(n.ContentType(), should.BeEmpty)
+	this.So(n.Write(nil), should.BeNil)
+	this.So(n.Dispatch(nil), should.BeNil)
+}
+
 func (this *ConfigFixture) TestDefaultsPopulateCapacities() {
 	cfg := this.apply()
 	this.So(cfg.BatchCapacity, should.Equal, 1024)
