@@ -43,8 +43,6 @@ type (
 	BatchComplete      struct{}
 	LoadShed           struct{}
 	CallerDeparted     struct{}
-	UnitOfWorkInFlight struct{}
-	UnitOfWorkComplete struct{}
 	SerializationError struct {
 		Value any
 		Error error

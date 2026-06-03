@@ -67,7 +67,6 @@ func (this *ExecutionFixture) TestSingleBatchProducesUnitOfWork() {
 	this.So(len(units[0].results), should.Equal, 1)
 	this.So(units[0].results[0].Value, should.Equal, "result-A")
 	this.So(len(units[0].completions), should.Equal, 1)
-	this.So(this.tracked, should.Equal, []any{unitOfWorkInFlight})
 }
 
 func (this *ExecutionFixture) TestUnitFlushesWhenMaxUnitSizeReached() {
@@ -85,7 +84,6 @@ func (this *ExecutionFixture) TestUnitFlushesWhenMaxUnitSizeReached() {
 	this.So(len(units[0].completions), should.Equal, 2)
 	this.So(len(units[1].completions), should.Equal, 1)
 	this.So(this.executeCalls, should.Equal, []any{"m1", "m2", "m3"})
-	this.So(this.tracked, should.Equal, []any{unitOfWorkInFlight, unitOfWorkInFlight})
 }
 
 func (this *ExecutionFixture) TestEmptyExecutorOutputProducesUnitWithNoResults() {
@@ -98,7 +96,6 @@ func (this *ExecutionFixture) TestEmptyExecutorOutputProducesUnitWithNoResults()
 	this.So(len(units), should.Equal, 1)
 	this.So(units[0].results, should.BeEmpty)
 	this.So(this.executeCalls, should.Equal, []any{"silent"})
-	this.So(this.tracked, should.Equal, []any{unitOfWorkInFlight})
 }
 
 func (this *ExecutionFixture) TestExecutorBroadcastsMultipleResults() {
@@ -114,7 +111,6 @@ func (this *ExecutionFixture) TestExecutorBroadcastsMultipleResults() {
 	this.So(units[0].results[0].Value, should.Equal, "r1")
 	this.So(units[0].results[1].Value, should.Equal, "r2")
 	this.So(units[0].results[2].Value, should.Equal, "r3")
-	this.So(this.tracked, should.Equal, []any{unitOfWorkInFlight})
 }
 
 func (this *ExecutionFixture) TestClosedInputClosesOutput() {

@@ -42,10 +42,7 @@ func (this *execution) Listen() {
 		if len(unit.completions) < this.maxUnitSize && len(this.input) > 0 {
 			continue // more to do
 		}
-		this.monitor.Track(unitOfWorkInFlight)
 		this.output <- unit
 		unit = nil
 	}
 }
-
-var unitOfWorkInFlight UnitOfWorkInFlight

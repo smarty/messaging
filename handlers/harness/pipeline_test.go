@@ -107,7 +107,7 @@ func (this *PipelineFixture) Track(observation any) {
 	this.tracked = append(this.tracked, observation)
 }
 
-func (this *PipelineFixture) countTracked() (batchInFlight, batchComplete, unitInFlight int) {
+func (this *PipelineFixture) countTracked() (batchInFlight, batchComplete int) {
 	this.trackLock.Lock()
 	defer this.trackLock.Unlock()
 	for _, observation := range this.tracked {
@@ -116,11 +116,9 @@ func (this *PipelineFixture) countTracked() (batchInFlight, batchComplete, unitI
 			batchInFlight++
 		case BatchComplete:
 			batchComplete++
-		case UnitOfWorkInFlight:
-			unitInFlight++
 		}
 	}
-	return batchInFlight, batchComplete, unitInFlight
+	return batchInFlight, batchComplete
 }
 
 func (this *PipelineFixture) shutdown() {
@@ -148,10 +146,9 @@ func (this *PipelineFixture) TestPipelineRoutesMessageThroughExecutionPersistenc
 	this.So(this.dispatchCalls[0][0].(*Message).Value, should.Equal, "event-A")
 	this.So(this.dispatchCalls[0][1].(*Message).Value, should.Equal, "event-B")
 
-	batchInFlight, batchComplete, unitInFlight := this.countTracked()
+	batchInFlight, batchComplete := this.countTracked()
 	this.So(batchInFlight, should.Equal, 1)
 	this.So(batchComplete, should.Equal, 1)
-	this.So(unitInFlight, should.Equal, 1)
 }
 
 func (this *PipelineFixture) TestPipelineHandlesMultipleMessagesAcrossHandleCalls() {
@@ -180,10 +177,9 @@ func (this *PipelineFixture) TestPipelineHandlesMultipleMessagesAcrossHandleCall
 	}
 	this.So(dispatched, should.Equal, []any{"e1", "e2", "e3"})
 
-	batchInFlight, batchComplete, unitInFlight := this.countTracked()
+	batchInFlight, batchComplete := this.countTracked()
 	this.So(batchInFlight, should.Equal, 3)
 	this.So(batchComplete, should.Equal, 3)
-	this.So(unitInFlight, should.BeGreaterThanOrEqualTo, 1)
 }
 
 func (this *PipelineFixture) TestPipelineShutsDownWithNoTraffic() {
