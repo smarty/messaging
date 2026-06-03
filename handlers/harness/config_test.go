@@ -37,7 +37,7 @@ func (this *ConfigFixture) TestNop() {
 func (this *ConfigFixture) TestDefaultsPopulateCapacities() {
 	cfg := this.apply()
 	this.So(cfg.burstCapacity, should.Equal, 1024)
-	this.So(cfg.pipelineBufferCapacity, should.Equal, 1)
+	this.So(cfg.pipelineBufferCapacity, should.Equal, 4)
 	this.So(cfg.executionUnitSize, should.Equal, 64)
 	this.So(cfg.serializerCount, should.Equal, 4)
 	this.So(cfg.shedThreshold, should.Equal, 0.80)
