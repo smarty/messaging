@@ -8,21 +8,21 @@ import (
 
 func build(ctx context.Context, config configuration) (messaging.Handler, []messaging.Listener) {
 	var (
-		batches = make(chan *batch, config.BatchCapacity)
-		work1   = make(chan *unitOfWork, config.UnitCapacity)
-		work2   = make(chan *unitOfWork, config.UnitCapacity)
-		work3   = make(chan *unitOfWork, config.UnitCapacity)
-		work4   = make(chan *unitOfWork, config.UnitCapacity)
-		work5   = make(chan *unitOfWork, config.UnitCapacity)
+		batches = make(chan *batch, config.burstCapacity)
+		work1   = make(chan *unitOfWork, config.pipelineBufferCapacity)
+		work2   = make(chan *unitOfWork, config.pipelineBufferCapacity)
+		work3   = make(chan *unitOfWork, config.pipelineBufferCapacity)
+		work4   = make(chan *unitOfWork, config.pipelineBufferCapacity)
+		work5   = make(chan *unitOfWork, config.pipelineBufferCapacity)
 	)
 
 	var (
-		entrypoint  = newEntrypoint(config.Monitor, batches, config.ShedThreshold)
-		executor    = newExecution(config.Monitor, config.UnitSize, batches, work1, newRouter(config.Types...))
-		serializers = newFanOut(serializationFactory(config.Monitor, config.Serializer), config.SerializerCount, config.UnitCapacity, work1, work2)
-		persistence = newPersistence(ctx, config.Monitor, work2, work3, config.Writer, wait)
+		entrypoint  = newEntrypoint(config.monitor, batches, config.shedThreshold)
+		executor    = newExecution(config.monitor, config.executionUnitSize, batches, work1, newRouter(config.types...))
+		serializers = newFanOut(serializationFactory(config.monitor, config.serializer), config.serializerCount, config.pipelineBufferCapacity, work1, work2)
+		persistence = newPersistence(ctx, config.monitor, work2, work3, config.writer, wait)
 		completion  = newCompletion(work3, work4)
-		broadcast   = newBroadcast(ctx, config.Monitor, work4, work5, config.Dispatcher, wait)
+		broadcast   = newBroadcast(ctx, config.monitor, work4, work5, config.dispatcher, wait)
 		terminal    = newTerminal(work5)
 	)
 

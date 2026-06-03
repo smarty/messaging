@@ -44,70 +44,70 @@ type singleton struct{}
 type option func(*configuration)
 
 type configuration struct {
-	Monitor         Monitor
-	Serializer      serializer
-	Writer          Writer
-	Dispatcher      Dispatcher
-	Types           []any
-	BatchCapacity   int
-	UnitCapacity    int
-	UnitSize        int
-	SerializerCount int
-	ShedThreshold   float64
+	monitor                Monitor
+	serializer             serializer
+	writer                 Writer
+	dispatcher             Dispatcher
+	types                  []any
+	burstCapacity          int
+	pipelineBufferCapacity int
+	executionUnitSize      int
+	serializerCount        int
+	shedThreshold          float64
 }
 
 // Types registers the domain objects whose Execute.../Apply... methods drive
 // the pipeline. They are passed verbatim to newRouter(...) at build time.
 func (singleton) Types(value ...any) option {
-	return func(this *configuration) { this.Types = value }
+	return func(this *configuration) { this.types = value }
 }
 
 // Monitor sets the Monitor collaborator that receives pipeline observations
 // (BatchInFlight, BatchComplete, LoadShed, SerializationError, etc.).
 func (singleton) Monitor(value Monitor) option {
-	return func(this *configuration) { this.Monitor = value }
+	return func(this *configuration) { this.monitor = value }
 }
 
 // Serializer sets the collaborator used to encode outgoing messages into bytes.
 func (singleton) Serializer(value serializer) option {
-	return func(this *configuration) { this.Serializer = value }
+	return func(this *configuration) { this.serializer = value }
 }
 
 // Writer sets the collaborator that persists encoded messages (e.g. to a database or message store).
 func (singleton) Writer(value Writer) option {
-	return func(this *configuration) { this.Writer = value }
+	return func(this *configuration) { this.writer = value }
 }
 
 // Dispatcher sets the collaborator that broadcasts outgoing messages to downstream consumers.
 func (singleton) Dispatcher(value Dispatcher) option {
-	return func(this *configuration) { this.Dispatcher = value }
+	return func(this *configuration) { this.dispatcher = value }
 }
 
 // BurstCapacity sets the buffer size of the channel between the entrypoint and
 // execution stages. Larger values absorb more burst traffic before back-pressure
 // reaches callers. Default: 1024.
 func (singleton) BurstCapacity(value int) option {
-	return func(this *configuration) { this.BatchCapacity = value }
+	return func(this *configuration) { this.burstCapacity = value }
 }
 
 // PipelineBufferCapacity sets the buffer size of the channels connecting all pipeline
 // stages after execution (serialization → persistence → completion → broadcast →
 // terminal). Default: 4.
 func (singleton) PipelineBufferCapacity(value int) option {
-	return func(this *configuration) { this.UnitCapacity = value }
+	return func(this *configuration) { this.pipelineBufferCapacity = value }
 }
 
 // ExecutionUnitSize sets the maximum number of batches coalesced into a single unit of
 // work before the execution stage flushes downstream. Higher values increase
 // throughput at the cost of latency per batch. Default: 64.
 func (singleton) ExecutionUnitSize(value int) option {
-	return func(this *configuration) { this.UnitSize = value }
+	return func(this *configuration) { this.executionUnitSize = value }
 }
 
 // SerializerCount sets the number of concurrent serialization goroutines.
 // Default: 4.
 func (singleton) SerializerCount(value int) option {
-	return func(this *configuration) { this.SerializerCount = value }
+	return func(this *configuration) { this.serializerCount = value }
 }
 
 // ShedThreshold sets the load-shedding threshold as a fraction of BurstCapacity
@@ -116,7 +116,7 @@ func (singleton) SerializerCount(value int) option {
 // This option only affects HTTP callers.
 // Default: 0.80.
 func (singleton) ShedThreshold(value float64) option {
-	return func(this *configuration) { this.ShedThreshold = value }
+	return func(this *configuration) { this.shedThreshold = value }
 }
 
 func (singleton) defaults(options ...option) []option {

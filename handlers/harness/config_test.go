@@ -36,24 +36,24 @@ func (this *ConfigFixture) TestNop() {
 
 func (this *ConfigFixture) TestDefaultsPopulateCapacities() {
 	cfg := this.apply()
-	this.So(cfg.BatchCapacity, should.Equal, 1024)
-	this.So(cfg.UnitCapacity, should.Equal, 1)
-	this.So(cfg.UnitSize, should.Equal, 64)
-	this.So(cfg.SerializerCount, should.Equal, 4)
-	this.So(cfg.ShedThreshold, should.Equal, 0.80)
+	this.So(cfg.burstCapacity, should.Equal, 1024)
+	this.So(cfg.pipelineBufferCapacity, should.Equal, 1)
+	this.So(cfg.executionUnitSize, should.Equal, 64)
+	this.So(cfg.serializerCount, should.Equal, 4)
+	this.So(cfg.shedThreshold, should.Equal, 0.80)
 }
 
 func (this *ConfigFixture) TestDefaultCollaboratorsAreNop() {
 	cfg := this.apply()
-	this.So(cfg.Monitor, should.Equal, nop{})
-	this.So(cfg.Serializer, should.Equal, nop{})
-	this.So(cfg.Writer, should.Equal, nop{})
-	this.So(cfg.Dispatcher, should.Equal, nop{})
+	this.So(cfg.monitor, should.Equal, nop{})
+	this.So(cfg.serializer, should.Equal, nop{})
+	this.So(cfg.writer, should.Equal, nop{})
+	this.So(cfg.dispatcher, should.Equal, nop{})
 }
 
 func (this *ConfigFixture) TestTypesOptionStoresValuesVerbatim() {
 	cfg := this.apply(Options.Types("a", 42, struct{}{}))
-	this.So(cfg.Types, should.Equal, []any{"a", 42, struct{}{}})
+	this.So(cfg.types, should.Equal, []any{"a", 42, struct{}{}})
 }
 
 func (this *ConfigFixture) TestTunableOptionsOverrideDefaults() {
@@ -64,17 +64,17 @@ func (this *ConfigFixture) TestTunableOptionsOverrideDefaults() {
 		Options.SerializerCount(3),
 		Options.ShedThreshold(0.5),
 	)
-	this.So(cfg.BatchCapacity, should.Equal, 2)
-	this.So(cfg.UnitCapacity, should.Equal, 2)
-	this.So(cfg.UnitSize, should.Equal, 8)
-	this.So(cfg.SerializerCount, should.Equal, 3)
-	this.So(cfg.ShedThreshold, should.Equal, 0.5)
+	this.So(cfg.burstCapacity, should.Equal, 2)
+	this.So(cfg.pipelineBufferCapacity, should.Equal, 2)
+	this.So(cfg.executionUnitSize, should.Equal, 8)
+	this.So(cfg.serializerCount, should.Equal, 3)
+	this.So(cfg.shedThreshold, should.Equal, 0.5)
 }
 
 func (this *ConfigFixture) TestCollaboratorOptionsOverrideDefaults() {
 	recorder := &recordingMonitor{}
 	cfg := this.apply(Options.Monitor(recorder))
-	this.So(cfg.Monitor, should.Equal, recorder)
+	this.So(cfg.monitor, should.Equal, recorder)
 }
 
 func (this *ConfigFixture) TestZeroOptionsPipelineRunsInertly() {
