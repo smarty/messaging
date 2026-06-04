@@ -9,7 +9,6 @@ import (
 	"github.com/smarty/gunit/v2"
 	"github.com/smarty/gunit/v2/assert/better"
 	"github.com/smarty/gunit/v2/assert/should"
-	"github.com/smarty/messaging/v3"
 )
 
 func TestPipelineFixture(t *testing.T) {
@@ -18,10 +17,9 @@ func TestPipelineFixture(t *testing.T) {
 
 type PipelineFixture struct {
 	*gunit.Fixture
-	ctx       context.Context
-	handler   messaging.Handler
-	listeners []messaging.Listener
-	waiter    sync.WaitGroup
+	ctx      context.Context
+	pipeline Pipeline
+	waiter   sync.WaitGroup
 
 	executeLock    sync.Mutex
 	executeCalls   []any
@@ -40,14 +38,14 @@ type commandType string
 
 func (this *PipelineFixture) Setup() {
 	this.ctx = context.WithValue(this.Context(), "testing", this.Name())
-	_, this.handler, this.listeners = New(this.ctx,
+	this.pipeline = New(this.ctx,
 		Options.Types(this),
 		Options.Monitor(this),
 		Options.Serializer(this),
 		Options.Writer(this),
 		Options.Dispatcher(this),
 	)
-	for _, listener := range this.listeners {
+	for _, listener := range this.pipeline.Listeners {
 		this.waiter.Go(listener.Listen)
 	}
 }
@@ -122,7 +120,7 @@ func (this *PipelineFixture) countTracked() (batchInFlight, batchComplete int) {
 }
 
 func (this *PipelineFixture) shutdown() {
-	closer, ok := this.handler.(io.Closer)
+	closer, ok := this.pipeline.BlockingEntrypoint.(io.Closer)
 	this.So(ok, better.BeTrue)
 	this.So(closer.Close(), should.BeNil)
 	this.waiter.Wait()
@@ -131,7 +129,7 @@ func (this *PipelineFixture) shutdown() {
 func (this *PipelineFixture) TestPipelineRoutesMessageThroughExecutionPersistenceBroadcast() {
 	this.executeOutputs = [][]any{{"event-A", "event-B"}}
 
-	this.handler.Handle(this.ctx, commandType("command-1"))
+	this.pipeline.BlockingEntrypoint.Handle(this.ctx, commandType("command-1"))
 	this.shutdown()
 
 	this.So(len(this.executeCalls), should.Equal, 1)
@@ -154,9 +152,9 @@ func (this *PipelineFixture) TestPipelineRoutesMessageThroughExecutionPersistenc
 func (this *PipelineFixture) TestPipelineHandlesMultipleMessagesAcrossHandleCalls() {
 	this.executeOutputs = [][]any{{"e1"}, {"e2"}, {"e3"}}
 
-	this.handler.Handle(this.ctx, commandType("c1"))
-	this.handler.Handle(this.ctx, commandType("c2"))
-	this.handler.Handle(this.ctx, commandType("c3"))
+	this.pipeline.BlockingEntrypoint.Handle(this.ctx, commandType("c1"))
+	this.pipeline.BlockingEntrypoint.Handle(this.ctx, commandType("c2"))
+	this.pipeline.BlockingEntrypoint.Handle(this.ctx, commandType("c3"))
 	this.shutdown()
 
 	this.So(len(this.executeCalls), should.Equal, 3)
@@ -193,7 +191,7 @@ func (this *PipelineFixture) TestPipelineShutsDownWithNoTraffic() {
 func (this *PipelineFixture) TestPipelineSerializesEachBroadcastResult() {
 	this.executeOutputs = [][]any{{map[string]int{"value": 42}}}
 
-	this.handler.Handle(this.ctx, commandType("go"))
+	this.pipeline.BlockingEntrypoint.Handle(this.ctx, commandType("go"))
 	this.shutdown()
 
 	this.So(len(this.writeCalls), should.Equal, 1)

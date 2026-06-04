@@ -81,21 +81,21 @@ func (this *ConfigFixture) TestZeroOptionsPipelineRunsInertly() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	forHTTP, forMQ, listeners := New(ctx)
+	pipeline := New(ctx)
 
 	done := make(chan struct{})
 	go func() {
 		var wg sync.WaitGroup
-		for _, listener := range listeners {
+		for _, listener := range pipeline.Listeners {
 			wg.Go(listener.Listen)
 		}
 		wg.Wait()
 		close(done)
 	}()
 
-	forMQ.Handle(ctx, "payload")
-	forHTTP.Handle(ctx, "payload")
-	this.So(forMQ.(interface{ Close() error }).Close(), should.BeNil)
+	pipeline.BlockingEntrypoint.Handle(ctx, "payload")
+	pipeline.SheddingEntrypoint.Handle(ctx, "payload")
+	this.So(pipeline.BlockingEntrypoint.(interface{ Close() error }).Close(), should.BeNil)
 	<-done
 }
 
