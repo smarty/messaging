@@ -84,9 +84,6 @@ func (this *Writer) insertMessages(ctx context.Context, tx *sql.Tx, messages []a
 	// https://dev.mysql.com/doc/refman/5.6/en/information-functions.html#function_last-insert-id
 	// > If you insert multiple rows using a single INSERT statement, LAST_INSERT_ID() returns the value
 	// > generated for the first inserted row only.
-	// This Writer is the sole writer to the Messages table and processes each batch sequentially
-	// inside a single transaction, so no other INSERT can interleave and create gaps between the
-	// IDs assigned to this batch. The stride-based assignment below is therefore safe.
 	first, err := result.LastInsertId()
 	if err != nil {
 		return err
