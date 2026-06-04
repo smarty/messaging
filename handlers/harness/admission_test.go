@@ -17,43 +17,36 @@ func TestAdmissionFixture(t *testing.T) {
 type AdmissionFixture struct {
 	*gunit.Fixture
 	ctx context.Context
+
+	allow    bool
+	ctxs     []context.Context
+	messages []any
 }
 
 func (this *AdmissionFixture) Setup() {
 	this.ctx = context.WithValue(this.Context(), "testing", this.Name())
 }
 
-type fakeAwaiter struct {
-	ctxs     []context.Context
-	messages []any
+func (this *AdmissionFixture) Handle(context.Context, ...any) {}
+func (this *AdmissionFixture) admit() bool {
+	return this.allow
 }
-
-func (this *fakeAwaiter) Handle(context.Context, ...any) {}
-func (this *fakeAwaiter) await(ctx context.Context, message any) {
-	this.ctxs = append(this.ctxs, ctx)
+func (this *AdmissionFixture) await(ctx context.Context, message any) {
+	this.So(ctx.Value("testing"), should.Equal, this.Name())
 	this.messages = append(this.messages, message)
 }
 
+func (this *AdmissionFixture) ServeHTTP(http.ResponseWriter, *http.Request) {}
+
 func (this *AdmissionFixture) TestAsHTTPHandler_ForwardsSingleMessageToAwait() {
-	fake := &fakeAwaiter{}
-	AsHTTPHandler(fake).Handle(this.ctx, "x")
-	this.So(fake.messages, should.Equal, []any{"x"})
-	this.So(fake.ctxs, should.HaveLength, 1)
-	this.So(fake.ctxs[0].Value("testing"), should.Equal, this.Name())
+	newHTTPAdapter(this).Handle(this.ctx, "x")
+	this.So(this.messages, should.Equal, []any{"x"})
 }
 
 func (this *AdmissionFixture) TestAsHTTPHandler_ForwardsEachMessageInOrder() {
-	fake := &fakeAwaiter{}
-	AsHTTPHandler(fake).Handle(this.ctx, "a", "b")
-	this.So(fake.messages, should.Equal, []any{"a", "b"})
+	newHTTPAdapter(this).Handle(this.ctx, "a", "b")
+	this.So(this.messages, should.Equal, []any{"a", "b"})
 }
-
-type fakeAdmitter struct {
-	allow bool
-}
-
-func (this *fakeAdmitter) Handle(context.Context, ...any) {}
-func (this *fakeAdmitter) admit() bool                    { return this.allow }
 
 func (this *AdmissionFixture) TestAdmission_PassesThroughWhenAdmitted() {
 	var ran bool
@@ -65,7 +58,8 @@ func (this *AdmissionFixture) TestAdmission_PassesThroughWhenAdmitted() {
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/admin/orders", nil)
-	Admission(&fakeAdmitter{allow: true}, inner).ServeHTTP(recorder, request)
+	this.allow = true
+	newHTTPAdapter(this).HTTPHandler(inner).ServeHTTP(recorder, request)
 
 	this.So(ran, should.BeTrue)
 	this.So(recorder.Code, should.Equal, http.StatusTeapot)
@@ -78,7 +72,7 @@ func (this *AdmissionFixture) TestAdmission_Writes503WhenRejected() {
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/admin/orders", nil)
-	Admission(&fakeAdmitter{allow: false}, inner).ServeHTTP(recorder, request)
+	newHTTPAdapter(this).HTTPHandler(inner).ServeHTTP(recorder, request)
 
 	this.So(ran, should.BeFalse)
 	this.So(recorder.Code, should.Equal, http.StatusServiceUnavailable)

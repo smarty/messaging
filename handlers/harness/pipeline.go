@@ -6,7 +6,7 @@ import (
 	"github.com/smarty/messaging/v3"
 )
 
-func build(ctx context.Context, config configuration) (messaging.Handler, []messaging.Listener) {
+func build(ctx context.Context, config configuration) (forHTTP *httpAdapter, forMQ messaging.Handler, listeners []messaging.Listener) {
 	var (
 		batches = make(chan *batch, config.burstCapacity)
 		work1   = make(chan *unitOfWork, config.pipelineBufferCapacity)
@@ -26,7 +26,6 @@ func build(ctx context.Context, config configuration) (messaging.Handler, []mess
 		terminal    = newTerminal(work5)
 	)
 
-	var listeners []messaging.Listener
 	listeners = append(listeners,
 		entrypoint,
 		executor,
@@ -38,7 +37,7 @@ func build(ctx context.Context, config configuration) (messaging.Handler, []mess
 		broadcast,
 		terminal,
 	)
-	return entrypoint, listeners
+	return newHTTPAdapter(entrypoint), entrypoint, listeners
 }
 
 func serializationFactory(monitor Monitor, enc serializer) stationFactory {

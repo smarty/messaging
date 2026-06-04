@@ -81,7 +81,7 @@ func (this *ConfigFixture) TestZeroOptionsPipelineRunsInertly() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	handler, listeners := New(ctx)
+	forHTTP, forMQ, listeners := New(ctx)
 
 	done := make(chan struct{})
 	go func() {
@@ -93,8 +93,9 @@ func (this *ConfigFixture) TestZeroOptionsPipelineRunsInertly() {
 		close(done)
 	}()
 
-	handler.Handle(ctx, "payload")
-	this.So(handler.(interface{ Close() error }).Close(), should.BeNil)
+	forMQ.Handle(ctx, "payload")
+	forHTTP.Handle(ctx, "payload")
+	this.So(forMQ.(interface{ Close() error }).Close(), should.BeNil)
 	<-done
 }
 

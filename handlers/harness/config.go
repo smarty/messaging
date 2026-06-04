@@ -30,7 +30,7 @@ import (
 // corresponding Options.* functions. Collaborators default to a shared
 // no-op implementation, so omitting them produces a runnable but inert
 // pipeline — useful for tests, but not for production.
-func New(ctx context.Context, options ...option) (messaging.Handler, []messaging.Listener) {
+func New(ctx context.Context, options ...option) (HTTPAdapter, messaging.Handler, []messaging.Listener) {
 	var cfg configuration
 	for _, apply := range Options.defaults(options...) {
 		apply(&cfg)
@@ -112,7 +112,7 @@ func (singleton) SerializerCount(value int) option {
 
 // ShedThreshold sets the load-shedding threshold as a fraction of BurstCapacity
 // in the range [0, 1]. When the batch channel fill ratio meets or exceeds this
-// value, new callers are refused (Admission returns 503; Handle is a no-op).
+// value, new callers are refused (admission returns 503; Handle is a no-op).
 // This option only affects HTTP callers.
 // Default: 0.80.
 func (singleton) ShedThreshold(value float64) option {

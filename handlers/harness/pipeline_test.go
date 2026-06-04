@@ -40,7 +40,7 @@ type commandType string
 
 func (this *PipelineFixture) Setup() {
 	this.ctx = context.WithValue(this.Context(), "testing", this.Name())
-	this.handler, this.listeners = New(this.ctx,
+	_, this.handler, this.listeners = New(this.ctx,
 		Options.Types(this),
 		Options.Monitor(this),
 		Options.Serializer(this),
