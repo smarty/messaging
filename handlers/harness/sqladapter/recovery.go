@@ -28,7 +28,7 @@ func Recover(ctx context.Context, handle *sql.DB, dispatcher *Dispatcher, logger
 	defer func() { _ = rows.Close() }()
 
 	var total int
-	var messages []any
+	var messages []*harness.Message
 	for rows.Next() {
 		var (
 			id       uint64

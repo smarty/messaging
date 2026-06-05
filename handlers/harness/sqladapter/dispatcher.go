@@ -29,7 +29,7 @@ func NewDispatcher(connector messaging.Connector, handle *sql.DB, logger Logger)
 	}
 }
 
-func (this *Dispatcher) Dispatch(ctx context.Context, messages ...any) error {
+func (this *Dispatcher) Dispatch(ctx context.Context, messages ...*harness.Message) error {
 	if len(messages) == 0 {
 		return nil
 	}
@@ -39,7 +39,7 @@ func (this *Dispatcher) Dispatch(ctx context.Context, messages ...any) error {
 	return this.markDispatched(ctx, messages)
 }
 
-func (this *Dispatcher) publish(ctx context.Context, messages []any) error {
+func (this *Dispatcher) publish(ctx context.Context, messages []*harness.Message) error {
 	connection, err := this.connector.Connect(ctx)
 	if err != nil {
 		return err
@@ -53,8 +53,7 @@ func (this *Dispatcher) publish(ctx context.Context, messages []any) error {
 	defer func() { _ = writer.Close() }()
 
 	dispatches := make([]messaging.Dispatch, 0, len(messages)) // TODO: reuse slice, pool dispatch struct
-	for _, raw := range messages {
-		message := raw.(*harness.Message)
+	for _, message := range messages {
 		dispatches = append(dispatches, messaging.Dispatch{
 			Durable:     true,
 			MessageType: message.Type,
@@ -67,16 +66,16 @@ func (this *Dispatcher) publish(ctx context.Context, messages []any) error {
 	return err
 }
 
-func (this *Dispatcher) markDispatched(ctx context.Context, messages []any) error {
+func (this *Dispatcher) markDispatched(ctx context.Context, messages []*harness.Message) error {
 	var statement strings.Builder
 	statement.WriteString(`UPDATE Messages SET dispatched = NOW(3) WHERE id IN (`)
 	args := make([]any, 0, len(messages))
-	for i, raw := range messages {
+	for i, message := range messages {
 		if i > 0 {
 			statement.WriteString(`,`)
 		}
 		statement.WriteString(`?`)
-		args = append(args, raw.(*harness.Message).ID)
+		args = append(args, message.ID)
 	}
 	statement.WriteString(`)`)
 	if _, err := this.handle.ExecContext(ctx, statement.String(), args...); err != nil {

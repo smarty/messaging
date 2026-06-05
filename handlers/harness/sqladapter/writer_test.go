@@ -81,7 +81,7 @@ func (this *WriterFixture) TestWrite_InsertsMessageRowAndInvokesLegacyWrite() {
 
 	this.So(err, should.BeNil)
 	this.So(this.countMessages(), should.Equal, 1)
-	this.So(this.legacyWriteCalls, should.Equal, [][]any{{message}})
+	this.So(this.legacyWriteCalls, should.Equal, [][]*harness.Message{{message}})
 	this.So(message.Type, should.Equal, "order-received")
 }
 
