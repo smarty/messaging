@@ -13,7 +13,7 @@ type persistence struct {
 	output  chan *unitOfWork
 	writer  Writer
 	wait    func(context.Context, time.Duration) error
-	buffer  []any
+	buffer  []*Message
 }
 
 func newPersistence(ctx context.Context, monitor Monitor, input, output chan *unitOfWork, writer Writer, wait func(context.Context, time.Duration) error) *persistence {
@@ -24,7 +24,7 @@ func newPersistence(ctx context.Context, monitor Monitor, input, output chan *un
 		output:  output,
 		writer:  writer,
 		wait:    wait,
-		buffer:  make([]any, 0, 1024),
+		buffer:  make([]*Message, 0, 1024),
 	}
 }
 

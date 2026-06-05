@@ -10,7 +10,7 @@ import (
 
 type (
 	Writer interface {
-		Write(ctx context.Context, messages ...any) error
+		Write(ctx context.Context, messages ...*Message) error
 	}
 	Dispatcher interface {
 		Dispatch(ctx context.Context, messages ...any) error

@@ -41,7 +41,7 @@ type WriterFixture struct {
 	handle  *sql.DB
 	subject *Writer
 
-	legacyWriteCalls [][]any
+	legacyWriteCalls [][]*harness.Message
 	legacyWritePanic any
 	testStride       uint64
 }
@@ -57,7 +57,7 @@ func (this *WriterFixture) Setup() {
 	this.truncateTables()
 }
 
-func (this *WriterFixture) fakeLegacyWrite(_ context.Context, _ *sql.Tx, messages ...any) {
+func (this *WriterFixture) fakeLegacyWrite(_ context.Context, _ *sql.Tx, messages ...*harness.Message) {
 	this.legacyWriteCalls = append(this.legacyWriteCalls, messages)
 	if this.legacyWritePanic != nil {
 		panic(this.legacyWritePanic)

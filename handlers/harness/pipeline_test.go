@@ -26,7 +26,7 @@ type PipelineFixture struct {
 	executeOutputs [][]any
 
 	writeLock     sync.Mutex
-	writeCalls    [][]any
+	writeCalls    [][]*Message
 	dispatchLock  sync.Mutex
 	dispatchCalls [][]any
 
@@ -79,13 +79,13 @@ func (this *PipelineFixture) Serialize(out io.Writer, _ any) error {
 
 func (this *PipelineFixture) ContentType() string { return "" }
 
-func (this *PipelineFixture) Write(ctx context.Context, messages ...any) error {
+func (this *PipelineFixture) Write(ctx context.Context, messages ...*Message) error {
 	this.So(ctx.Value("testing"), should.Equal, this.Name())
+	buffer := make([]*Message, len(messages))
+	copy(buffer, messages)
 	this.writeLock.Lock()
-	defer this.writeLock.Unlock()
-	captured := make([]any, len(messages))
-	copy(captured, messages)
-	this.writeCalls = append(this.writeCalls, captured)
+	this.writeCalls = append(this.writeCalls, buffer)
+	this.writeLock.Unlock()
 	return nil
 }
 
@@ -136,8 +136,8 @@ func (this *PipelineFixture) TestPipelineRoutesMessageThroughExecutionPersistenc
 
 	this.So(len(this.writeCalls), should.Equal, 1)
 	this.So(len(this.writeCalls[0]), should.Equal, 2)
-	this.So(this.writeCalls[0][0].(*Message).Value, should.Equal, "event-A")
-	this.So(this.writeCalls[0][1].(*Message).Value, should.Equal, "event-B")
+	this.So(this.writeCalls[0][0].Value, should.Equal, "event-A")
+	this.So(this.writeCalls[0][1].Value, should.Equal, "event-B")
 
 	this.So(len(this.dispatchCalls), should.Equal, 1)
 	this.So(len(this.dispatchCalls[0]), should.Equal, 2)
@@ -162,7 +162,7 @@ func (this *PipelineFixture) TestPipelineHandlesMultipleMessagesAcrossHandleCall
 	var written []any
 	for _, call := range this.writeCalls {
 		for _, message := range call {
-			written = append(written, message.(*Message).Value)
+			written = append(written, message.Value)
 		}
 	}
 	this.So(written, should.Equal, []any{"e1", "e2", "e3"})
@@ -195,6 +195,6 @@ func (this *PipelineFixture) TestPipelineSerializesEachBroadcastResult() {
 	this.shutdown()
 
 	this.So(len(this.writeCalls), should.Equal, 1)
-	message := this.writeCalls[0][0].(*Message)
+	message := this.writeCalls[0][0]
 	this.So(message.Content.Len() > 0, should.BeTrue)
 }

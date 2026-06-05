@@ -25,7 +25,7 @@ type PersistenceFixture struct {
 	subject *persistence
 
 	writeMu        sync.Mutex
-	writeCalls     [][]any
+	writeCalls     [][]*Message
 	writeFailCount int
 
 	tracked []any
@@ -47,11 +47,11 @@ func (this *PersistenceFixture) Track(observation any) {
 	this.tracked = append(this.tracked, observation)
 }
 
-func (this *PersistenceFixture) Write(ctx context.Context, messages ...any) error {
+func (this *PersistenceFixture) Write(ctx context.Context, messages ...*Message) error {
 	this.So(ctx.Value("testing"), should.Equal, this.Name())
 	this.writeMu.Lock()
 	defer this.writeMu.Unlock()
-	captured := make([]any, len(messages))
+	captured := make([]*Message, len(messages))
 	copy(captured, messages)
 	this.writeCalls = append(this.writeCalls, captured)
 	if this.writeFailCount > 0 {
@@ -79,7 +79,7 @@ func (this *PersistenceFixture) TestWritesAllResultsThenForwardsUnit() {
 	units := this.drain()
 	this.So(len(units), should.Equal, 1)
 	this.So(len(this.writeCalls), should.Equal, 1)
-	this.So(this.writeCalls[0], should.Equal, []any{m1, m2})
+	this.So(this.writeCalls[0], should.Equal, []*Message{m1, m2})
 	this.So(this.waits, should.BeEmpty)
 	this.So(this.tracked, should.BeEmpty)
 }
@@ -96,8 +96,8 @@ func (this *PersistenceFixture) TestEachUnitIsWrittenIndependently() {
 	units := this.drain()
 	this.So(len(units), should.Equal, 2)
 	this.So(len(this.writeCalls), should.Equal, 2)
-	this.So(this.writeCalls[0], should.Equal, []any{m1})
-	this.So(this.writeCalls[1], should.Equal, []any{m2})
+	this.So(this.writeCalls[0], should.Equal, []*Message{m1})
+	this.So(this.writeCalls[1], should.Equal, []*Message{m2})
 	this.So(this.tracked, should.BeEmpty)
 }
 

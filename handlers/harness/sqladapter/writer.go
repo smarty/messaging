@@ -11,12 +11,15 @@ import (
 	"github.com/smarty/messaging/v3/handlers/harness"
 )
 
+// Deprecated
+type legacyWrite func(context.Context, *sql.Tx, ...*harness.Message)
+
 type Writer struct {
 	handle      *sql.DB
 	typeNames   map[reflect.Type]string
 	stride      uint64
 	logger      Logger
-	legacyWrite func(context.Context, *sql.Tx, ...any)
+	legacyWrite legacyWrite
 }
 
 // NewWriter builds a Writer that inserts rows into the `Messages` table and
@@ -25,7 +28,7 @@ type Writer struct {
 // Deprecation warning: the legacyWrite escape hatch is retained for migration from
 // other projects and will be removed in a later release; new callers
 // should supply a no-op function.
-func NewWriter(handle *sql.DB, typeNames map[reflect.Type]string, stride uint64, logger Logger, legacyWrite func(context.Context, *sql.Tx, ...any)) *Writer {
+func NewWriter(handle *sql.DB, typeNames map[reflect.Type]string, stride uint64, logger Logger, legacyWrite legacyWrite) *Writer {
 	return &Writer{
 		handle:      handle,
 		typeNames:   typeNames,
@@ -35,7 +38,7 @@ func NewWriter(handle *sql.DB, typeNames map[reflect.Type]string, stride uint64,
 	}
 }
 
-func (this *Writer) Write(ctx context.Context, messages ...any) (err error) {
+func (this *Writer) Write(ctx context.Context, messages ...*harness.Message) (err error) {
 	if len(messages) == 0 {
 		return nil
 	}
@@ -62,12 +65,11 @@ func (this *Writer) Write(ctx context.Context, messages ...any) (err error) {
 	return tx.Commit()
 }
 
-func (this *Writer) insertMessages(ctx context.Context, tx *sql.Tx, messages []any) error {
+func (this *Writer) insertMessages(ctx context.Context, tx *sql.Tx, messages []*harness.Message) error {
 	var statement strings.Builder // TODO: reuse statement builder
 	statement.WriteString(`INSERT INTO Messages (type, payload) VALUES `)
 	args := make([]any, 0, len(messages)*2) // TODO: reuse slice/buffer
-	for i, raw := range messages {
-		message := raw.(*harness.Message)
+	for i, message := range messages {
 		if message.Type == "" {
 			message.Type = this.typeNames[reflect.TypeOf(message.Value)]
 		}
@@ -88,8 +90,8 @@ func (this *Writer) insertMessages(ctx context.Context, tx *sql.Tx, messages []a
 	if err != nil {
 		return err
 	}
-	for i, raw := range messages {
-		raw.(*harness.Message).ID = uint64(first) + uint64(i)*this.stride
+	for i, message := range messages {
+		message.ID = uint64(first) + uint64(i)*this.stride
 	}
 	return nil
 }
