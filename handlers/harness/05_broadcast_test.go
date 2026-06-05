@@ -25,7 +25,7 @@ type BroadcastFixture struct {
 	subject *broadcast
 
 	dispatchMu        sync.Mutex
-	dispatchCalls     [][]any
+	dispatchCalls     [][]*Message
 	dispatchFailCount int
 
 	tracked []any
@@ -47,13 +47,13 @@ func (this *BroadcastFixture) Track(observation any) {
 	this.tracked = append(this.tracked, observation)
 }
 
-func (this *BroadcastFixture) Dispatch(ctx context.Context, messages ...any) error {
+func (this *BroadcastFixture) Dispatch(ctx context.Context, messages ...*Message) error {
 	this.So(ctx.Value("testing"), should.Equal, this.Name())
-	this.dispatchMu.Lock()
-	defer this.dispatchMu.Unlock()
-	captured := make([]any, len(messages))
+	captured := make([]*Message, len(messages))
 	copy(captured, messages)
+	this.dispatchMu.Lock()
 	this.dispatchCalls = append(this.dispatchCalls, captured)
+	this.dispatchMu.Unlock()
 	if this.dispatchFailCount > 0 {
 		this.dispatchFailCount--
 		return errors.New("dispatch failure")
@@ -79,7 +79,7 @@ func (this *BroadcastFixture) TestDispatchesAllResultsThenForwardsUnit() {
 	units := this.drain()
 	this.So(len(units), should.Equal, 1)
 	this.So(len(this.dispatchCalls), should.Equal, 1)
-	this.So(this.dispatchCalls[0], should.Equal, []any{m1, m2})
+	this.So(this.dispatchCalls[0], should.Equal, []*Message{m1, m2})
 	this.So(this.waits, should.BeEmpty)
 	this.So(this.tracked, should.BeEmpty)
 }
@@ -96,8 +96,8 @@ func (this *BroadcastFixture) TestEachUnitDispatchedIndependently() {
 	units := this.drain()
 	this.So(len(units), should.Equal, 2)
 	this.So(len(this.dispatchCalls), should.Equal, 2)
-	this.So(this.dispatchCalls[0], should.Equal, []any{m1})
-	this.So(this.dispatchCalls[1], should.Equal, []any{m2})
+	this.So(this.dispatchCalls[0], should.Equal, []*Message{m1})
+	this.So(this.dispatchCalls[1], should.Equal, []*Message{m2})
 	this.So(this.tracked, should.BeEmpty)
 }
 

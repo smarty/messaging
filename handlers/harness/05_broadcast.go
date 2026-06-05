@@ -11,7 +11,7 @@ type broadcast struct {
 	monitor    Monitor
 	input      chan *unitOfWork
 	output     chan *unitOfWork
-	buffer     []any
+	buffer     []*Message
 	dispatcher Dispatcher
 	wait       func(context.Context, time.Duration) error
 }
@@ -22,7 +22,7 @@ func newBroadcast(ctx context.Context, monitor Monitor, input, output chan *unit
 		monitor:    monitor,
 		input:      input,
 		output:     output,
-		buffer:     make([]any, 0, 1024),
+		buffer:     make([]*Message, 0, 1024),
 		dispatcher: dispatcher,
 		wait:       wait,
 	}

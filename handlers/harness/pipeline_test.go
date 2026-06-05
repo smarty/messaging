@@ -28,7 +28,7 @@ type PipelineFixture struct {
 	writeLock     sync.Mutex
 	writeCalls    [][]*Message
 	dispatchLock  sync.Mutex
-	dispatchCalls [][]any
+	dispatchCalls [][]*Message
 
 	trackLock sync.Mutex
 	tracked   []any
@@ -89,13 +89,13 @@ func (this *PipelineFixture) Write(ctx context.Context, messages ...*Message) er
 	return nil
 }
 
-func (this *PipelineFixture) Dispatch(ctx context.Context, messages ...any) error {
+func (this *PipelineFixture) Dispatch(ctx context.Context, messages ...*Message) error {
 	this.So(ctx.Value("testing"), should.Equal, this.Name())
-	this.dispatchLock.Lock()
-	defer this.dispatchLock.Unlock()
-	captured := make([]any, len(messages))
+	captured := make([]*Message, len(messages))
 	copy(captured, messages)
+	this.dispatchLock.Lock()
 	this.dispatchCalls = append(this.dispatchCalls, captured)
+	this.dispatchLock.Unlock()
 	return nil
 }
 
@@ -141,8 +141,8 @@ func (this *PipelineFixture) TestPipelineRoutesMessageThroughExecutionPersistenc
 
 	this.So(len(this.dispatchCalls), should.Equal, 1)
 	this.So(len(this.dispatchCalls[0]), should.Equal, 2)
-	this.So(this.dispatchCalls[0][0].(*Message).Value, should.Equal, "event-A")
-	this.So(this.dispatchCalls[0][1].(*Message).Value, should.Equal, "event-B")
+	this.So(this.dispatchCalls[0][0].Value, should.Equal, "event-A")
+	this.So(this.dispatchCalls[0][1].Value, should.Equal, "event-B")
 
 	batchInFlight, batchComplete := this.countTracked()
 	this.So(batchInFlight, should.Equal, 1)
@@ -170,7 +170,7 @@ func (this *PipelineFixture) TestPipelineHandlesMultipleMessagesAcrossHandleCall
 	var dispatched []any
 	for _, call := range this.dispatchCalls {
 		for _, message := range call {
-			dispatched = append(dispatched, message.(*Message).Value)
+			dispatched = append(dispatched, message.Value)
 		}
 	}
 	this.So(dispatched, should.Equal, []any{"e1", "e2", "e3"})

@@ -13,7 +13,7 @@ type (
 		Write(ctx context.Context, messages ...*Message) error
 	}
 	Dispatcher interface {
-		Dispatch(ctx context.Context, messages ...any) error
+		Dispatch(ctx context.Context, messages ...*Message) error
 	}
 	Monitor interface {
 		Track(observation any)
