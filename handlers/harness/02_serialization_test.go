@@ -129,7 +129,7 @@ func (this *SerializationFixture) TestSerializesEachResultValueIntoContent_Popul
 	this.So(units[0].results[0].ContentType, should.Equal, "test/content-type")
 }
 
-func (this *SerializationFixture) TestSerializerErrorIsTracked_FallbackToFmtSprintfEncoding() {
+func (this *SerializationFixture) TestSerializerErrorIsTracked() {
 	type TestMessage struct {
 		Value string `json:"value"`
 	}
@@ -153,5 +153,4 @@ func (this *SerializationFixture) TestSerializerErrorIsTracked_FallbackToFmtSpri
 	this.So(ok, should.BeTrue)
 	this.So(observation.Error, should.WrapError, ErrSerialization)
 	this.So(observation.Value, should.Equal, value)
-	this.So(units[0].results[0].Content.String(), should.Equal, `harness.TestMessage{Value:"unserializable"}`)
 }

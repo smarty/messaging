@@ -30,11 +30,7 @@ func (this *serialization) Listen() {
 			if err != nil {
 				failure.Error = fmt.Errorf("%w: %w", ErrSerialization, err)
 				failure.Value = message.Value
-				this.monitor.Track(failure)
-
-				message.Content.Reset()
-				message.ContentType = "go fmt.Sprintf(%#v)"
-				_, _ = fmt.Fprintf(message.Content, "%#v", message.Value) // Not JSON, but it will have to do...
+				this.monitor.Track(failure) // This would be a big, fat, hairy deal. It is the domain model's responsibility to only produce values that will marshal to JSON.
 			} else {
 				message.ContentType = this.serializer.ContentType()
 			}
