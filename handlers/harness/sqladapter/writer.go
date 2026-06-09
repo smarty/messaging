@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -83,6 +84,10 @@ func (this *Writer) insertMessages(ctx context.Context, tx *sql.Tx, messages []*
 	if err != nil {
 		return err
 	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
 	// https://dev.mysql.com/doc/refman/5.6/en/information-functions.html#function_last-insert-id
 	// > If you insert multiple rows using a single INSERT statement, LAST_INSERT_ID() returns the value
 	// > generated for the first inserted row only.
@@ -90,8 +95,29 @@ func (this *Writer) insertMessages(ctx context.Context, tx *sql.Tx, messages []*
 	if err != nil {
 		return err
 	}
+	return this.assignIDs(messages, affected, first)
+}
+
+// assignIDs validates the row count and starting identity reported by the
+// INSERT, then derives each message's ID from the first auto-increment value.
+// The derivation relies on a single multi-row "simple insert" producing
+// consecutive auto-increment values spaced by stride, which holds even under
+// innodb_autoinc_lock_mode = 2 so long as no concurrent "bulk inserts" target
+// the Messages table and stride matches the server's auto_increment_increment.
+func (this *Writer) assignIDs(messages []*harness.Message, affected, first int64) error {
+	if affected != int64(len(messages)) {
+		return errRowsAffected
+	}
+	if first <= 0 {
+		return errIdentityFailure
+	}
 	for i, message := range messages {
 		message.ID = uint64(first) + uint64(i)*this.stride
 	}
 	return nil
 }
+
+var (
+	errRowsAffected    = errors.New("the number of modified rows was not expected compared to the number of writes performed")
+	errIdentityFailure = errors.New("unable to determine the identity of the inserted row(s)")
+)
