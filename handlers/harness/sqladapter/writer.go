@@ -104,6 +104,7 @@ func (this *Writer) insertMessages(ctx context.Context, tx *sql.Tx, messages []*
 // consecutive auto-increment values spaced by stride, which holds even under
 // innodb_autoinc_lock_mode = 2 so long as no concurrent "bulk inserts" target
 // the Messages table and stride matches the server's auto_increment_increment.
+// https://dev.mysql.com/doc/refman/8.4/en/innodb-auto-increment-handling.html
 func (this *Writer) assignIDs(messages []*harness.Message, affected, first int64) error {
 	if affected != int64(len(messages)) {
 		return errRowsAffected
