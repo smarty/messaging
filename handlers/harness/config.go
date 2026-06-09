@@ -15,6 +15,15 @@
 // those retry loops abort when the context passed to New(ctx, ...) is cancelled,
 // so consumers must cancel it on shutdown to avoid hanging the drain. Custom
 // Writer and Dispatcher implementations must honor the context they are given.
+//
+// Values produced by registered domain types must serialize successfully —
+// that is the calling application's contract. If the Serializer ever returns
+// an error, the pipeline tracks a SerializationError observation and then
+// panics, halting the process before the unit of work reaches persistence:
+// nothing is stored, acked, or dispatched, and the message source redelivers
+// after restart. The failure is deterministic, so the application crash-loops
+// until the offending domain type is fixed. Messages already in the pipeline
+// may not persist (requiring retry from the caller or redelivery from the MQ).
 package harness
 
 import (

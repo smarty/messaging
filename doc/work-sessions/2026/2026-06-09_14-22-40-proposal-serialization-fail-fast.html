@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Proposal: Fail fast on serialization errors</title>
+<style>
+  body { font-family: sans-serif; max-width: 900px; margin: 2em auto; padding: 0 1em; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { margin-top: 1.8em; }
+  pre { background: #f5f5f5; padding: 1em; overflow-x: auto; border-radius: 4px; }
+  code { background: #f5f5f5; padding: 0 0.2em; border-radius: 3px; }
+  pre code { padding: 0; }
+  table { border-collapse: collapse; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.4em 0.8em; text-align: left; }
+  th { background: #f0f0f0; }
+  .done { opacity: 0.5; text-decoration: line-through; }
+  .user-turn { border-left: 4px solid #f90; padding: 0.5em 1em; background: #fffbe6; border-radius: 0 4px 4px 0; }
+  ul.checklist { list-style: none; padding-left: 0.5em; }
+  ul.checklist li { margin: 0.5em 0; }
+</style>
+</head>
+<body>
+<h1>Proposal: Fail fast on serialization errors</h1>
+
+<h2>Background</h2>
+<p>
+  Commit <code>2b7c630</code> established the contract: <em>it is the domain model's
+  responsibility to only produce values that serialize successfully</em>. A
+  serialization failure is therefore a programming error — a contract violation
+  that should never occur in a correctly built application. But the pipeline must
+  still do <em>something</em> when it occurs, and what it does today is the worst
+  available option.
+</p>
+<p>
+  Today, <code>handlers/harness/02_serialization.go:30-38</code> tracks a
+  <code>SerializationError</code> via the monitor and then lets the unit of work
+  keep flowing. The failed message proceeds with an empty <code>Content</code>
+  buffer and an empty <code>ContentType</code>, which means:
+</p>
+<ul>
+  <li>Stage 03 persists a <code>Messages</code> row with a type but an empty payload — a corrupt assertion that "this event occurred and here is its content."</li>
+  <li>Stage 04 acks the batch upstream, so the input is never redelivered.</li>
+  <li>Stage 05 publishes the empty payload to every downstream subscriber of that message type — the cascading-failure scenario.</li>
+  <li>If the row somehow escapes dispatch, <code>sqladapter.Recover</code> faithfully re-publishes the empty payload at every subsequent startup.</li>
+</ul>
+
+<h3>Decision (from design discussion, 2026-06-09)</h3>
+<table>
+  <tr><th>Question</th><th>Answer</th></tr>
+  <tr><td>Persist a typed, payload-less row?</td><td>No</td></tr>
+  <tr><td>Dispatch the message downstream?</td><td>No — hard constraint</td></tr>
+  <tr><td>Mark a persisted row dispatched?</td><td>Moot (nothing is persisted)</td></tr>
+</table>
+<p>
+  Instead: <strong>track the observation, then halt the process</strong> before the
+  unit reaches persistence.
+</p>
+
+<h2>Approach</h2>
+<p>
+  In <code>02_serialization.go</code>, when <code>serializer.Serialize</code> returns
+  an error: track the <code>SerializationError</code> exactly as today, then
+  <code>panic</code> with the wrapped error (which satisfies
+  <code>errors.Is(err, ErrSerialization)</code>). The unit is never forwarded.
+</p>
+<p>
+  This composes cleanly with semantics the pipeline already has:
+</p>
+<ul>
+  <li>Nothing is persisted, dispatched, or acked — the same
+    "no ack → MQ redelivers" contract the persistence-abandonment path relies on
+    (<code>03_persistence.go:40</code>).</li>
+  <li>The failure is deterministic: on restart the MQ redelivers
+    the input, the domain model produces the same unserializable value, and the app
+    crash-loops loudly until a human fixes the model. Anomaly visibility is maximal.</li>
+  <li>Downstream systems experience only the publisher's absence,
+    never a malformed message.</li>
+  <li>No schema changes; no special cases in <code>Writer</code>,
+    <code>Dispatcher</code>, or <code>Recover</code>.</li>
+</ul>
+<p>
+  <strong>Why the whole process and not just the unit:</strong> by the time
+  serialization runs, the domain model's in-memory state has already advanced
+  (execution happened in stage 01). Dropping the unit and continuing would let MQ
+  redelivery replay inputs against already-mutated state. The only safe recovery
+  point is process death followed by a clean rebuild of state — halt or forward,
+  nothing in between.
+</p>
+<p>
+  Mechanically, the panic occurs inside one of the fanned-out serialization
+  goroutines (<code>SerializerCount</code>, default 4). An unrecovered panic in any
+  goroutine terminates the process with a stack trace on stderr — loud by design.
+  The existing <code>defer close(this.output)</code> still runs during unwind, so
+  test code (which recovers) observes a closed output channel.
+</p>
+
+<h3>Sketch (not final code)</h3>
+<pre><code>err := this.serializer.Serialize(message.Content, message.Value)
+if err != nil {
+    failure := SerializationError{
+        Error: fmt.Errorf("%w: %w", ErrSerialization, err),
+        Value: message.Value,
+    }
+    this.monitor.Track(failure)
+    panic(failure.Error) // contract violation (see commit 2b7c630): halt before
+                         // persistence so nothing is stored, acked, or dispatched.
+}
+message.ContentType = this.serializer.ContentType()
+</code></pre>
+<p>
+  Note this also retires the awkward <code>failure.Error = nil / failure.Value = nil</code>
+  reset dance in the current loop — <code>failure</code> becomes a local inside the
+  error branch.
+</p>
+
+<h2>Trade-offs</h2>
+<ul>
+  <li><strong>Innocent bystanders.</strong> Other in-flight units
+    (and sibling messages within the failing unit) die unacked and are redelivered
+    after restart. At-least-once delivery already demands tolerance of this; it is
+    the same blast radius as a power failure.</li>
+  <li><strong>Monitor flush.</strong> <code>Track</code> runs
+    synchronously before the panic, but if a monitor implementation buffers
+    asynchronously, the observation may be lost when the process dies. The panic
+    message and stack trace on stderr carry the same information, so the anomaly is
+    never silent.</li>
+  <li><strong>Deliberate outage.</strong> The app crash-loops until
+    the domain bug is fixed and deployed. This is the accepted cost: stream
+    integrity outranks availability for a should-never-happen contract violation.</li>
+  <li><strong>No escape hatch (yet).</strong> A configurable
+    <code>Options.Fatal(func(error))</code> hook could replace the bare panic later
+    if an application ever needs graceful-drain-then-exit. Deliberately omitted now:
+    no known consumer needs it, and it would invite "handling" the unhandleable.</li>
+</ul>
+
+<h2>Implementation Checklist</h2>
+
+<h3>Phase 1 — Red: capture fail-fast semantics in tests (agent)</h3>
+<ul class="checklist">
+  <li class="done">☑ In <code>02_serialization_test.go</code>, rewrite
+    <code>TestSerializerErrorIsTracked</code> as
+    <code>TestSerializerErrorTracksThenPanics</code>: arrange a unit of
+    [good, bad, good] messages with the bad one registered in
+    <code>serializeFail</code>; invoke <code>Listen()</code> <em>synchronously</em>
+    wrapped in a recover-capturing closure (input pre-loaded and closed).</li>
+  <li class="done">☑ Assert: the recovered value is an error satisfying
+    <code>errors.Is(err, ErrSerialization)</code> and wrapping the underlying
+    serializer error.</li>
+  <li class="done">☑ Assert: exactly one <code>SerializationError</code> was tracked
+    (with the offending <code>Value</code>) <em>before</em> the panic.</li>
+  <li class="done">☑ Assert: serialization stopped at the bad message
+    (<code>serializeCalls</code> contains the first good value and the bad value, not
+    the trailing good value).</li>
+  <li class="done">☑ Assert: the failing unit was never forwarded and the output channel
+    was closed (drain yields zero units).</li>
+  <li class="done">☑ Add <code>TestUnitsBeforeFailureRemainForwarded</code>: a fully good
+    unit followed by a failing unit — drain yields only the good unit; panic still
+    observed.</li>
+  <li class="done">☑ Run <code>go test ./handlers/harness/ -run TestSerializationFixture | tail -50</code>
+    — confirm the new tests fail for the right reason (no panic occurs; unit is
+    forwarded today).</li>
+</ul>
+
+<h3 class="user-turn">Phase 2 — Green: production change (your turn 🟠)</h3>
+<ul class="checklist">
+  <li class="done">☑ Modify <code>serialization.Listen</code> in
+    <code>02_serialization.go</code> to make the Phase 1 tests pass.</li>
+  <li class="done">☑ Run <code>go test ./handlers/harness/ -run TestSerializationFixture | tail -50</code>
+    — confirm green.</li>
+</ul>
+
+<h3>Phase 3 — Documentation &amp; sweep (agent)</h3>
+<ul class="checklist">
+  <li class="done">☑ Update the package doc comment in <code>config.go</code> to state
+    the fail-fast contract: a serialization failure tracks a
+    <code>SerializationError</code> and panics; values supplied to the pipeline must
+    serialize (per commit <code>2b7c630</code>).</li>
+  <li class="done">☑ Update the doc comment on <code>SerializationError</code> /
+    <code>ErrSerialization</code> in <code>contracts.go</code> to note the
+    observation immediately precedes a panic.</li>
+  <li class="done">☑ Grep for any other code or docs that assume serialization errors
+    flow through (e.g. empty-<code>ContentType</code> handling) and reconcile.
+    (Only match: the unrelated transport-level <code>SerializationError</code> in the
+    <code>serialization</code> package. Nothing to reconcile.)</li>
+  <li class="done">☑ Run <code>make test | tail -50</code> — full suite green
+    (includes <code>go mod tidy</code>, <code>go fmt</code>, <code>-race</code>;
+    <code>handlers/harness</code> at 100% coverage).</li>
+</ul>
+
+<h2>Your Turn 🟠</h2>
+<div class="user-turn">
+<p>
+  Phase 2 is yours: the semantic heart of the change, sized at roughly ten lines in
+  <code>02_serialization.go</code>. The failing tests from Phase 1 are your
+  specification. Guidance, not code:
+</p>
+<ul>
+  <li>Keep the loop structure and <code>defer close(this.output)</code> —
+    the deferred close is what lets the recovering test observe a closed output.</li>
+  <li>On error: build the <code>SerializationError</code> as a local,
+    <code>Track</code> it first, then <code>panic</code> with its (wrapped) error so
+    callers of <code>recover()</code> can use <code>errors.Is(..., ErrSerialization)</code>.</li>
+  <li>On success: set <code>message.ContentType</code> as today.</li>
+  <li>The <code>failure</code> variable hoisted above the loop (and its
+    nil-reset lines) should disappear.</li>
+  <li>Replace the "big, fat, hairy deal" comment with one stating the
+    contract and the consequence (halt before persistence; nothing stored, acked, or
+    dispatched; MQ redelivers after restart).</li>
+</ul>
+<p>
+  If you'd rather I take Phase 2 as well, just say "skip the your-turn step."
+</p>
+</div>
+
+</body>
+</html>

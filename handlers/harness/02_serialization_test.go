@@ -129,28 +129,56 @@ func (this *SerializationFixture) TestSerializesEachResultValueIntoContent_Popul
 	this.So(units[0].results[0].ContentType, should.Equal, "test/content-type")
 }
 
-func (this *SerializationFixture) TestSerializerErrorIsTracked() {
+func (this *SerializationFixture) listenAndRecover() (recovered any) {
+	defer func() { recovered = recover() }()
+	this.subject.Listen()
+	return nil
+}
+
+func (this *SerializationFixture) TestSerializerErrorTracksThenPanics() {
 	type TestMessage struct {
 		Value string `json:"value"`
 	}
 	boom := errors.New("boom")
-	value := TestMessage{
+	bad := TestMessage{
 		Value: "unserializable",
 	}
-	this.serializeFail[value] = boom
+	this.serializeFail[bad] = boom
 	unit := &unitOfWork{results: []*Message{
-		{Value: value, Content: bytes.NewBuffer(nil)},
+		{Value: "good-1", Content: bytes.NewBuffer(nil)},
+		{Value: bad, Content: bytes.NewBuffer(nil)},
+		{Value: "good-2", Content: bytes.NewBuffer(nil)},
 	}}
 	this.input <- unit
 	close(this.input)
 
-	go this.subject.Listen()
+	recovered := this.listenAndRecover()
 
-	units := this.drain()
-	this.So(len(units), should.Equal, 1)
+	this.So(recovered, should.NOT.BeNil)
+	err, isError := recovered.(error)
+	this.So(isError, should.BeTrue)
+	this.So(err, should.WrapError, ErrSerialization)
+	this.So(err, should.WrapError, boom)
 	this.So(this.tracked, should.HaveLength, 1)
-	observation, ok := this.tracked[0].(SerializationError)
-	this.So(ok, should.BeTrue)
+	observation, isObservation := this.tracked[0].(SerializationError)
+	this.So(isObservation, should.BeTrue)
 	this.So(observation.Error, should.WrapError, ErrSerialization)
-	this.So(observation.Value, should.Equal, value)
+	this.So(observation.Value, should.Equal, bad)
+	this.So(this.serializeCalls, should.Equal, []any{"good-1", bad})
+	this.So(this.drain(), should.BeEmpty) // drain returning proves output was closed during unwind
+}
+
+func (this *SerializationFixture) TestUnitsBeforeFailureRemainForwarded() {
+	boom := errors.New("boom")
+	this.serializeFail["bad"] = boom
+	this.input <- &unitOfWork{results: []*Message{{Value: "one", Content: bytes.NewBuffer(nil)}}}
+	this.input <- &unitOfWork{results: []*Message{{Value: "bad", Content: bytes.NewBuffer(nil)}}}
+	close(this.input)
+
+	recovered := this.listenAndRecover()
+
+	this.So(recovered, should.NOT.BeNil)
+	units := this.drain()
+	this.So(units, should.HaveLength, 1)
+	this.So(units[0].results[0].Content.String(), should.Equal, "encoded:one")
 }
