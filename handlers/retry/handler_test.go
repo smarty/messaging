@@ -10,7 +10,7 @@ import (
 
 	"github.com/smarty/gunit"
 	"github.com/smarty/gunit/assert/should"
-	"github.com/smarty/messaging/v3"
+	"github.com/smarty/messaging/v4"
 )
 
 func TestFixture(t *testing.T) {

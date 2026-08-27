@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/smarty/messaging/v3"
-	"github.com/smarty/messaging/v3/rabbitmq/adapter"
+	"github.com/smarty/messaging/v4"
+	"github.com/smarty/messaging/v4/rabbitmq/adapter"
 )
 
 type defaultConnector struct {

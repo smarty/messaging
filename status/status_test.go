@@ -7,7 +7,7 @@ import (
 
 	"github.com/smarty/gunit"
 	"github.com/smarty/gunit/assert/should"
-	"github.com/smarty/messaging/v3"
+	"github.com/smarty/messaging/v4"
 )
 
 func TestStatusFixture(t *testing.T) {
@@ -30,7 +30,7 @@ type StatusFixture struct {
 
 func (this *StatusFixture) Setup() {
 	this.ctx = context.Background()
-	this.checker = New(Options.Connector(this), Options.Topic("status-topic"))
+	this.checker = New(Options.Connector(this), Options.Topic("status-topic"), Options.FailureThreshold(1))
 }
 
 func (this *StatusFixture) TestWhenConnectFails_ReturnUnderlyingError() {
@@ -71,6 +71,51 @@ func (this *StatusFixture) TestWhenWriteSucceeds_ReturnNilAndReuseCachedConnecti
 	this.So(this.connectCalls, should.Equal, 1)
 	this.So(this.writeCalls, should.Equal, 2)
 	this.So(this.closeCalls, should.Equal, 0)
+}
+
+func (this *StatusFixture) TestFailureThreshold_ToleratesFailuresBelowThreshold() {
+	this.checker = New(Options.Connector(this), Options.FailureThreshold(3))
+	this.writeError = errors.New("write failed")
+
+	first := this.checker.Status(this.ctx)
+	second := this.checker.Status(this.ctx)
+	third := this.checker.Status(this.ctx)
+
+	this.So(first, should.BeNil)
+	this.So(second, should.BeNil)
+	this.So(third, should.Equal, this.writeError)
+}
+func (this *StatusFixture) TestFailureThreshold_SuccessResetsTheCount() {
+	this.checker = New(Options.Connector(this), Options.FailureThreshold(3))
+
+	this.writeError = errors.New("write failed")
+	_ = this.checker.Status(this.ctx)
+	_ = this.checker.Status(this.ctx)
+	this.writeError = nil
+	success := this.checker.Status(this.ctx)
+	this.writeError = errors.New("write failed")
+	afterReset := this.checker.Status(this.ctx)
+
+	this.So(success, should.BeNil)
+	this.So(afterReset, should.BeNil)
+}
+func (this *StatusFixture) TestFailureThreshold_DefaultToleratesFourConsecutiveFailures() {
+	this.checker = New(Options.Connector(this))
+	this.writeError = errors.New("write failed")
+
+	for range 4 {
+		this.So(this.checker.Status(this.ctx), should.BeNil)
+	}
+
+	this.So(this.checker.Status(this.ctx), should.Equal, this.writeError)
+}
+func (this *StatusFixture) TestFailureThresholdOfOne_ReturnsTheFirstError() {
+	this.checker = New(Options.Connector(this), Options.FailureThreshold(1))
+	this.writeError = errors.New("write failed")
+
+	err := this.checker.Status(this.ctx)
+
+	this.So(err, should.Equal, this.writeError)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -6,7 +6,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/smarty/messaging/v3"
+	"github.com/smarty/messaging/v4"
 )
 
 type handler struct {

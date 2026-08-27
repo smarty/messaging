@@ -5,33 +5,43 @@ import (
 	"io"
 	"sync"
 
-	"github.com/smarty/messaging/v3"
+	"github.com/smarty/messaging/v4"
 )
 
 type defaultStatusChecker struct {
-	lock       *sync.Mutex
-	logger     logger
-	dispatch   messaging.Dispatch
-	connector  messaging.Connector
-	connection messaging.Connection
-	writer     messaging.Writer
+	lock                *sync.Mutex
+	logger              logger
+	dispatch            messaging.Dispatch
+	connector           messaging.Connector
+	connection          messaging.Connection
+	writer              messaging.Writer
+	failureThreshold    int
+	consecutiveFailures int
 }
 
 func newDefaultStatusChecker(config configuration) Checker {
 	return &defaultStatusChecker{
-		lock:      new(sync.Mutex),
-		logger:    config.logger,
-		connector: config.connector,
-		dispatch:  messaging.Dispatch{Topic: config.topic},
+		lock:             new(sync.Mutex),
+		logger:           config.logger,
+		connector:        config.connector,
+		dispatch:         messaging.Dispatch{Topic: config.topic},
+		failureThreshold: config.failureThreshold,
 	}
 }
 func (this *defaultStatusChecker) Status(ctx context.Context) error {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 	err := this.tryWrite(ctx)
-	if err != nil {
-		this.logger.Printf("[WARN] Status check failed [%s].", err)
+	if err == nil {
+		this.consecutiveFailures = 0
+		return nil
 	}
+	this.consecutiveFailures++
+	if this.consecutiveFailures < this.failureThreshold {
+		this.logger.Printf("[WARN] Status check failed (%d of %d tolerated) [%s].", this.consecutiveFailures, this.failureThreshold, err)
+		return nil
+	}
+	this.logger.Printf("[WARN] Status check failed [%s].", err)
 	return err
 }
 

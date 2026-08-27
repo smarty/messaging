@@ -10,7 +10,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/smarty/gunit"
 	"github.com/smarty/gunit/assert/should"
-	"github.com/smarty/messaging/v3"
+	"github.com/smarty/messaging/v4"
 )
 
 func TestStreamFixture(t *testing.T) {

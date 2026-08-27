@@ -10,8 +10,8 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/smarty/gunit"
 	"github.com/smarty/gunit/assert/should"
-	"github.com/smarty/messaging/v3"
-	"github.com/smarty/messaging/v3/rabbitmq/adapter"
+	"github.com/smarty/messaging/v4"
+	"github.com/smarty/messaging/v4/rabbitmq/adapter"
 )
 
 func TestConnectorFixture(t *testing.T) {

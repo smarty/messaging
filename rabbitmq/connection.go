@@ -5,8 +5,8 @@ import (
 	"sync"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"github.com/smarty/messaging/v3"
-	"github.com/smarty/messaging/v3/rabbitmq/adapter"
+	"github.com/smarty/messaging/v4"
+	"github.com/smarty/messaging/v4/rabbitmq/adapter"
 )
 
 type defaultConnection struct {

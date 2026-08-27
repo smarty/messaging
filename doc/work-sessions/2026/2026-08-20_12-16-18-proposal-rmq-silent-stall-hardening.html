@@ -226,6 +226,17 @@ configuration, stranded <code>Messages</code> rows) in parallel. None of these f
 Consuming services adopt the release with a version bump; the new monitor callbacks are
 opt-in.</p>
 
+<div class="callout">
+<strong>Decision (2026-08-27, during implementation):</strong> the release ships as
+<strong><code>v4.0.0</code></strong>, not <code>v3.18.0</code>. Rationale: safe adoption of the
+honest status checker requires deliberate caller-side work (failure-tolerance configuration and
+threshold verification), so the upgrade must not be reachable by an accidental
+<code>go get -u</code>; in Go, only a major version guarantees that. The scope also grows by one
+feature: <code>status.Options.FailureThreshold(n)</code> (Phase 3b below), so callers configure
+tolerance instead of each writing a decorator. The context-aware <code>TxCommit</code> redesign
+stays out (future <code>v5</code>).
+</div>
+
 <h3 id="fix1">Fix 1 &mdash; Explicit client heartbeat</h3>
 
 <h4>What changes</h4>
@@ -478,6 +489,31 @@ Run <code>make test</code> in the <code>messaging</code> repository after each g
 </div>
 
 <div class="phase">
+<h3>Phase 3b &mdash; Built-in failure tolerance (added 2026-08-27 with the v4 decision)</h3>
+<p class="small">The checker reports a failure only after <em>n</em> consecutive probe failures;
+one success resets the count. Default: 5 (with the <code>httpstatus</code> default 1-second
+cadence, ~5 seconds of damping; services set their own cadence and threshold). Every tolerated
+failure still logs at <code>[WARN]</code>.</p>
+<ul class="checklist">
+  <li class="done"><span class="tag red">red</span> Test: threshold 3 configured; two consecutive failures &rarr;
+      <code>Status</code> returns nil both times; the third failure returns the error.</li>
+  <li class="done"><span class="tag red">red</span> Test: threshold 3; two failures, then a success, then a failure
+      &rarr; nil (the success reset the count).</li>
+  <li class="done"><span class="tag red">red</span> Test: default threshold is 5 (four failures return nil; the fifth
+      returns the error).</li>
+  <li class="done"><span class="tag red">red</span> Test: <code>FailureThreshold(1)</code> restores hair-trigger
+      honesty (first failure returns the error).</li>
+  <li class="done"><span class="tag red">red</span> Run <code>go test ./status/...</code> &mdash; confirm failures for the
+      right reasons.</li>
+  <li class="done"><span class="tag green">green</span> Add <code>Options.FailureThreshold(value int)</code> and the
+      consecutive-failure counter to <code>defaultStatusChecker</code>; register the default of 5.</li>
+  <li class="done"><span class="tag green">green</span> Run <code>go test ./status/...</code> &mdash; confirm all tests pass.</li>
+  <li class="done"><span class="tag gray">refactor</span> Run <code>make test</code>; adjust existing Phase 3 tests to
+      configure <code>FailureThreshold(1)</code> where they assert first-failure returns.</li>
+</ul>
+</div>
+
+<div class="phase">
 <h3>Phase 4 &mdash; Release and downstream adoption</h3>
 <ul class="checklist">
   <li class="done">Update <code>CONTRIBUTING.md</code>/changelog notes: new <code>Options.Heartbeat</code>, the
@@ -485,7 +521,13 @@ Run <code>make test</code> in the <code>messaging</code> repository after each g
       addition (T3), and the status-checker behavior change (T1).
       <span class="small">(Done as <code>doc/release-notes-v3.18.0.md</code> &mdash; the repository has no
       changelog, and <code>CONTRIBUTING.md</code> is a generic contribution guide.)</span></li>
-  <li>Tag and release <code>v3.18.0</code> (release performed by Mike, not by Claude).</li>
+  <li class="done">Convert the module path to <code>github.com/smarty/messaging/v4</code>: update
+      <code>go.mod</code> (with <code>retract</code> directives for the abandoned
+      <code>v4.0.0-alpha.*</code> tags) and rewrite every self-import; run <code>make test</code>.</li>
+  <li class="done">Rewrite the release notes as <code>doc/release-notes-v4.0.0.md</code>: status-checker change
+      first, migration steps (import rewrite, adapter fake method), <code>FailureThreshold</code>,
+      and the <code>Options.Heartbeat(0)</code> escape hatch.</li>
+  <li>Tag and release <code>v4.0.0</code> (release performed by Mike, not by Claude).</li>
   <li>In <code>billing-context</code>: bump <code>go.mod</code>; add
       <code>ConnectionBlocked</code>/<code>ConnectionUnblocked</code> to <code>rmqMonitor</code>
       (<code>main/api/monitor.go</code>) backed by a new gauge

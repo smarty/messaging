@@ -5,7 +5,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/smarty/messaging/v3"
+	"github.com/smarty/messaging/v4"
 )
 
 type connectionPool interface {
