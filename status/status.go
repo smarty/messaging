@@ -3,7 +3,6 @@ package status
 import (
 	"context"
 	"io"
-	"strings"
 	"sync"
 
 	"github.com/smarty/messaging/v3"
@@ -30,13 +29,10 @@ func (this *defaultStatusChecker) Status(ctx context.Context) error {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 	err := this.tryWrite(ctx)
-	if err == nil {
-		return nil
+	if err != nil {
+		this.logger.Printf("[WARN] Status check failed [%s].", err)
 	}
-	if strings.Contains(strings.ToLower(err.Error()), "password") {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (this *defaultStatusChecker) tryWrite(ctx context.Context) error {

@@ -69,6 +69,7 @@ func (this *defaultConnector) configuration() (string, adapter.Config) {
 		Username:    username,
 		Password:    password,
 		VirtualHost: parseVirtualHost(this.broker.Address.Path),
+		Heartbeat:   this.config.Heartbeat,
 	}
 }
 func parseAuthentication(info *url.Userinfo, queryUsername, queryPassword string) (string, string) {

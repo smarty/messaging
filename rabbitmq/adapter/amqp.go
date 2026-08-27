@@ -11,7 +11,11 @@ type amqpConnector struct{}
 
 func (this amqpConnector) Connect(_ context.Context, socket net.Conn, config Config) (Connection, error) {
 	plainAuth := &amqp.PlainAuth{Username: config.Username, Password: config.Password}
-	amqpConfig := amqp.Config{SASL: []amqp.Authentication{plainAuth}, Vhost: config.VirtualHost}
+	amqpConfig := amqp.Config{
+		SASL:      []amqp.Authentication{plainAuth},
+		Vhost:     config.VirtualHost,
+		Heartbeat: config.Heartbeat,
+	}
 
 	if connection, err := amqp.Open(socket, amqpConfig); err != nil {
 		return nil, err

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/smarty/gunit"
 	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v3"
@@ -66,6 +67,7 @@ func (this *ConnectorFixture) TestWhenConnectingToBroker_UseDialedNetworkConnect
 		Username:    "my-username",
 		Password:    "my-password",
 		VirtualHost: "my-vhost",
+		Heartbeat:   10 * time.Second,
 	})
 }
 func (this *ConnectorFixture) TestCredentialsFromQueryString() {
@@ -77,6 +79,7 @@ func (this *ConnectorFixture) TestCredentialsFromQueryString() {
 		Username:    "My-Username-1",
 		Password:    "My-Password-1",
 		VirtualHost: "the-vhost",
+		Heartbeat:   10 * time.Second,
 	})
 }
 func (this *ConnectorFixture) TestCredentialsFromQueryString_PreferUserInfo() {
@@ -88,7 +91,20 @@ func (this *ConnectorFixture) TestCredentialsFromQueryString_PreferUserInfo() {
 		Username:    "username-1",
 		Password:    "password-1",
 		VirtualHost: "the-vhost",
+		Heartbeat:   10 * time.Second,
 	})
+}
+func (this *ConnectorFixture) TestConfiguredHeartbeatOverridesDefault() {
+	this.connector = New(
+		Options.Address(this.brokerAddress),
+		Options.Connector(this),
+		Options.Dialer(this),
+		Options.Heartbeat(30*time.Second),
+	)
+
+	_, _ = this.connector.Connect(this.ctx)
+
+	this.So(this.connectConfig.Heartbeat, should.Equal, 30*time.Second)
 }
 func (this *ConnectorFixture) TestWhenNoCredentialsFound_ConnectUsingDefaultCredentials() {
 	this.brokerAddress = "amqp://localhost:5672/another-vhost"
@@ -109,6 +125,7 @@ func (this *ConnectorFixture) TestWhenNoCredentialsFound_ConnectUsingDefaultCred
 		Username:    "guest",
 		Password:    "guest",
 		VirtualHost: "another-vhost",
+		Heartbeat:   10 * time.Second,
 	})
 }
 
@@ -154,6 +171,9 @@ func (this *ConnectorFixture) Connect(ctx context.Context, socket net.Conn, conf
 
 func (this *ConnectorFixture) Close() error                      { this.callsToClose++; return nil }
 func (this *ConnectorFixture) Channel() (adapter.Channel, error) { panic("nop") }
+func (this *ConnectorFixture) NotifyBlocked(receiver chan amqp.Blocking) chan amqp.Blocking {
+	return receiver
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

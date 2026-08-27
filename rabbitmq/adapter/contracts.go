@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -14,6 +15,7 @@ type Config struct {
 	Username    string
 	Password    string
 	VirtualHost string
+	Heartbeat   time.Duration
 }
 
 type Connector interface {
@@ -22,6 +24,7 @@ type Connector interface {
 
 type Connection interface {
 	Channel() (Channel, error)
+	NotifyBlocked(receiver chan amqp.Blocking) chan amqp.Blocking
 	io.Closer
 }
 

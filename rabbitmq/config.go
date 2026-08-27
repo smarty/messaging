@@ -27,6 +27,7 @@ type configuration struct {
 	Monitor              monitor
 	Now                  func() time.Time
 	TopologyFailurePanic bool
+	Heartbeat            time.Duration
 }
 
 var Options singleton
@@ -68,6 +69,9 @@ func (singleton) Monitor(value monitor) option {
 }
 func (singleton) Now(value func() time.Time) option {
 	return func(this *configuration) { this.Now = value }
+}
+func (singleton) Heartbeat(value time.Duration) option {
+	return func(this *configuration) { this.Heartbeat = value }
 }
 func (singleton) apply(options ...option) option {
 	return func(this *configuration) {
@@ -118,11 +122,13 @@ func (singleton) defaults(options ...option) []option {
 		Options.Logger(defaultLogger),
 		Options.Monitor(defaultMonitor),
 		Options.Now(defaultNow),
+		Options.Heartbeat(defaultHeartbeat),
 	}, options...)
 }
 
 const (
-	defaultAddress = "amqp://guest:guest@127.0.0.1:5672/"
+	defaultAddress   = "amqp://guest:guest@127.0.0.1:5672/"
+	defaultHeartbeat = 10 * time.Second
 )
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

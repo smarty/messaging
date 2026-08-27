@@ -91,6 +91,14 @@
     border-radius: 4px;
     background: #fff;
   }
+  ul.checklist li.done::before {
+    content: "✓";
+    color: #fff;
+    background: var(--accent);
+    text-align: center;
+    line-height: 1.05em;
+    font-size: 0.85em;
+  }
   .phase { border: 1px solid var(--border); border-radius: 10px; padding: 0.2rem 1.3rem 1rem; margin: 1.3rem 0; }
   .phase h3 { margin-top: 1rem; }
   .tag {
@@ -394,55 +402,55 @@ Run <code>make test</code> in the <code>messaging</code> repository after each g
 <div class="phase">
 <h3>Phase 1 &mdash; Explicit client heartbeat</h3>
 <ul class="checklist">
-  <li><span class="tag red">red</span> In <code>rabbitmq/connector_test.go</code>, add assertions to the
+  <li class="done"><span class="tag red">red</span> In <code>rabbitmq/connector_test.go</code>, add assertions to the
       existing connect tests: the <code>adapter.Config</code> received by the fake connector carries
       <code>Heartbeat == 10 * time.Second</code> by default.</li>
-  <li><span class="tag red">red</span> Add a test that configures
+  <li class="done"><span class="tag red">red</span> Add a test that configures
       <code>Options.Heartbeat(30 * time.Second)</code> and asserts the fake connector receives 30s.</li>
-  <li><span class="tag red">red</span> Run <code>go test ./rabbitmq/...</code> &mdash; confirm both tests fail
+  <li class="done"><span class="tag red">red</span> Run <code>go test ./rabbitmq/...</code> &mdash; confirm both tests fail
       because <code>adapter.Config</code> has no <code>Heartbeat</code> field (compile error is the
       right reason) or because the value is zero.</li>
-  <li><span class="tag green">green</span> Add the <code>Heartbeat time.Duration</code> field to
+  <li class="done"><span class="tag green">green</span> Add the <code>Heartbeat time.Duration</code> field to
       <code>adapter.Config</code> in <code>rabbitmq/adapter/contracts.go</code>.</li>
-  <li><span class="tag green">green</span> Set <code>Heartbeat: config.Heartbeat</code> in the
+  <li class="done"><span class="tag green">green</span> Set <code>Heartbeat: config.Heartbeat</code> in the
       <code>amqp.Config</code> literal in <code>rabbitmq/adapter/amqp.go</code>.</li>
-  <li><span class="tag green">green</span> Add <code>Heartbeat</code> to <code>configuration</code> and
+  <li class="done"><span class="tag green">green</span> Add <code>Heartbeat</code> to <code>configuration</code> and
       <code>Options.Heartbeat(value time.Duration)</code> in <code>rabbitmq/config.go</code>; register the
       10s default in <code>defaults()</code>.</li>
-  <li><span class="tag green">green</span> Populate the field in
+  <li class="done"><span class="tag green">green</span> Populate the field in
       <code>defaultConnector.configuration()</code> in <code>rabbitmq/connector.go</code>.</li>
-  <li><span class="tag green">green</span> Run <code>go test ./rabbitmq/...</code> &mdash; confirm all tests pass.</li>
-  <li><span class="tag gray">refactor</span> Run <code>make test</code>; tidy naming and comments.</li>
+  <li class="done"><span class="tag green">green</span> Run <code>go test ./rabbitmq/...</code> &mdash; confirm all tests pass.</li>
+  <li class="done"><span class="tag gray">refactor</span> Run <code>make test</code>; tidy naming and comments.</li>
 </ul>
 </div>
 
 <div class="phase">
 <h3>Phase 2 &mdash; NotifyBlocked registration and surfacing</h3>
 <ul class="checklist">
-  <li><span class="tag red">red</span> In <code>rabbitmq/connection_test.go</code>, extend the fake
+  <li class="done"><span class="tag red">red</span> In <code>rabbitmq/connection_test.go</code>, extend the fake
       <code>adapter.Connection</code> with a controllable <code>NotifyBlocked</code> channel (compile
       breakage across test fakes is expected and is the right reason).</li>
-  <li><span class="tag red">red</span> Add a test: emitting <code>amqp.Blocking{Active: true, Reason: "low memory"}</code>
+  <li class="done"><span class="tag red">red</span> Add a test: emitting <code>amqp.Blocking{Active: true, Reason: "low memory"}</code>
       produces one <code>[WARN]</code> log line containing the reason.</li>
-  <li><span class="tag red">red</span> Add a test: emitting <code>Active: false</code> produces one
+  <li class="done"><span class="tag red">red</span> Add a test: emitting <code>Active: false</code> produces one
       <code>[INFO]</code> log line.</li>
-  <li><span class="tag red">red</span> Add a test with a fixture monitor that implements the optional
+  <li class="done"><span class="tag red">red</span> Add a test with a fixture monitor that implements the optional
       <code>blockedMonitor</code> interface: it receives <code>ConnectionBlocked("low memory")</code> then
       <code>ConnectionUnblocked()</code>, in order.</li>
-  <li><span class="tag red">red</span> Add a test with the plain (non-implementing) monitor: no panic, logs
+  <li class="done"><span class="tag red">red</span> Add a test with the plain (non-implementing) monitor: no panic, logs
       still emitted.</li>
-  <li><span class="tag red">red</span> Add a test: closing the notification channel ends the watcher
+  <li class="done"><span class="tag red">red</span> Add a test: closing the notification channel ends the watcher
       goroutine (run with <code>-race</code>; assert no further callbacks after close).</li>
-  <li><span class="tag red">red</span> Run <code>go test ./rabbitmq/... -race</code> &mdash; confirm failures for
+  <li class="done"><span class="tag red">red</span> Run <code>go test ./rabbitmq/... -race</code> &mdash; confirm failures for
       the right reasons.</li>
-  <li><span class="tag green">green</span> Add <code>NotifyBlocked(chan amqp.Blocking) chan amqp.Blocking</code>
+  <li class="done"><span class="tag green">green</span> Add <code>NotifyBlocked(chan amqp.Blocking) chan amqp.Blocking</code>
       to the <code>adapter.Connection</code> interface; delegate on <code>amqpConnection</code>.</li>
-  <li><span class="tag green">green</span> Define the unexported <code>blockedMonitor</code> interface in
+  <li class="done"><span class="tag green">green</span> Define the unexported <code>blockedMonitor</code> interface in
       <code>rabbitmq/contracts.go</code>.</li>
-  <li><span class="tag green">green</span> In <code>newConnection</code>, register a buffered channel
+  <li class="done"><span class="tag green">green</span> In <code>newConnection</code>, register a buffered channel
       (capacity 1), start the watcher goroutine, and implement the log + optional-monitor behavior.</li>
-  <li><span class="tag green">green</span> Run <code>go test ./rabbitmq/... -race</code> &mdash; confirm all tests pass.</li>
-  <li><span class="tag gray">refactor</span> Run <code>make test</code>; confirm no goroutine leaks in
+  <li class="done"><span class="tag green">green</span> Run <code>go test ./rabbitmq/... -race</code> &mdash; confirm all tests pass.</li>
+  <li class="done"><span class="tag gray">refactor</span> Run <code>make test</code>; confirm no goroutine leaks in
       the full suite.</li>
 </ul>
 </div>
@@ -450,31 +458,33 @@ Run <code>make test</code> in the <code>messaging</code> repository after each g
 <div class="phase">
 <h3>Phase 3 &mdash; Honest status checker</h3>
 <ul class="checklist">
-  <li><span class="tag red">red</span> Create <code>status/status_test.go</code> (the package has no tests
+  <li class="done"><span class="tag red">red</span> Create <code>status/status_test.go</code> (the package has no tests
       today) with a <code>gunit</code> fixture and fake connector/connection/writer.</li>
-  <li><span class="tag red">red</span> Test: connect fails &rarr; <code>Status</code> returns that error.</li>
-  <li><span class="tag red">red</span> Test: <code>Write</code> fails with a generic error &rarr;
+  <li class="done"><span class="tag red">red</span> Test: connect fails &rarr; <code>Status</code> returns that error.</li>
+  <li class="done"><span class="tag red">red</span> Test: <code>Write</code> fails with a generic error &rarr;
       <code>Status</code> returns that error and closes the cached connection (next call re-dials).</li>
-  <li><span class="tag red">red</span> Test: <code>Write</code> fails with a password error &rarr; still
+  <li class="done"><span class="tag red">red</span> Test: <code>Write</code> fails with a password error &rarr; still
       returns the error (behavior preserved).</li>
-  <li><span class="tag red">red</span> Test: <code>Write</code> succeeds &rarr; <code>Status</code> returns
+  <li class="done"><span class="tag red">red</span> Test: <code>Write</code> succeeds &rarr; <code>Status</code> returns
       nil and reuses the cached connection.</li>
-  <li><span class="tag red">red</span> Run <code>go test ./status/...</code> &mdash; confirm the generic-error
+  <li class="done"><span class="tag red">red</span> Run <code>go test ./status/...</code> &mdash; confirm the generic-error
       tests fail because the current code returns nil.</li>
-  <li><span class="tag green">green</span> Rewrite <code>Status</code>: return the error from
+  <li class="done"><span class="tag green">green</span> Rewrite <code>Status</code>: return the error from
       <code>tryWrite</code> unconditionally; remove the <code>strings</code> import; add the
       <code>[WARN]</code> log line.</li>
-  <li><span class="tag green">green</span> Run <code>go test ./status/...</code> &mdash; confirm all tests pass.</li>
-  <li><span class="tag gray">refactor</span> Run <code>make test</code> for the whole module.</li>
+  <li class="done"><span class="tag green">green</span> Run <code>go test ./status/...</code> &mdash; confirm all tests pass.</li>
+  <li class="done"><span class="tag gray">refactor</span> Run <code>make test</code> for the whole module.</li>
 </ul>
 </div>
 
 <div class="phase">
 <h3>Phase 4 &mdash; Release and downstream adoption</h3>
 <ul class="checklist">
-  <li>Update <code>CONTRIBUTING.md</code>/changelog notes: new <code>Options.Heartbeat</code>, the
+  <li class="done">Update <code>CONTRIBUTING.md</code>/changelog notes: new <code>Options.Heartbeat</code>, the
       optional <code>blockedMonitor</code> interface, the <code>adapter.Connection</code> interface
-      addition (T3), and the status-checker behavior change (T1).</li>
+      addition (T3), and the status-checker behavior change (T1).
+      <span class="small">(Done as <code>doc/release-notes-v3.18.0.md</code> &mdash; the repository has no
+      changelog, and <code>CONTRIBUTING.md</code> is a generic contribution guide.)</span></li>
   <li>Tag and release <code>v3.18.0</code> (release performed by Mike, not by Claude).</li>
   <li>In <code>billing-context</code>: bump <code>go.mod</code>; add
       <code>ConnectionBlocked</code>/<code>ConnectionUnblocked</code> to <code>rmqMonitor</code>
