@@ -70,8 +70,23 @@ func (singleton) Monitor(value monitor) option {
 func (singleton) Now(value func() time.Time) option {
 	return func(this *configuration) { this.Now = value }
 }
+
+// Heartbeat sets the AMQP heartbeat interval the client requests. A value of
+// 0 defers to the interval the broker offers (which disables the client-side
+// dead-socket protection). The wire protocol carries whole seconds, so a
+// positive value below one second rounds up to one second; a negative value
+// is replaced by the default.
 func (singleton) Heartbeat(value time.Duration) option {
-	return func(this *configuration) { this.Heartbeat = value }
+	return func(this *configuration) { this.Heartbeat = sanitizeHeartbeat(value) }
+}
+func sanitizeHeartbeat(value time.Duration) time.Duration {
+	if value < 0 {
+		return defaultHeartbeat
+	}
+	if value > 0 && value < time.Second {
+		return time.Second
+	}
+	return value
 }
 func (singleton) apply(options ...option) option {
 	return func(this *configuration) {

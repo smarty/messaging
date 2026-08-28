@@ -95,16 +95,28 @@ func (this *ConnectorFixture) TestCredentialsFromQueryString_PreferUserInfo() {
 	})
 }
 func (this *ConnectorFixture) TestConfiguredHeartbeatOverridesDefault() {
+	this.assertConfiguredHeartbeat(30*time.Second, 30*time.Second)
+}
+func (this *ConnectorFixture) TestZeroHeartbeat_DefersToTheBroker() {
+	this.assertConfiguredHeartbeat(0, 0)
+}
+func (this *ConnectorFixture) TestNegativeHeartbeat_ReplacedByTheDefault() {
+	this.assertConfiguredHeartbeat(-time.Second, 10*time.Second)
+}
+func (this *ConnectorFixture) TestSubSecondHeartbeat_RoundsUpToOneSecond() {
+	this.assertConfiguredHeartbeat(900*time.Millisecond, time.Second)
+}
+func (this *ConnectorFixture) assertConfiguredHeartbeat(configured, expected time.Duration) {
 	this.connector = New(
 		Options.Address(this.brokerAddress),
 		Options.Connector(this),
 		Options.Dialer(this),
-		Options.Heartbeat(30*time.Second),
+		Options.Heartbeat(configured),
 	)
 
 	_, _ = this.connector.Connect(this.ctx)
 
-	this.So(this.connectConfig.Heartbeat, should.Equal, 30*time.Second)
+	this.So(this.connectConfig.Heartbeat, should.Equal, expected)
 }
 func (this *ConnectorFixture) TestWhenNoCredentialsFound_ConnectUsingDefaultCredentials() {
 	this.brokerAddress = "amqp://localhost:5672/another-vhost"

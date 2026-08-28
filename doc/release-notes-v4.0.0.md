@@ -69,7 +69,11 @@ rabbitmq.New(rabbitmq.Options.Heartbeat(30 * time.Second))
 ```
 
 Escape hatch: `rabbitmq.Options.Heartbeat(0)` restores the previous wire
-behavior (the client defers to the interval the broker offers).
+behavior (the client defers to the interval the broker offers). Only an
+explicit 0 does that: the option sanitizes its input, so a positive value
+below one second rounds up to one second (the wire protocol carries whole
+seconds) and a negative value is replaced by the 10-second default. A
+computed or misparsed value cannot silently disable the heartbeat.
 
 ## New (and breaking): broker blocked-connection notifications
 
