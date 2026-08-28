@@ -232,8 +232,9 @@ opt-in.</p>
 honest status checker requires deliberate caller-side work (failure-tolerance configuration and
 threshold verification), so the upgrade must not be reachable by an accidental
 <code>go get -u</code>; in Go, only a major version guarantees that. The scope also grows by one
-feature: <code>status.Options.FailureThreshold(n)</code> (Phase 3b below), so callers configure
-tolerance instead of each writing a decorator. The context-aware <code>TxCommit</code> redesign
+feature: <code>status.Options.FailureThreshold(n)</code> (Phase 3b below; later revised to the
+time-based <code>FailureTolerance(duration)</code>), so callers configure tolerance instead of
+each writing a decorator. The context-aware <code>TxCommit</code> redesign
 stays out (future <code>v5</code>).
 <br><br>
 <strong>Follow-up (2026-08-28):</strong> because v4 already breaks compilation, the optional
@@ -500,7 +501,11 @@ Run <code>make test</code> in the <code>messaging</code> repository after each g
 <p class="small">The checker reports a failure only after <em>n</em> consecutive probe failures;
 one success resets the count. Default: 5 (with the <code>httpstatus</code> default 1-second
 cadence, ~5 seconds of damping; services set their own cadence and threshold). Every tolerated
-failure still logs at <code>[WARN]</code>.</p>
+failure still logs at <code>[WARN]</code>.
+<em>Revised 2026-08-28 per code-review finding #2: the probe counter became wall-clock time
+&mdash; <code>status.Options.FailureTolerance(duration)</code>, default 30 seconds &mdash; so the
+damping window no longer depends on the probe cadence configured in <code>httpstatus</code>.
+<code>FailureTolerance(0)</code> reports the first failure.</em></p>
 <ul class="checklist">
   <li class="done"><span class="tag red">red</span> Test: threshold 3 configured; two consecutive failures &rarr;
       <code>Status</code> returns nil both times; the third failure returns the error.</li>

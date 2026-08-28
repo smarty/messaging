@@ -4,28 +4,31 @@ import (
 	"context"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/smarty/messaging/v4"
 )
 
 type defaultStatusChecker struct {
-	lock                *sync.Mutex
-	logger              logger
-	dispatch            messaging.Dispatch
-	connector           messaging.Connector
-	connection          messaging.Connection
-	writer              messaging.Writer
-	failureThreshold    int
-	consecutiveFailures int
+	lock         *sync.Mutex
+	logger       logger
+	dispatch     messaging.Dispatch
+	connector    messaging.Connector
+	connection   messaging.Connection
+	writer       messaging.Writer
+	tolerance    time.Duration
+	now          func() time.Time
+	firstFailure time.Time
 }
 
 func newDefaultStatusChecker(config configuration) Checker {
 	return &defaultStatusChecker{
-		lock:             new(sync.Mutex),
-		logger:           config.logger,
-		connector:        config.connector,
-		dispatch:         messaging.Dispatch{Topic: config.topic},
-		failureThreshold: config.failureThreshold,
+		lock:      new(sync.Mutex),
+		logger:    config.logger,
+		connector: config.connector,
+		dispatch:  messaging.Dispatch{Topic: config.topic},
+		tolerance: config.failureTolerance,
+		now:       config.now,
 	}
 }
 func (this *defaultStatusChecker) Status(ctx context.Context) error {
@@ -33,12 +36,14 @@ func (this *defaultStatusChecker) Status(ctx context.Context) error {
 	defer this.lock.Unlock()
 	err := this.tryWrite(ctx)
 	if err == nil {
-		this.consecutiveFailures = 0
+		this.firstFailure = time.Time{}
 		return nil
 	}
-	this.consecutiveFailures++
-	if this.consecutiveFailures < this.failureThreshold {
-		this.logger.Printf("[WARN] Status check failed (%d of %d tolerated) [%s].", this.consecutiveFailures, this.failureThreshold, err)
+	if this.firstFailure.IsZero() {
+		this.firstFailure = this.now()
+	}
+	if elapsed := this.now().Sub(this.firstFailure); elapsed < this.tolerance {
+		this.logger.Printf("[WARN] Status check failed (tolerated; failing for %s of %s) [%s].", elapsed, this.tolerance, err)
 		return nil
 	}
 	this.logger.Printf("[WARN] Status check failed [%s].", err)

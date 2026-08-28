@@ -32,22 +32,23 @@ policy. For a wedged publisher, a restart is the intended reaction: it runs
 outbox recovery and drains the backlog.
 
 To prevent a brief broker blip from causing a hasty restart, the checker
-tolerates consecutive probe failures up to a threshold (**default: 5**). It
-returns nil (and logs a `[WARN]` line) until the same number of consecutive
-probes fail; one success resets the count. Configure it per service:
+tolerates probe failures for a duration (**default: 30 seconds**). While
+consecutive probes keep failing inside that window, `Status` returns nil and
+logs a `[WARN]` line; once failures have persisted past the window, `Status`
+reports the error. Any success resets the window. The tolerance is wall-clock
+time, so it is independent of the probe cadence configured in `httpstatus`.
+Configure it per service:
 
 ```go
 status.New(
     status.Options.Connector(connector),
-    status.Options.FailureThreshold(6), // ~30s at a 5-second probe cadence
+    status.Options.FailureTolerance(45*time.Second),
 )
 ```
 
-`FailureThreshold(1)` reports the first failure. Pair the threshold with an
-explicit `httpstatus.Options.HealthCheckFrequency(...)` — the threshold counts
-probes, so the probe cadence sets the wall-clock damping window. Before each
-service rollout, confirm the combined window exceeds your longest routine
-broker event (a rolling restart or a failover election).
+`FailureTolerance(0)` reports the first failure. Before each service rollout,
+size the window just above your longest routine broker event (a rolling
+restart or a failover election).
 
 ## New: explicit client heartbeat
 

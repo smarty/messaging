@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/smarty/gunit"
 	"github.com/smarty/gunit/assert/should"
@@ -19,6 +20,7 @@ type StatusFixture struct {
 
 	ctx     context.Context
 	checker Checker
+	clock   time.Time
 
 	connectCalls int
 	connectError error
@@ -30,7 +32,18 @@ type StatusFixture struct {
 
 func (this *StatusFixture) Setup() {
 	this.ctx = context.Background()
-	this.checker = New(Options.Connector(this), Options.Topic("status-topic"), Options.FailureThreshold(1))
+	this.clock = time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	this.checker = this.newChecker(Options.FailureTolerance(0))
+}
+func (this *StatusFixture) newChecker(options ...option) Checker {
+	return New(append([]option{
+		Options.Connector(this),
+		Options.Topic("status-topic"),
+		Options.Now(func() time.Time { return this.clock }),
+	}, options...)...)
+}
+func (this *StatusFixture) advance(interval time.Duration) {
+	this.clock = this.clock.Add(interval)
 }
 
 func (this *StatusFixture) TestWhenConnectFails_ReturnUnderlyingError() {
@@ -73,44 +86,63 @@ func (this *StatusFixture) TestWhenWriteSucceeds_ReturnNilAndReuseCachedConnecti
 	this.So(this.closeCalls, should.Equal, 0)
 }
 
-func (this *StatusFixture) TestFailureThreshold_ToleratesFailuresBelowThreshold() {
-	this.checker = New(Options.Connector(this), Options.FailureThreshold(3))
+func (this *StatusFixture) TestFailureTolerance_ToleratesFailuresWithinTheWindow() {
+	this.checker = this.newChecker(Options.FailureTolerance(time.Second * 30))
 	this.writeError = errors.New("write failed")
 
 	first := this.checker.Status(this.ctx)
+	this.advance(time.Second * 10)
 	second := this.checker.Status(this.ctx)
+	this.advance(time.Second * 19)
+	third := this.checker.Status(this.ctx)
+	this.advance(time.Second * 1)
+	fourth := this.checker.Status(this.ctx)
+
+	this.So(first, should.BeNil)                   // window opens
+	this.So(second, should.BeNil)                  // 10s elapsed
+	this.So(third, should.BeNil)                   // 29s elapsed
+	this.So(fourth, should.Equal, this.writeError) // 30s elapsed
+}
+func (this *StatusFixture) TestFailureTolerance_SuccessResetsTheWindow() {
+	this.checker = this.newChecker(Options.FailureTolerance(time.Second * 30))
+
+	this.writeError = errors.New("write failed")
+	_ = this.checker.Status(this.ctx) // window opens
+	this.advance(time.Second * 10)
+	this.writeError = nil
+	success := this.checker.Status(this.ctx) // window resets
+	this.advance(time.Second * 5)
+	this.writeError = errors.New("write failed")
+	reopened := this.checker.Status(this.ctx) // new window opens
+	this.advance(time.Second * 25)
+	within := this.checker.Status(this.ctx) // 25s into the new window (40s since the first)
+	this.advance(time.Second * 5)
+	expired := this.checker.Status(this.ctx) // 30s into the new window
+
+	this.So(success, should.BeNil)
+	this.So(reopened, should.BeNil)
+	this.So(within, should.BeNil)
+	this.So(expired, should.Equal, this.writeError)
+}
+func (this *StatusFixture) TestFailureTolerance_DefaultIsThirtySeconds() {
+	this.checker = New(
+		Options.Connector(this),
+		Options.Now(func() time.Time { return this.clock }),
+	)
+	this.writeError = errors.New("write failed")
+
+	first := this.checker.Status(this.ctx)
+	this.advance(time.Second * 29)
+	second := this.checker.Status(this.ctx)
+	this.advance(time.Second * 1)
 	third := this.checker.Status(this.ctx)
 
 	this.So(first, should.BeNil)
 	this.So(second, should.BeNil)
 	this.So(third, should.Equal, this.writeError)
 }
-func (this *StatusFixture) TestFailureThreshold_SuccessResetsTheCount() {
-	this.checker = New(Options.Connector(this), Options.FailureThreshold(3))
-
-	this.writeError = errors.New("write failed")
-	_ = this.checker.Status(this.ctx)
-	_ = this.checker.Status(this.ctx)
-	this.writeError = nil
-	success := this.checker.Status(this.ctx)
-	this.writeError = errors.New("write failed")
-	afterReset := this.checker.Status(this.ctx)
-
-	this.So(success, should.BeNil)
-	this.So(afterReset, should.BeNil)
-}
-func (this *StatusFixture) TestFailureThreshold_DefaultToleratesFourConsecutiveFailures() {
-	this.checker = New(Options.Connector(this))
-	this.writeError = errors.New("write failed")
-
-	for range 4 {
-		this.So(this.checker.Status(this.ctx), should.BeNil)
-	}
-
-	this.So(this.checker.Status(this.ctx), should.Equal, this.writeError)
-}
-func (this *StatusFixture) TestFailureThresholdOfOne_ReturnsTheFirstError() {
-	this.checker = New(Options.Connector(this), Options.FailureThreshold(1))
+func (this *StatusFixture) TestFailureToleranceOfZero_ReturnsTheFirstError() {
+	this.checker = this.newChecker(Options.FailureTolerance(0))
 	this.writeError = errors.New("write failed")
 
 	err := this.checker.Status(this.ctx)

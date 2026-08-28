@@ -3,6 +3,7 @@ package status
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/smarty/messaging/v4"
 )
@@ -17,7 +18,8 @@ type configuration struct {
 	logger           logger
 	connector        messaging.Connector
 	topic            string
-	failureThreshold int
+	failureTolerance time.Duration
+	now              func() time.Time
 }
 
 var Options singleton
@@ -35,11 +37,15 @@ func (singleton) Topic(topic string) option {
 	return func(this *configuration) { this.topic = topic }
 }
 
-// FailureThreshold sets how many consecutive probe failures Status tolerates
-// (returning nil) before it reports the error; one success resets the count.
-// A value of 1 reports the first failure.
-func (singleton) FailureThreshold(value int) option {
-	return func(this *configuration) { this.failureThreshold = max(value, 1) }
+// FailureTolerance sets how long Status tolerates consecutive probe failures
+// (returning nil): once failures have persisted for this duration, Status
+// reports the current error. Any success resets the window. A value of 0
+// reports the first failure.
+func (singleton) FailureTolerance(value time.Duration) option {
+	return func(this *configuration) { this.failureTolerance = max(value, 0) }
+}
+func (singleton) Now(value func() time.Time) option {
+	return func(this *configuration) { this.now = value }
 }
 
 func (singleton) apply(options ...option) option {
@@ -50,12 +56,13 @@ func (singleton) apply(options ...option) option {
 	}
 }
 func (singleton) defaults(options ...option) []option {
-	const defaultFailureThreshold = 5
+	const defaultFailureTolerance = time.Second * 30
 	return append([]option{
 		Options.Connector(nop{}),
 		Options.Logger(nop{}),
 		Options.Topic("amq.direct"),
-		Options.FailureThreshold(defaultFailureThreshold),
+		Options.FailureTolerance(defaultFailureTolerance),
+		Options.Now(time.Now),
 	}, options...)
 }
 
