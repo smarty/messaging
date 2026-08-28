@@ -2,10 +2,12 @@ package status
 
 import (
 	"context"
+	"errors"
 	"io"
 	"sync"
 	"time"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/smarty/messaging/v4"
 )
 
@@ -39,6 +41,10 @@ func (this *defaultStatusChecker) Status(ctx context.Context) error {
 		this.firstFailure = time.Time{}
 		return nil
 	}
+	if isDefinitive(err) {
+		this.logger.Printf("[WARN] Status check failed with a definitive error (retries cannot succeed) [%s].", err)
+		return err
+	}
 	if this.firstFailure.IsZero() {
 		this.firstFailure = this.now()
 	}
@@ -48,6 +54,17 @@ func (this *defaultStatusChecker) Status(ctx context.Context) error {
 	}
 	this.logger.Printf("[WARN] Status check failed [%s].", err)
 	return err
+}
+
+// isDefinitive reports whether the error is a configuration fault that no
+// retry can fix (bad credentials, missing vhost, denied permission); such
+// errors bypass the failure-tolerance window.
+func isDefinitive(err error) bool {
+	var amqpError *amqp.Error
+	if !errors.As(err, &amqpError) {
+		return false
+	}
+	return amqpError.Code == amqp.AccessRefused || amqpError.Code == amqp.NotAllowed
 }
 
 func (this *defaultStatusChecker) tryWrite(ctx context.Context) error {

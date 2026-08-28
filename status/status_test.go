@@ -3,9 +3,11 @@ package status
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/smarty/gunit"
 	"github.com/smarty/gunit/assert/should"
 	"github.com/smarty/messaging/v4"
@@ -140,6 +142,34 @@ func (this *StatusFixture) TestFailureTolerance_DefaultIsThirtySeconds() {
 	this.So(first, should.BeNil)
 	this.So(second, should.BeNil)
 	this.So(third, should.Equal, this.writeError)
+}
+func (this *StatusFixture) TestWhenAccessIsRefused_FailFastDespiteTolerance() {
+	this.checker = this.newChecker(Options.FailureTolerance(time.Second * 30))
+	this.writeError = amqp.ErrCredentials
+
+	err := this.checker.Status(this.ctx)
+
+	this.So(err, should.Equal, this.writeError)
+}
+func (this *StatusFixture) TestWhenOperationNotAllowed_FailFastDespiteTolerance_EvenWhenWrapped() {
+	this.checker = this.newChecker(Options.FailureTolerance(time.Second * 30))
+	this.writeError = fmt.Errorf("status probe: %w", &amqp.Error{Code: amqp.NotAllowed, Reason: "vhost not found"})
+
+	err := this.checker.Status(this.ctx)
+
+	this.So(err, should.Equal, this.writeError)
+}
+func (this *StatusFixture) TestDefinitiveError_DoesNotOpenTheToleranceWindow() {
+	this.checker = this.newChecker(Options.FailureTolerance(time.Second * 30))
+
+	this.writeError = amqp.ErrCredentials
+	_ = this.checker.Status(this.ctx)
+	this.advance(time.Minute)
+	this.writeError = errors.New("transient")
+
+	err := this.checker.Status(this.ctx)
+
+	this.So(err, should.BeNil) // the transient failure opens its own fresh window
 }
 func (this *StatusFixture) TestFailureToleranceOfZero_ReturnsTheFirstError() {
 	this.checker = this.newChecker(Options.FailureTolerance(0))

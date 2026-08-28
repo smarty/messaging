@@ -50,6 +50,12 @@ status.New(
 size the window just above your longest routine broker event (a rolling
 restart or a failover election).
 
+Definitive errors bypass the window: an AMQP `ACCESS_REFUSED` (403) or
+`NOT_ALLOWED` (530) error — bad credentials, a missing vhost, a denied
+permission — reports on the first probe, because no retry can fix a
+configuration fault. This restores (and broadens) the v3 behavior that
+returned password errors immediately.
+
 ## New: explicit client heartbeat
 
 The client now requests an AMQP heartbeat of **10 seconds** by default. A dead

@@ -505,7 +505,9 @@ failure still logs at <code>[WARN]</code>.
 <em>Revised 2026-08-28 per code-review finding #2: the probe counter became wall-clock time
 &mdash; <code>status.Options.FailureTolerance(duration)</code>, default 30 seconds &mdash; so the
 damping window no longer depends on the probe cadence configured in <code>httpstatus</code>.
-<code>FailureTolerance(0)</code> reports the first failure.</em></p>
+<code>FailureTolerance(0)</code> reports the first failure. Also per finding #3: definitive AMQP
+errors (403 <code>ACCESS_REFUSED</code>, 530 <code>NOT_ALLOWED</code>) bypass the window and
+report on the first probe, restoring and broadening the v3 password fail-fast.</em></p>
 <ul class="checklist">
   <li class="done"><span class="tag red">red</span> Test: threshold 3 configured; two consecutive failures &rarr;
       <code>Status</code> returns nil both times; the third failure returns the error.</li>
