@@ -88,6 +88,7 @@ func (this *defaultStatusChecker) tryConnect(ctx context.Context) (err error) {
 	}
 	this.writer, err = this.connection.Writer(ctx)
 	if err != nil {
+		_ = this.Close() // do not leak the dialed connection
 		return err
 	}
 	return nil

@@ -69,6 +69,19 @@ func (this *StatusFixture) TestWhenWriteFails_ReturnUnderlyingErrorAndDiscardCac
 	this.So(this.connectCalls, should.Equal, 2) // next probe dials fresh
 }
 
+func (this *StatusFixture) TestWhenOpeningWriterFails_ReturnErrorAndCloseTheDialedConnection() {
+	this.writerError = errors.New("writer failed")
+
+	err := this.checker.Status(this.ctx)
+
+	this.So(err, should.Equal, this.writerError)
+	this.So(this.closeCalls, should.Equal, 1) // the dialed connection is not leaked
+
+	this.writerError = nil
+	this.So(this.checker.Status(this.ctx), should.BeNil)
+	this.So(this.connectCalls, should.Equal, 2) // the next probe dials fresh
+}
+
 func (this *StatusFixture) TestWhenWriteFailsWithPasswordError_ReturnUnderlyingError() {
 	this.writeError = errors.New("ACCESS_REFUSED: bad password")
 
