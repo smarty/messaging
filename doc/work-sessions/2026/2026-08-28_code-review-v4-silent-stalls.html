@@ -168,6 +168,22 @@
   .chip.quickfix   { background: var(--crit-bg); color: var(--crit-fg); }
   .chip.decision   { background: var(--warn-bg); color: var(--warn-fg); }
   .chip.optional   { background: var(--gray-bg); color: var(--gray-fg); }
+  .chip.cleanup    { background: var(--code-bg); color: var(--accent); }
+  .finding.resolved { border-left-color: var(--good-fg); }
+  .finding.resolved header::after {
+    content: "resolved";
+    font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    padding: 0.13rem 0.6rem;
+    white-space: nowrap;
+    background: var(--good-bg);
+    color: var(--good-fg);
+  }
+  .resolution .label { color: var(--good-fg); }
 
   .scenario {
     background: var(--scenario-bg);
@@ -217,13 +233,16 @@
 </p>
 
 <div class="stats">
-  <div class="stat"><b>10</b><span>findings</span></div>
-  <div class="stat"><b>9 / 1</b><span>confirmed / plausible</span></div>
+  <div class="stat"><b>14</b><span>findings</span></div>
+  <div class="stat"><b>13 / 1</b><span>confirmed / plausible</span></div>
   <div class="stat"><b>green</b><span>make test (-race)</span></div>
-  <div class="stat"><b>6 / 3 / 1</b><span>quick fix / decision / optional</span></div>
+  <div class="stat"><b>6 / 3 / 1 / 4</b><span>quick fix / decision / optional / cleanup</span></div>
+  <div class="stat"><b>10 / 14</b><span>resolved</span></div>
 </div>
 
 <h2>Triage digest</h2>
+<p class="quiet">Status 2026-08-28: findings #1&ndash;#10 are resolved on the branch, one commit
+per finding &mdash; see each card's resolution note. Findings #11&ndash;#14 remain open.</p>
 <ul class="digest">
   <li><span class="chip quickfix">quick fix</span>
       Mechanical, clearly correct changes: decouple monitor callbacks from the notification drain
@@ -239,11 +258,16 @@
   <li><span class="chip optional">optional</span>
       A narrow registration-window race that drops one blocked notification
       (<a href="#f10">#10</a>).</li>
+  <li><span class="chip cleanup">cleanup</span>
+      Promoted 2026-08-28 from the items originally cut by the 10-finding cap, after a follow-up
+      investigation: duplicated heartbeat literals (<a href="#f11">#11</a>), fixture goroutine
+      hygiene (<a href="#f12">#12</a>), a stale proposal reference (<a href="#f13">#13</a>), and
+      release-notes prose style (<a href="#f14">#14</a>).</li>
 </ul>
 
 <h2>Findings, most severe first</h2>
 
-<article class="finding" id="f1" data-tier="quickfix">
+<article class="finding resolved" id="f1" data-tier="quickfix">
   <header>
     <span class="rank">1</span>
     <code class="loc">rabbitmq/connection.go:29</code>
@@ -268,9 +292,12 @@
      silent stall.</div>
   <p class="fix"><span class="label">Fix</span>Drain with select/coalescing, or invoke the monitor
      callbacks off the drain path.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>fcec095</code> &mdash; a relay
+     goroutine drains the broker channel and coalesces to the latest state; monitor callbacks run
+     off the drain path.</p>
 </article>
 
-<article class="finding" id="f2" data-tier="decision">
+<article class="finding resolved" id="f2" data-tier="decision">
   <header>
     <span class="rank">2</span>
     <code class="loc">status/config.go:53</code>
@@ -292,9 +319,13 @@
   <p class="fix"><span class="label">Decide</span>Raise the default, or switch to a time-based
      tolerance (tolerate failures for a configured duration since the first failure), which is
      self-contained and immune to cadence changes made in a different library.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>686d7a8</code> &mdash;
+     <code>FailureThreshold</code> replaced by the wall-clock
+     <code>status.Options.FailureTolerance</code> (default 30 seconds), independent of the probe
+     cadence.</p>
 </article>
 
-<article class="finding" id="f3" data-tier="decision">
+<article class="finding resolved" id="f3" data-tier="decision">
   <header>
     <span class="rank">3</span>
     <code class="loc">status/status.go:40</code>
@@ -317,9 +348,11 @@
      regression at the default.</div>
   <p class="fix"><span class="label">Decide</span>Should definitive auth errors bypass the
      tolerance counter? That would partially restore the v3 fail-fast intent.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>cd3dcc6</code> &mdash; AMQP
+     403/530 errors bypass the tolerance window and report on the first probe.</p>
 </article>
 
-<article class="finding" id="f4" data-tier="quickfix">
+<article class="finding resolved" id="f4" data-tier="quickfix">
   <header>
     <span class="rank">4</span>
     <code class="loc">status/status.go:63</code>
@@ -343,9 +376,11 @@
      first-class expected state, and this branch attaches a goroutine to every leak.</div>
   <p class="fix"><span class="label">Fix</span>Close and nil the connection in the
      Writer-failure branch.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>17b9a89</code> &mdash; the
+     Writer-failure branch closes and nils the dialed connection; the next probe dials fresh.</p>
 </article>
 
-<article class="finding" id="f5" data-tier="quickfix">
+<article class="finding resolved" id="f5" data-tier="quickfix">
   <header>
     <span class="rank">5</span>
     <code class="loc">rabbitmq/connection.go:24</code>
@@ -368,9 +403,11 @@
   <p class="fix"><span class="label">Fix</span>Select on a done channel closed by
      <code>Close()</code>, bounding the watcher's life regardless of the inner
      implementation.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>6d7a616</code> &mdash;
+     <code>Close()</code> closes a done channel that bounds both the relay and the watcher.</p>
 </article>
 
-<article class="finding" id="f6" data-tier="decision">
+<article class="finding resolved" id="f6" data-tier="decision">
   <header>
     <span class="rank">6</span>
     <code class="loc">status/status.go:53</code>
@@ -392,9 +429,13 @@
      notes say is the wrong reaction, with no error ever logged by the failure-threshold path.</div>
   <p class="fix"><span class="label">Decide</span>Add a write deadline to the probe path, or amend
      the release-notes claim to describe this behavior honestly.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>e581f47</code> &mdash; the
+     probe honors its context deadline and severs the connection on timeout;
+     <code>amqpConnection.Close</code> uses <code>CloseDeadline</code> (5-second grace), so a close
+     never hangs behind a wedged socket write.</p>
 </article>
 
-<article class="finding" id="f7" data-tier="quickfix">
+<article class="finding resolved" id="f7" data-tier="quickfix">
   <header>
     <span class="rank">7</span>
     <code class="loc">status/config.go:38</code>
@@ -416,9 +457,13 @@
      intent.</div>
   <p class="fix"><span class="label">Fix</span>Correct the godoc's first sentence and the log
      wording.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>686d7a8</code> (by
+     obsolescence) &mdash; the off-by-one godoc vanished with <code>FailureThreshold</code>; tests
+     pin the <code>FailureTolerance</code> boundary from both sides (29s tolerates, 30s
+     reports).</p>
 </article>
 
-<article class="finding" id="f8" data-tier="quickfix">
+<article class="finding resolved" id="f8" data-tier="quickfix">
   <header>
     <span class="rank">8</span>
     <code class="loc">doc/release-notes-v4.0.0.md:55</code>
@@ -438,9 +483,12 @@
      proposal HTML repeats the same ~30s figure.</div>
   <p class="fix"><span class="label">Fix</span>Correct the release notes and the proposal to ~15
      seconds, or double the default heartbeat if ~30s was the intended budget.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>5a4ac2d</code> &mdash; the
+     release notes and the proposal now state ~15 seconds (and ~90 seconds for the old 60-second
+     negotiation), with the heartbeat-every-half-interval mechanism spelled out.</p>
 </article>
 
-<article class="finding" id="f9" data-tier="quickfix">
+<article class="finding resolved" id="f9" data-tier="quickfix">
   <header>
     <span class="rank">9</span>
     <code class="loc">rabbitmq/config.go:73</code>
@@ -461,9 +509,13 @@
      the dead-socket blind spot this v4 release exists to close is silently reopened.</div>
   <p class="fix"><span class="label">Fix</span>Validate or clamp, as the sibling option
      <code>status.Options.FailureThreshold</code> already does with <code>max(value, 1)</code>.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>706ac4f</code> &mdash;
+     <code>Options.Heartbeat</code> sanitizes its input: negatives fall back to the 10-second
+     default, sub-second positives round up to one second, and only an explicit 0 defers to the
+     broker.</p>
 </article>
 
-<article class="finding" id="f10" data-tier="optional">
+<article class="finding resolved" id="f10" data-tier="optional">
   <header>
     <span class="rank">10</span>
     <code class="loc">rabbitmq/connection.go:24</code>
@@ -485,6 +537,9 @@
      which shrinks &mdash; but does not eliminate &mdash; the window.</div>
   <p class="fix"><span class="label">Fix</span>Register the channel before or during adapter
      <code>Connect</code>; requires a small reshape of the adapter seam.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>680066f</code> &mdash; the
+     adapter registers the channel during <code>Connect</code>, immediately after the handshake;
+     the seam method became <code>BlockedNotifications() &lt;-chan amqp.Blocking</code>.</p>
 </article>
 
 <h2>Cut by the 10-finding cap</h2>
