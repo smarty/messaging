@@ -21,11 +21,29 @@ func newConnection(inner adapter.Connection, config configuration) messaging.Con
 	// NOTE: using pointer type to allow for pointer equality check
 	config.Monitor.ConnectionOpened(nil)
 	this := &defaultConnection{inner: inner, config: config, logger: config.Logger, monitor: config.Monitor}
-	go this.watchBlockedState(inner.NotifyBlocked(make(chan amqp.Blocking, 1)))
+	relay := make(chan amqp.Blocking, 1)
+	go relayBlockedState(inner.NotifyBlocked(make(chan amqp.Blocking, 1)), relay)
+	go this.watchBlockedState(relay)
 	return this
 }
+
+// relayBlockedState keeps the amqp library's frame-dispatch goroutine from ever
+// blocking on notification delivery: it drains promptly and, when the consumer
+// lags (a slow monitor callback), keeps only the latest state.
+// NOTE: the amqp library closes the notification channel when the connection closes.
+func relayBlockedState(notifications, relay chan amqp.Blocking) {
+	defer close(relay)
+	for notification := range notifications {
+		for delivered := false; !delivered; {
+			select {
+			case relay <- notification:
+				delivered = true
+			case <-relay: // discard the stale state; only the latest matters
+			}
+		}
+	}
+}
 func (this *defaultConnection) watchBlockedState(notifications chan amqp.Blocking) {
-	// NOTE: the amqp library closes the notification channel when the connection closes.
 	for notification := range notifications {
 		if notification.Active {
 			this.logger.Printf("[WARN] AMQP connection blocked by broker (reason: %s); publishes will stall until the broker unblocks.", notification.Reason)

@@ -119,10 +119,49 @@ func (this *ConnectionFixture) TestWhenBrokerBlocksConnection_NotifyMonitorBlock
 	this.connection = newConnection(this, configuration{Monitor: monitor, Logger: nop{}})
 
 	this.blocking <- amqp.Blocking{Active: true, Reason: "low memory"}
-	this.blocking <- amqp.Blocking{Active: false}
-
 	this.So(receive(monitor.calls), should.Equal, "blocked:low memory")
+
+	this.blocking <- amqp.Blocking{Active: false}
 	this.So(receive(monitor.calls), should.Equal, "unblocked")
+}
+
+func (this *ConnectionFixture) TestWhenMonitorCallbackBlocks_NotificationDeliveryContinues() {
+	gate := make(chan struct{})
+	monitor := &blockingMonitor{calls: make(chan string, 8), gate: gate}
+	this.connection = newConnection(this, configuration{Monitor: monitor, Logger: nop{}})
+
+	sent := make(chan struct{})
+	go func() {
+		defer close(sent)
+		this.blocking <- amqp.Blocking{Active: true, Reason: "one"}
+		this.blocking <- amqp.Blocking{Active: false}
+		this.blocking <- amqp.Blocking{Active: true, Reason: "three"}
+	}()
+
+	completed := false
+	select {
+	case <-sent:
+		completed = true
+	case <-time.After(time.Millisecond * 100):
+	}
+	close(gate)
+
+	this.So(completed, should.BeTrue)
+}
+
+func (this *ConnectionFixture) TestWhenMonitorCallbackIsSlow_LatestBlockedStateIsStillDelivered() {
+	gate := make(chan struct{})
+	monitor := &blockingMonitor{calls: make(chan string, 8), gate: gate}
+	this.connection = newConnection(this, configuration{Monitor: monitor, Logger: nop{}})
+
+	this.blocking <- amqp.Blocking{Active: true, Reason: "first"}
+	this.So(receive(monitor.calls), should.Equal, "blocked:first") // watcher is now parked in the callback
+
+	this.blocking <- amqp.Blocking{Active: false}
+	this.blocking <- amqp.Blocking{Active: true, Reason: "final"}
+	close(gate)
+
+	this.So(receiveLast(monitor.calls), should.Equal, "blocked:final")
 }
 
 func (this *ConnectionFixture) TestWhenNotificationChannelCloses_WatcherStopsWithoutFurtherCallbacks() {
@@ -174,10 +213,17 @@ func (this *ConnectionFixture) TxRollback() error                               
 type blockingMonitor struct {
 	nop
 	calls chan string
+	gate  chan struct{} // when non-nil, every callback parks here after recording
 }
 
-func (this *blockingMonitor) ConnectionBlocked(reason string) { this.calls <- "blocked:" + reason }
-func (this *blockingMonitor) ConnectionUnblocked()            { this.calls <- "unblocked" }
+func (this *blockingMonitor) ConnectionBlocked(reason string) { this.record("blocked:" + reason) }
+func (this *blockingMonitor) ConnectionUnblocked()            { this.record("unblocked") }
+func (this *blockingMonitor) record(call string) {
+	this.calls <- call
+	if this.gate != nil {
+		<-this.gate
+	}
+}
 
 type capturingLogger struct{ lines chan string }
 
@@ -191,5 +237,14 @@ func receive(values chan string) string {
 		return value
 	case <-time.After(time.Millisecond * 100):
 		return ""
+	}
+}
+func receiveLast(values chan string) (result string) {
+	for {
+		value := receive(values)
+		if value == "" {
+			return result
+		}
+		result = value
 	}
 }
