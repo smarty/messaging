@@ -176,6 +176,16 @@ func (this *ConnectionFixture) TestWhenNotificationChannelCloses_WatcherStopsWit
 	this.So(receive(monitor.calls), should.Equal, "")
 }
 
+func (this *ConnectionFixture) TestWhenConnectionCloses_WatcherStopsEvenWhenNotificationChannelStaysOpen() {
+	monitor := &blockingMonitor{calls: make(chan string, 4)}
+	this.connection = newConnection(this, configuration{Monitor: monitor, Logger: nop{}})
+
+	_ = this.connection.Close()
+	this.blocking <- amqp.Blocking{Active: true, Reason: "after close"}
+
+	this.So(receive(monitor.calls), should.Equal, "")
+}
+
 func (this *ConnectionFixture) TestWhenClosing_InvokeUnderlyingConnection() {
 	this.closeError = errors.New("")
 

@@ -14,32 +14,52 @@ type defaultConnection struct {
 	config  configuration
 	logger  logger
 	monitor monitor
+	done    chan struct{}
 	closer  sync.Once
 }
 
 func newConnection(inner adapter.Connection, config configuration) messaging.Connection {
 	// NOTE: using pointer type to allow for pointer equality check
 	config.Monitor.ConnectionOpened(nil)
-	this := &defaultConnection{inner: inner, config: config, logger: config.Logger, monitor: config.Monitor}
+	this := &defaultConnection{inner: inner, config: config, logger: config.Logger, monitor: config.Monitor, done: make(chan struct{})}
 	relay := make(chan amqp.Blocking, 1)
-	go relayBlockedState(inner.NotifyBlocked(make(chan amqp.Blocking, 1)), relay)
+	go relayBlockedState(inner.NotifyBlocked(make(chan amqp.Blocking, 1)), relay, this.done)
 	go this.watchBlockedState(relay)
 	return this
 }
 
 // relayBlockedState keeps the amqp library's frame-dispatch goroutine from ever
 // blocking on notification delivery: it drains promptly and, when the consumer
-// lags (a slow monitor callback), keeps only the latest state.
-// NOTE: the amqp library closes the notification channel when the connection closes.
-func relayBlockedState(notifications, relay chan amqp.Blocking) {
+// lags (a slow monitor callback), keeps only the latest state. It exits when
+// the amqp library closes the notification channel or when done closes, so an
+// adapter.Connection implementation that never closes the channel cannot leak
+// the goroutine; closing relay ends the watcher in turn.
+func relayBlockedState(notifications, relay chan amqp.Blocking, done chan struct{}) {
 	defer close(relay)
-	for notification := range notifications {
-		for delivered := false; !delivered; {
-			select {
-			case relay <- notification:
-				delivered = true
-			case <-relay: // discard the stale state; only the latest matters
+	for {
+		select {
+		case <-done:
+			return
+		case notification, open := <-notifications:
+			if !open || !deliverLatest(notification, relay, done) {
+				return
 			}
+		}
+	}
+}
+func deliverLatest(notification amqp.Blocking, relay chan amqp.Blocking, done chan struct{}) bool {
+	select {
+	case <-done: // checked first: never deliver after the connection closes
+		return false
+	default:
+	}
+	for {
+		select {
+		case <-done:
+			return false
+		case relay <- notification:
+			return true
+		case <-relay: // discard the stale state; only the latest matters
 		}
 	}
 }
@@ -90,6 +110,7 @@ func (this *defaultConnection) writer(transactional bool) (messaging.CommitWrite
 
 func (this *defaultConnection) Close() (err error) {
 	this.closer.Do(func() {
+		close(this.done)
 		err = this.inner.Close()
 		this.monitor.ConnectionClosed()
 	})
