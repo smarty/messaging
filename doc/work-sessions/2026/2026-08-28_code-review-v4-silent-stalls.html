@@ -237,12 +237,12 @@
   <div class="stat"><b>13 / 1</b><span>confirmed / plausible</span></div>
   <div class="stat"><b>green</b><span>make test (-race)</span></div>
   <div class="stat"><b>6 / 3 / 1 / 4</b><span>quick fix / decision / optional / cleanup</span></div>
-  <div class="stat"><b>12 / 14</b><span>resolved</span></div>
+  <div class="stat"><b>14 / 14</b><span>resolved</span></div>
 </div>
 
 <h2>Triage digest</h2>
-<p class="quiet">Status 2026-08-28: findings #1&ndash;#12 are resolved on the branch, one commit
-per finding &mdash; see each card's resolution note. Findings #13&ndash;#14 remain open.</p>
+<p class="quiet">Status 2026-08-28: all fourteen findings are resolved on the branch, one commit
+per finding &mdash; see each card's resolution note.</p>
 <ul class="digest">
   <li><span class="chip quickfix">quick fix</span>
       Mechanical, clearly correct changes: decouple monitor callbacks from the notification drain
@@ -608,7 +608,7 @@ noted where it applies.</p>
      is now possible.</p>
 </article>
 
-<article class="finding" id="f13" data-tier="cleanup">
+<article class="finding resolved" id="f13" data-tier="cleanup">
   <header>
     <span class="rank">13</span>
     <code class="loc">doc/work-sessions/2026/&hellip;proposal&hellip;.html:548</code>
@@ -626,9 +626,12 @@ noted where it applies.</p>
      notes were never written, or waste time hunting for them.</div>
   <p class="fix"><span class="label">Fix</span>Update the annotation to name
      <code>release-notes-v4.0.0.md</code>.</p>
+  <p class="fix resolution"><span class="label">Resolved</span>2026-08-28 &mdash; the annotation
+     now names <code>release-notes-v4.0.0.md</code> and records the v3.18.0 filename as
+     history.</p>
 </article>
 
-<article class="finding" id="f14" data-tier="cleanup">
+<article class="finding resolved" id="f14" data-tier="cleanup">
   <header>
     <span class="rank">14</span>
     <code class="loc">doc/release-notes-v4.0.0.md:61</code>
@@ -651,6 +654,11 @@ noted where it applies.</p>
   <p class="fix"><span class="label">Fix</span>Split the long sentences, name the doer in passive
      constructions, pick one term per concept ("the tolerance window"), and replace the idioms;
      apply the same pass to the five flagged doc comments.</p>
+  <p class="fix resolution"><span class="label">Resolved</span>2026-08-28 &mdash; the release notes
+     were rewritten to ASD-STE100: sentences split (the longest was ~45 words), passive
+     constructions named their doer, "the tolerance window" became the single term, the idioms
+     ("blip", "wedged", "hasty", "escape hatch") were replaced, and the definitive-error causes
+     became a vertical list. The five flagged doc comments received the same pass.</p>
 </article>
 
 <h2>How the review ran</h2>

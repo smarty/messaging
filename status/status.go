@@ -57,8 +57,8 @@ func (this *defaultStatusChecker) Status(ctx context.Context) error {
 }
 
 // isDefinitive reports whether the error is a configuration fault that no
-// retry can fix (bad credentials, missing vhost, denied permission); such
-// errors bypass the failure-tolerance window.
+// retry can fix (bad credentials, missing vhost, denied permission). Such
+// errors bypass the tolerance window.
 func isDefinitive(err error) bool {
 	var amqpError *amqp.Error
 	if !errors.As(err, &amqpError) {
@@ -79,10 +79,10 @@ func (this *defaultStatusChecker) tryWrite(ctx context.Context) error {
 	return err
 }
 
-// write bounds the probe with the caller's context: a broker that has stopped
+// write bounds the probe with the caller's context. A broker that has stopped
 // reading (a resource alarm) can block the underlying socket write
-// indefinitely, so on timeout the checker severs the connection, which
-// unblocks the write.
+// indefinitely. On timeout, the checker severs the connection, which unblocks
+// the write.
 func (this *defaultStatusChecker) write(ctx context.Context) error {
 	writer := this.writer
 	completed := make(chan error, 1)

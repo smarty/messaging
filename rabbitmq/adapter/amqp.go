@@ -36,7 +36,7 @@ type amqpConnection struct {
 func (this amqpConnection) BlockedNotifications() <-chan amqp.Blocking { return this.blocked }
 
 // Close bounds the close handshake with a deadline on the underlying socket.
-// Setting the deadline also unblocks any write already wedged on a broker
+// Setting the deadline also unblocks any write already stalled on a broker
 // that has stopped reading (a resource alarm), so Close cannot hang.
 func (this amqpConnection) Close() error {
 	return this.Connection.CloseDeadline(time.Now().Add(closeGracePeriod))

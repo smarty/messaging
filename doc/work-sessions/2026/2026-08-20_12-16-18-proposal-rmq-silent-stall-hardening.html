@@ -545,8 +545,9 @@ in which a <code>connection.blocked</code> frame could be silently dropped.</em>
   <li class="done">Update <code>CONTRIBUTING.md</code>/changelog notes: new <code>Options.Heartbeat</code>, the
       optional <code>blockedMonitor</code> interface, the <code>adapter.Connection</code> interface
       addition (T3), and the status-checker behavior change (T1).
-      <span class="small">(Done as <code>doc/release-notes-v3.18.0.md</code> &mdash; the repository has no
-      changelog, and <code>CONTRIBUTING.md</code> is a generic contribution guide.)</span></li>
+      <span class="small">(Done &mdash; the repository has no changelog, and <code>CONTRIBUTING.md</code>
+      is a generic contribution guide. First written as <code>doc/release-notes-v3.18.0.md</code>, then
+      replaced by <code>doc/release-notes-v4.0.0.md</code> with the v4 decision.)</span></li>
   <li class="done">Convert the module path to <code>github.com/smarty/messaging/v4</code>: update
       <code>go.mod</code> (with <code>retract</code> directives for the abandoned
       <code>v4.0.0-alpha.*</code> tags) and rewrite every self-import; run <code>make test</code>.</li>

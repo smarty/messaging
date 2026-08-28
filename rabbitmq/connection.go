@@ -28,12 +28,12 @@ func newConnection(inner adapter.Connection, config configuration) messaging.Con
 	return this
 }
 
-// relayBlockedState keeps the amqp library's frame-dispatch goroutine from ever
-// blocking on notification delivery: it drains promptly and, when the consumer
-// lags (a slow monitor callback), keeps only the latest state. It exits when
-// the amqp library closes the notification channel or when done closes, so an
-// adapter.Connection implementation that never closes the channel cannot leak
-// the goroutine; closing relay ends the watcher in turn.
+// relayBlockedState keeps the amqp library's frame-dispatch goroutine from
+// ever blocking on notification delivery. It drains promptly and, when the
+// consumer lags (a slow monitor callback), keeps only the latest state.
+// It exits when the amqp library closes the notification channel or when done
+// closes. An adapter.Connection implementation that never closes the channel
+// therefore cannot leak the goroutine. Closing relay ends the watcher in turn.
 func relayBlockedState(notifications <-chan amqp.Blocking, relay chan amqp.Blocking, done chan struct{}) {
 	defer close(relay)
 	for {

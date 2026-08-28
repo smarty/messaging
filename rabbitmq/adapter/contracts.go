@@ -27,8 +27,8 @@ type Connection interface {
 
 	// BlockedNotifications returns a channel of broker blocked/unblocked
 	// notifications. The implementation registers the channel during Connect
-	// (not on first call), so no notification is dropped in a registration
-	// window; the channel closes when the connection closes.
+	// (not on first call), so a registration window never drops a
+	// notification. The channel closes when the connection closes.
 	BlockedNotifications() <-chan amqp.Blocking
 
 	io.Closer
