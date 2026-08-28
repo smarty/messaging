@@ -237,12 +237,12 @@
   <div class="stat"><b>13 / 1</b><span>confirmed / plausible</span></div>
   <div class="stat"><b>green</b><span>make test (-race)</span></div>
   <div class="stat"><b>6 / 3 / 1 / 4</b><span>quick fix / decision / optional / cleanup</span></div>
-  <div class="stat"><b>10 / 14</b><span>resolved</span></div>
+  <div class="stat"><b>11 / 14</b><span>resolved</span></div>
 </div>
 
 <h2>Triage digest</h2>
-<p class="quiet">Status 2026-08-28: findings #1&ndash;#10 are resolved on the branch, one commit
-per finding &mdash; see each card's resolution note. Findings #11&ndash;#14 remain open.</p>
+<p class="quiet">Status 2026-08-28: findings #1&ndash;#11 are resolved on the branch, one commit
+per finding &mdash; see each card's resolution note. Findings #12&ndash;#14 remain open.</p>
 <ul class="digest">
   <li><span class="chip quickfix">quick fix</span>
       Mechanical, clearly correct changes: decouple monitor callbacks from the notification drain
@@ -548,7 +548,7 @@ A follow-up investigation on 2026-08-28 (against the post-fix tree, after findin
 were resolved) re-verified each and promoted the survivors. One original claim was stale and is
 noted where it applies.</p>
 
-<article class="finding" id="f11" data-tier="cleanup">
+<article class="finding resolved" id="f11" data-tier="cleanup">
   <header>
     <span class="rank">11</span>
     <code class="loc">rabbitmq/connector_test.go:70</code>
@@ -567,6 +567,9 @@ noted where it applies.</p>
      <code>defaultHeartbeat</code> against itself proves nothing.</div>
   <p class="fix"><span class="label">Fix</span>Hoist one test-local constant (or reference
      <code>defaultHeartbeat</code> everywhere but one deliberate literal pin).</p>
+  <p class="fix resolution"><span class="label">Resolved</span>2026-08-28 &mdash; all five
+     occurrences reference a hoisted test-level constant, <code>expectedDefaultHeartbeat</code>,
+     which pins the literal exactly once, independently of the production constant.</p>
 </article>
 
 <article class="finding" id="f12" data-tier="cleanup">

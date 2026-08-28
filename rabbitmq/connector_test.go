@@ -18,6 +18,10 @@ func TestConnectorFixture(t *testing.T) {
 	gunit.Run(new(ConnectorFixture), t)
 }
 
+// expectedDefaultHeartbeat pins the default-heartbeat contract independently
+// of the production constant; a change to the default must fail here once.
+const expectedDefaultHeartbeat = time.Second * 10
+
 type ConnectorFixture struct {
 	*gunit.Fixture
 
@@ -67,7 +71,7 @@ func (this *ConnectorFixture) TestWhenConnectingToBroker_UseDialedNetworkConnect
 		Username:    "my-username",
 		Password:    "my-password",
 		VirtualHost: "my-vhost",
-		Heartbeat:   10 * time.Second,
+		Heartbeat:   expectedDefaultHeartbeat,
 	})
 }
 func (this *ConnectorFixture) TestCredentialsFromQueryString() {
@@ -79,7 +83,7 @@ func (this *ConnectorFixture) TestCredentialsFromQueryString() {
 		Username:    "My-Username-1",
 		Password:    "My-Password-1",
 		VirtualHost: "the-vhost",
-		Heartbeat:   10 * time.Second,
+		Heartbeat:   expectedDefaultHeartbeat,
 	})
 }
 func (this *ConnectorFixture) TestCredentialsFromQueryString_PreferUserInfo() {
@@ -91,7 +95,7 @@ func (this *ConnectorFixture) TestCredentialsFromQueryString_PreferUserInfo() {
 		Username:    "username-1",
 		Password:    "password-1",
 		VirtualHost: "the-vhost",
-		Heartbeat:   10 * time.Second,
+		Heartbeat:   expectedDefaultHeartbeat,
 	})
 }
 func (this *ConnectorFixture) TestConfiguredHeartbeatOverridesDefault() {
@@ -101,7 +105,7 @@ func (this *ConnectorFixture) TestZeroHeartbeat_DefersToTheBroker() {
 	this.assertConfiguredHeartbeat(0, 0)
 }
 func (this *ConnectorFixture) TestNegativeHeartbeat_ReplacedByTheDefault() {
-	this.assertConfiguredHeartbeat(-time.Second, 10*time.Second)
+	this.assertConfiguredHeartbeat(-time.Second, expectedDefaultHeartbeat)
 }
 func (this *ConnectorFixture) TestSubSecondHeartbeat_RoundsUpToOneSecond() {
 	this.assertConfiguredHeartbeat(900*time.Millisecond, time.Second)
@@ -137,7 +141,7 @@ func (this *ConnectorFixture) TestWhenNoCredentialsFound_ConnectUsingDefaultCred
 		Username:    "guest",
 		Password:    "guest",
 		VirtualHost: "another-vhost",
-		Heartbeat:   10 * time.Second,
+		Heartbeat:   expectedDefaultHeartbeat,
 	})
 }
 
