@@ -261,20 +261,23 @@ discoverable and the type assertion is gone.
 <h4>Why 10 seconds</h4>
 <p>
 The <code>amqp091-go</code> library uses 10 seconds in its own <code>Dial</code> helpers, so the
-value is battle-tested. The client enforces a read deadline of three intervals, so a dead
-connection surfaces as an error within about 30 seconds.
+value is battle-tested. The client sends a heartbeat every half interval and enforces a read
+deadline of three of those sends (1.5&times; the negotiated interval), so a dead connection
+surfaces as an error within about 15 seconds.
+<em>(Corrected 2026-08-28 per code-review finding #8; this document originally claimed ~30
+seconds by reading the deadline as three full intervals.)</em>
 </p>
 
 <h4>Heartbeat negotiation, before and after</h4>
 <table>
   <tr><th>Broker offers</th><th>Today (client sends 0)</th><th>After fix (client sends 10s)</th></tr>
-  <tr><td>60s (RabbitMQ default)</td><td>60s &mdash; dead socket found in ~3 min</td><td>10s &mdash; dead socket found in ~30s</td></tr>
-  <tr><td>0 (disabled, or a proxy)</td><td><strong>none &mdash; dead socket blocks forever</strong></td><td>10s &mdash; dead socket found in ~30s</td></tr>
+  <tr><td>60s (RabbitMQ default)</td><td>60s &mdash; dead socket found in ~90s</td><td>10s &mdash; dead socket found in ~15s</td></tr>
+  <tr><td>0 (disabled, or a proxy)</td><td><strong>none &mdash; dead socket blocks forever</strong></td><td>10s &mdash; dead socket found in ~15s</td></tr>
 </table>
 
 <table class="accomplish">
   <tr><th>Accomplishes</th><td>A half-open TCP connection (idle-timeout LB, NAT, broker failover) now
-      surfaces as an error within ~30 seconds. The retry loops in <code>harness</code> and
+      surfaces as an error within ~15 seconds. The retry loops in <code>harness</code> and
       <code>sqlmq</code> then reconnect and resume. Blind spot 1 closes fully.</td></tr>
   <tr><th>Does not accomplish</th><td>It does not detect an alarm-blocked broker. A blocked broker keeps
       its socket alive and keeps sending heartbeats, so the connection looks healthy. Fix 2 covers
@@ -376,7 +379,7 @@ consuming service should confirm its restart policy tolerates brief broker blips
   <tr>
     <td>T2</td>
     <td>Default heartbeat value.</td>
-    <td>10s matches <code>amqp091-go</code>'s own default and gives ~30s detection. A larger value
+    <td>10s matches <code>amqp091-go</code>'s own default and gives ~15s detection. A larger value
         (30s/60s) reduces already-negligible traffic but slows detection. Open question: also
         honor a <code>heartbeat=</code> query parameter on the broker URL? My recommendation:
         option-only for now; add URL parsing only if a real need appears.</td>
@@ -575,7 +578,7 @@ grace) so a close can never hang behind a wedged socket write.</em></p>
 <h2 id="verification">6. How we know it worked</h2>
 <ul>
   <li>Kill a broker connection at the TCP level (drop rule) &mdash; the publisher logs a write error
-      and reconnects within ~30 seconds instead of hanging.</li>
+      and reconnects within ~15 seconds instead of hanging.</li>
   <li>Trip a memory alarm in a test window &mdash; the service logs
       <code>AMQP connection blocked by broker</code> within seconds and the gauge rises.</li>
   <li>Stop the broker &mdash; <code>/status</code> reports failing with the underlying error text.</li>

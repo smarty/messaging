@@ -59,8 +59,10 @@ returned password errors immediately.
 ## New: explicit client heartbeat
 
 The client now requests an AMQP heartbeat of **10 seconds** by default. A dead
-socket now surfaces as an error within about 30 seconds, even when the broker
-or a proxy offers no heartbeat. Configure the interval with:
+socket now surfaces as an error within about 15 seconds — the client sends a
+heartbeat every half interval and enforces a read deadline of three of those
+sends (1.5 x the negotiated interval) — even when the broker or a proxy offers
+no heartbeat. Configure the interval with:
 
 ```go
 rabbitmq.New(rabbitmq.Options.Heartbeat(30 * time.Second))
