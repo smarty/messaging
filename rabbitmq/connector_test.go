@@ -47,6 +47,9 @@ func (this *ConnectorFixture) Setup() {
 	this.brokerAddress = "amqp://my-username:my-password@localhost:5672/my-vhost"
 	this.initializeConnector()
 }
+func (this *ConnectorFixture) Teardown() {
+	_ = this.connector.Close() // release the goroutines parked behind each connection
+}
 func (this *ConnectorFixture) initializeConnector() {
 	this.connector = New(
 		Options.Address(this.brokerAddress),

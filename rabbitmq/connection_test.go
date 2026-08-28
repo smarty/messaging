@@ -21,7 +21,8 @@ func TestConnectionFixture(t *testing.T) {
 type ConnectionFixture struct {
 	*gunit.Fixture
 
-	connection messaging.Connection
+	connection  messaging.Connection
+	connections []messaging.Connection
 
 	txError      error
 	channelError error
@@ -32,7 +33,17 @@ type ConnectionFixture struct {
 }
 
 func (this *ConnectionFixture) Setup() {
-	this.connection = newConnection(this, configuration{Monitor: nop{}, Logger: nop{}})
+	this.connection = this.open(configuration{Monitor: nop{}, Logger: nop{}})
+}
+func (this *ConnectionFixture) open(config configuration) messaging.Connection {
+	connection := newConnection(this, config)
+	this.connections = append(this.connections, connection)
+	return connection
+}
+func (this *ConnectionFixture) Teardown() {
+	for _, connection := range this.connections {
+		_ = connection.Close() // release the goroutines parked behind each connection
+	}
 }
 
 func (this *ConnectionFixture) TestWhenOpeningReader_OpenAChannelAndReturnReader() {
@@ -93,7 +104,7 @@ func (this *ConnectionFixture) TestWhenOpeningChannelForWriterFails_ReturnUnderl
 
 func (this *ConnectionFixture) TestWhenBrokerBlocksConnection_LogWarningWithReason() {
 	logs := &capturingLogger{lines: make(chan string, 4)}
-	this.connection = newConnection(this, configuration{Monitor: nop{}, Logger: logs})
+	this.connection = this.open(configuration{Monitor: nop{}, Logger: logs})
 
 	this.blocking <- amqp.Blocking{Active: true, Reason: "low memory"}
 
@@ -104,7 +115,7 @@ func (this *ConnectionFixture) TestWhenBrokerBlocksConnection_LogWarningWithReas
 
 func (this *ConnectionFixture) TestWhenBrokerUnblocksConnection_LogInfo() {
 	logs := &capturingLogger{lines: make(chan string, 4)}
-	this.connection = newConnection(this, configuration{Monitor: nop{}, Logger: logs})
+	this.connection = this.open(configuration{Monitor: nop{}, Logger: logs})
 
 	this.blocking <- amqp.Blocking{Active: false}
 
@@ -115,7 +126,7 @@ func (this *ConnectionFixture) TestWhenBrokerUnblocksConnection_LogInfo() {
 
 func (this *ConnectionFixture) TestWhenBrokerBlocksConnection_NotifyMonitorBlockedThenUnblockedInOrder() {
 	monitor := &blockingMonitor{calls: make(chan string, 4)}
-	this.connection = newConnection(this, configuration{Monitor: monitor, Logger: nop{}})
+	this.connection = this.open(configuration{Monitor: monitor, Logger: nop{}})
 
 	this.blocking <- amqp.Blocking{Active: true, Reason: "low memory"}
 	this.So(receive(monitor.calls), should.Equal, "blocked:low memory")
@@ -127,7 +138,7 @@ func (this *ConnectionFixture) TestWhenBrokerBlocksConnection_NotifyMonitorBlock
 func (this *ConnectionFixture) TestWhenMonitorCallbackBlocks_NotificationDeliveryContinues() {
 	gate := make(chan struct{})
 	monitor := &blockingMonitor{calls: make(chan string, 8), gate: gate}
-	this.connection = newConnection(this, configuration{Monitor: monitor, Logger: nop{}})
+	this.connection = this.open(configuration{Monitor: monitor, Logger: nop{}})
 
 	sent := make(chan struct{})
 	go func() {
@@ -151,7 +162,7 @@ func (this *ConnectionFixture) TestWhenMonitorCallbackBlocks_NotificationDeliver
 func (this *ConnectionFixture) TestWhenMonitorCallbackIsSlow_LatestBlockedStateIsStillDelivered() {
 	gate := make(chan struct{})
 	monitor := &blockingMonitor{calls: make(chan string, 8), gate: gate}
-	this.connection = newConnection(this, configuration{Monitor: monitor, Logger: nop{}})
+	this.connection = this.open(configuration{Monitor: monitor, Logger: nop{}})
 
 	this.blocking <- amqp.Blocking{Active: true, Reason: "first"}
 	this.So(receive(monitor.calls), should.Equal, "blocked:first") // watcher is now parked in the callback
@@ -165,7 +176,7 @@ func (this *ConnectionFixture) TestWhenMonitorCallbackIsSlow_LatestBlockedStateI
 
 func (this *ConnectionFixture) TestWhenNotificationChannelCloses_WatcherStopsWithoutFurtherCallbacks() {
 	monitor := &blockingMonitor{calls: make(chan string, 4)}
-	this.connection = newConnection(this, configuration{Monitor: monitor, Logger: nop{}})
+	this.connection = this.open(configuration{Monitor: monitor, Logger: nop{}})
 
 	this.blocking <- amqp.Blocking{Active: true, Reason: "low memory"}
 	this.So(receive(monitor.calls), should.Equal, "blocked:low memory")
@@ -177,7 +188,7 @@ func (this *ConnectionFixture) TestWhenNotificationChannelCloses_WatcherStopsWit
 
 func (this *ConnectionFixture) TestWhenConnectionCloses_WatcherStopsEvenWhenNotificationChannelStaysOpen() {
 	monitor := &blockingMonitor{calls: make(chan string, 4)}
-	this.connection = newConnection(this, configuration{Monitor: monitor, Logger: nop{}})
+	this.connection = this.open(configuration{Monitor: monitor, Logger: nop{}})
 
 	_ = this.connection.Close()
 	this.blocking <- amqp.Blocking{Active: true, Reason: "after close"}

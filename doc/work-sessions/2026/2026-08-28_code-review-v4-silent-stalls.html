@@ -237,12 +237,12 @@
   <div class="stat"><b>13 / 1</b><span>confirmed / plausible</span></div>
   <div class="stat"><b>green</b><span>make test (-race)</span></div>
   <div class="stat"><b>6 / 3 / 1 / 4</b><span>quick fix / decision / optional / cleanup</span></div>
-  <div class="stat"><b>11 / 14</b><span>resolved</span></div>
+  <div class="stat"><b>12 / 14</b><span>resolved</span></div>
 </div>
 
 <h2>Triage digest</h2>
-<p class="quiet">Status 2026-08-28: findings #1&ndash;#11 are resolved on the branch, one commit
-per finding &mdash; see each card's resolution note. Findings #12&ndash;#14 remain open.</p>
+<p class="quiet">Status 2026-08-28: findings #1&ndash;#12 are resolved on the branch, one commit
+per finding &mdash; see each card's resolution note. Findings #13&ndash;#14 remain open.</p>
 <ul class="digest">
   <li><span class="chip quickfix">quick fix</span>
       Mechanical, clearly correct changes: decouple monitor callbacks from the notification drain
@@ -572,7 +572,7 @@ noted where it applies.</p>
      which pins the literal exactly once, independently of the production constant.</p>
 </article>
 
-<article class="finding" id="f12" data-tier="cleanup">
+<article class="finding resolved" id="f12" data-tier="cleanup">
   <header>
     <span class="rank">12</span>
     <code class="loc">rabbitmq/connection_test.go:200</code>
@@ -600,6 +600,12 @@ noted where it applies.</p>
      connection fixture tracks every connection through an <code>open()</code> helper and closes
      them all. The callback-gate closes in two tests must remain &mdash; <code>Close</code> cannot
      unpark a watcher stuck inside a monitor callback.</p>
+  <p class="fix resolution"><span class="label">Resolved</span>2026-08-28 &mdash; as sketched:
+     <code>ConnectorFixture.Teardown</code> closes the connector (cascading to every tracked
+     connection), and <code>ConnectionFixture</code> routes every connection through an
+     <code>open()</code> helper that a <code>Teardown</code> closes, orphaned Setup connections
+     included. The suite is stable across five <code>-race</code> runs, and a goleak-style check
+     is now possible.</p>
 </article>
 
 <article class="finding" id="f13" data-tier="cleanup">
