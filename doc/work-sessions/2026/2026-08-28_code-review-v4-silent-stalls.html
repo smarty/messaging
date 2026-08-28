@@ -542,15 +542,107 @@ per finding &mdash; see each card's resolution note. Findings #11&ndash;#14 rema
      the seam method became <code>BlockedNotifications() &lt;-chan amqp.Blocking</code>.</p>
 </article>
 
-<h2>Cut by the 10-finding cap</h2>
-<p class="quiet">These cleanup items were confirmed but displaced by correctness findings:</p>
-<ul>
-  <li>Duplicated <code>10 * time.Second</code> literals in <code>rabbitmq/connector_test.go</code>.</li>
-  <li>A dead channel allocation and leaked watcher goroutines in the
-      <code>rabbitmq/connection_test.go</code> fixture (one parked watcher per test).</li>
-  <li>A stale <code>release-notes-v3.18.0.md</code> reference in the proposal HTML.</li>
-  <li>Minor naming and prose deviations from CLAUDE.md conventions.</li>
-</ul>
+<h2>Promoted from the 10-finding cap</h2>
+<p class="quiet">The original run confirmed these cleanup items but cut them at the finding cap.
+A follow-up investigation on 2026-08-28 (against the post-fix tree, after findings #1&ndash;#10
+were resolved) re-verified each and promoted the survivors. One original claim was stale and is
+noted where it applies.</p>
+
+<article class="finding" id="f11" data-tier="cleanup">
+  <header>
+    <span class="rank">11</span>
+    <code class="loc">rabbitmq/connector_test.go:70</code>
+    <span class="chip cat">simplification</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip cleanup">cleanup</span>
+  </header>
+  <h3>Five copies of the default-heartbeat literal</h3>
+  <p>The connector tests write <code>10 * time.Second</code> five times (lines 70, 82, 94, 104,
+     and 140) while the same package already defines <code>defaultHeartbeat</code>. Four copies pin
+     the default inside expected-config assertions; one sits in the negative-value clamp test.</p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     Changing the default heartbeat requires five coordinated test edits; missing one leaves a
+     stale assertion that fails with a confusing diff. The counterpoint is real, though: a
+     default-contract test should pin the literal at least once &mdash; asserting
+     <code>defaultHeartbeat</code> against itself proves nothing.</div>
+  <p class="fix"><span class="label">Fix</span>Hoist one test-local constant (or reference
+     <code>defaultHeartbeat</code> everywhere but one deliberate literal pin).</p>
+</article>
+
+<article class="finding" id="f12" data-tier="cleanup">
+  <header>
+    <span class="rank">12</span>
+    <code class="loc">rabbitmq/connection_test.go:200</code>
+    <span class="chip cat">test-hygiene</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip cleanup">cleanup</span>
+  </header>
+  <h3>Test fixtures park ~54 goroutines per suite run</h3>
+  <p>Neither rabbitmq fixture closes the connections it creates, and every
+     <code>newConnection</code> now parks two goroutines (<code>relayBlockedState</code> and
+     <code>watchBlockedState</code>) for the life of the test binary: ~38 from
+     <code>ConnectionFixture</code> (including the orphaned <code>Setup</code> connection in tests
+     that build a second one) and ~16 from <code>ConnectorFixture</code>, whose nil
+     <code>BlockedNotifications</code> channel makes <code>Close</code> the only exit.
+     <em>The originally reported dead channel allocation is stale &mdash; the finding-#10 rework
+     removed it.</em></p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     Production is unaffected (every production path closes). The cost is diagnostic: a
+     goleak-style check cannot be added to the one package whose branch exists for
+     goroutine-lifecycle correctness, so a future regression in the done fan-out (say,
+     <code>deliverLatest</code> losing its <code>done</code> arms) would pass the suite unseen;
+     and any test-timeout panic dump is buried under dozens of identical parked frames.</div>
+  <p class="fix"><span class="label">Fix</span>gunit <code>Teardown</code> methods (precedent:
+     <code>handlers/retry/handler_test.go</code>): the connector fixture closes its connector; the
+     connection fixture tracks every connection through an <code>open()</code> helper and closes
+     them all. The callback-gate closes in two tests must remain &mdash; <code>Close</code> cannot
+     unpark a watcher stuck inside a monitor callback.</p>
+</article>
+
+<article class="finding" id="f13" data-tier="cleanup">
+  <header>
+    <span class="rank">13</span>
+    <code class="loc">doc/work-sessions/2026/&hellip;proposal&hellip;.html:548</code>
+    <span class="chip cat">docs</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip cleanup">cleanup</span>
+  </header>
+  <h3>The proposal points at deleted release notes</h3>
+  <p>The proposal's Phase 4 checklist annotation still says the release notes were written as
+     <code>doc/release-notes-v3.18.0.md</code>. That file was deleted when the v4 decision renamed
+     them <code>doc/release-notes-v4.0.0.md</code>. (The other <code>v3.18.0</code> mentions in
+     the decision callout are deliberate history.)</p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     A reader following the proposal's pointer finds no such file and may conclude the release
+     notes were never written, or waste time hunting for them.</div>
+  <p class="fix"><span class="label">Fix</span>Update the annotation to name
+     <code>release-notes-v4.0.0.md</code>.</p>
+</article>
+
+<article class="finding" id="f14" data-tier="cleanup">
+  <header>
+    <span class="rank">14</span>
+    <code class="loc">doc/release-notes-v4.0.0.md:61</code>
+    <span class="chip cat">docs</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip cleanup">cleanup</span>
+  </header>
+  <h3>Release-notes prose deviates from ASD-STE100</h3>
+  <p>The branch's Go code is clean against the CLAUDE.md conventions &mdash; receivers, named
+     returns, initializers, and function-boundary rules all conform, with the only lookalikes
+     pre-existing on master. The deviations are prose: roughly a dozen ASD-STE100 violations in
+     the release notes (sentences up to ~45 words, passive voice, idioms such as "blip",
+     "wedged", and "escape hatch", and four different names for the tolerance window), plus five
+     long or passive doc comments in the new Go files.</p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     The release notes are the migration contract for every consuming team. The ~45-word
+     heartbeat sentence and the shifting "duration / window / tolerance window" vocabulary sit
+     exactly where operators must extract sizing guidance, and a misreading there re-creates the
+     hasty-restart risk the document warns about.</div>
+  <p class="fix"><span class="label">Fix</span>Split the long sentences, name the doer in passive
+     constructions, pick one term per concept ("the tolerance window"), and replace the idioms;
+     apply the same pass to the five flagged doc comments.</p>
+</article>
 
 <h2>How the review ran</h2>
 <ul>
