@@ -516,7 +516,10 @@ connection, and <code>amqpConnection.Close</code> now uses <code>CloseDeadline</
 grace) so a close can never hang behind a wedged socket write. Also per finding #9:
 <code>Options.Heartbeat</code> sanitizes its input &mdash; sub-second positive values round up to
 one second, negative values fall back to the default, and only an explicit 0 defers to the
-broker.</em></p>
+broker. Also per finding #10: the adapter registers the blocked-notification channel during
+<code>Connect</code>, immediately after the AMQP handshake, and the seam method became
+<code>BlockedNotifications() &lt;-chan amqp.Blocking</code> &mdash; closing the registration window
+in which a <code>connection.blocked</code> frame could be silently dropped.</em></p>
 <ul class="checklist">
   <li class="done"><span class="tag red">red</span> Test: threshold 3 configured; two consecutive failures &rarr;
       <code>Status</code> returns nil both times; the third failure returns the error.</li>

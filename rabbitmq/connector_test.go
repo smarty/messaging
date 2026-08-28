@@ -181,11 +181,9 @@ func (this *ConnectorFixture) Connect(ctx context.Context, socket net.Conn, conf
 	return this, this.connectError
 }
 
-func (this *ConnectorFixture) Close() error                      { this.callsToClose++; return nil }
-func (this *ConnectorFixture) Channel() (adapter.Channel, error) { panic("nop") }
-func (this *ConnectorFixture) NotifyBlocked(receiver chan amqp.Blocking) chan amqp.Blocking {
-	return receiver
-}
+func (this *ConnectorFixture) Close() error                               { this.callsToClose++; return nil }
+func (this *ConnectorFixture) Channel() (adapter.Channel, error)          { panic("nop") }
+func (this *ConnectorFixture) BlockedNotifications() <-chan amqp.Blocking { return nil }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

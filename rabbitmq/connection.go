@@ -23,7 +23,7 @@ func newConnection(inner adapter.Connection, config configuration) messaging.Con
 	config.Monitor.ConnectionOpened(nil)
 	this := &defaultConnection{inner: inner, config: config, logger: config.Logger, monitor: config.Monitor, done: make(chan struct{})}
 	relay := make(chan amqp.Blocking, 1)
-	go relayBlockedState(inner.NotifyBlocked(make(chan amqp.Blocking, 1)), relay, this.done)
+	go relayBlockedState(inner.BlockedNotifications(), relay, this.done)
 	go this.watchBlockedState(relay)
 	return this
 }
@@ -34,7 +34,7 @@ func newConnection(inner adapter.Connection, config configuration) messaging.Con
 // the amqp library closes the notification channel or when done closes, so an
 // adapter.Connection implementation that never closes the channel cannot leak
 // the goroutine; closing relay ends the watcher in turn.
-func relayBlockedState(notifications, relay chan amqp.Blocking, done chan struct{}) {
+func relayBlockedState(notifications <-chan amqp.Blocking, relay chan amqp.Blocking, done chan struct{}) {
 	defer close(relay)
 	for {
 		select {

@@ -32,7 +32,6 @@ type ConnectionFixture struct {
 }
 
 func (this *ConnectionFixture) Setup() {
-	this.blocking = make(chan amqp.Blocking, 4)
 	this.connection = newConnection(this, configuration{Monitor: nop{}, Logger: nop{}})
 }
 
@@ -198,9 +197,11 @@ func (this *ConnectionFixture) TestWhenClosing_InvokeUnderlyingConnection() {
 
 func (this *ConnectionFixture) Channel() (adapter.Channel, error) { return this, this.channelError }
 func (this *ConnectionFixture) Close() error                      { return this.closeError }
-func (this *ConnectionFixture) NotifyBlocked(receiver chan amqp.Blocking) chan amqp.Blocking {
-	this.blocking = receiver
-	return receiver
+func (this *ConnectionFixture) BlockedNotifications() <-chan amqp.Blocking {
+	// a fresh channel per connection, like the real adapter; tests send into
+	// the most recent connection's channel
+	this.blocking = make(chan amqp.Blocking, 4)
+	return this.blocking
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

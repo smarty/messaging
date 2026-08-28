@@ -15,8 +15,8 @@ for the full background.
    `ConnectionBlocked(reason string)` and `ConnectionUnblocked()` (empty
    bodies are sufficient; see below for the recommended wiring).
 3. If you implement or fake `rabbitmq/adapter.Connection`, add one method:
-   `NotifyBlocked(receiver chan amqp.Blocking) chan amqp.Blocking`
-   (`return receiver` is a sufficient fake).
+   `BlockedNotifications() <-chan amqp.Blocking`
+   (`return nil` is a sufficient fake).
 4. Read the status-checker section below and confirm your platform's reaction
    to a failing `/status` before you deploy.
 
@@ -104,8 +104,10 @@ the tolerance window passes.
 The `rabbitmq/adapter.Connection` interface gains one method:
 
 ```go
-NotifyBlocked(receiver chan amqp.Blocking) chan amqp.Blocking
+BlockedNotifications() <-chan amqp.Blocking
 ```
 
-Custom implementations of this interface (test fakes included) must add this
-method. A one-line delegation or `return receiver` is sufficient.
+The real adapter registers the channel with the broker during `Connect`, so no
+notification is dropped in a registration window. Custom implementations of
+this interface (test fakes included) must add this method; `return nil` is a
+sufficient fake.

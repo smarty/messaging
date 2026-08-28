@@ -21,11 +21,19 @@ func (this amqpConnector) Connect(_ context.Context, socket net.Conn, config Con
 	if connection, err := amqp.Open(socket, amqpConfig); err != nil {
 		return nil, err
 	} else {
-		return amqpConnection{Connection: connection}, nil
+		// registered here, immediately after the handshake, so a broker that
+		// blocks the connection right away is not missed
+		blocked := connection.NotifyBlocked(make(chan amqp.Blocking, 1))
+		return amqpConnection{Connection: connection, blocked: blocked}, nil
 	}
 }
 
-type amqpConnection struct{ *amqp.Connection }
+type amqpConnection struct {
+	*amqp.Connection
+	blocked chan amqp.Blocking
+}
+
+func (this amqpConnection) BlockedNotifications() <-chan amqp.Blocking { return this.blocked }
 
 // Close bounds the close handshake with a deadline on the underlying socket.
 // Setting the deadline also unblocks any write already wedged on a broker
