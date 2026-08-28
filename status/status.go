@@ -72,11 +72,32 @@ func (this *defaultStatusChecker) tryWrite(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_, err = this.writer.Write(ctx, this.dispatch)
+	err = this.write(ctx)
 	if err != nil {
 		_ = this.Close()
 	}
 	return err
+}
+
+// write bounds the probe with the caller's context: a broker that has stopped
+// reading (a resource alarm) can block the underlying socket write
+// indefinitely, so on timeout the checker severs the connection, which
+// unblocks the write.
+func (this *defaultStatusChecker) write(ctx context.Context) error {
+	writer := this.writer
+	completed := make(chan error, 1)
+	go func() {
+		_, err := writer.Write(ctx, this.dispatch)
+		completed <- err
+	}()
+	select {
+	case err := <-completed:
+		return err
+	case <-ctx.Done():
+		_ = this.Close()
+		<-completed // bounded: the severed connection errors the write promptly
+		return ctx.Err()
+	}
 }
 func (this *defaultStatusChecker) tryConnect(ctx context.Context) (err error) {
 	if this.connection != nil && this.writer != nil {

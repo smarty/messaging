@@ -85,9 +85,13 @@ func (this *myMonitor) ConnectionUnblocked()            { ... }
 ```
 
 Empty bodies satisfy the contract. A blocked
-broker does not fail `/status` (the probe write is accepted without error), so
-wire these callbacks to a gauge and an alert; paging is the correct reaction
-to a blocked broker, and a restart does not help.
+broker does not fail `/status` immediately (the broker keeps accepting probe
+bytes into its buffers), so wire these callbacks to a gauge and an alert;
+paging is the correct reaction to a blocked broker, and a restart does not
+help. If a block persists long enough to wedge the probe's socket write, the
+probe honors its context deadline, severs its connection (connection close is
+bounded by a 5-second socket deadline), and `/status` reports the failure once
+the tolerance window passes.
 
 ## Breaking: `adapter.Connection` interface addition
 

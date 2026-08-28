@@ -30,6 +30,8 @@ type StatusFixture struct {
 	writeCalls   int
 	writeError   error
 	closeCalls   int
+	writeGate    chan struct{} // when non-nil, Write parks here until Close severs it
+	gateClosed   bool
 }
 
 func (this *StatusFixture) Setup() {
@@ -80,6 +82,17 @@ func (this *StatusFixture) TestWhenOpeningWriterFails_ReturnErrorAndCloseTheDial
 	this.writerError = nil
 	this.So(this.checker.Status(this.ctx), should.BeNil)
 	this.So(this.connectCalls, should.Equal, 2) // the next probe dials fresh
+}
+
+func (this *StatusFixture) TestWhenWriteBlocks_ProbeHonorsContextDeadlineAndSeversConnection() {
+	this.writeGate = make(chan struct{})
+	ctx, cancel := context.WithTimeout(this.ctx, time.Millisecond*25)
+	defer cancel()
+
+	err := this.checker.Status(ctx)
+
+	this.So(err, should.Equal, context.DeadlineExceeded)
+	this.So(this.closeCalls, should.Equal, 2) // the wedged connection was severed
 }
 
 func (this *StatusFixture) TestWhenWriteFailsWithPasswordError_ReturnUnderlyingError() {
@@ -210,12 +223,23 @@ func (this *StatusFixture) Writer(_ context.Context) (messaging.Writer, error) {
 }
 func (this *StatusFixture) Write(_ context.Context, dispatches ...messaging.Dispatch) (int, error) {
 	this.writeCalls++
+	if this.writeGate != nil {
+		<-this.writeGate // parked, like a socket write to a blocked broker
+		return 0, errors.New("connection severed")
+	}
 	if this.writeError != nil {
 		return 0, this.writeError
 	}
 	return len(dispatches), nil
 }
-func (this *StatusFixture) Close() error { this.closeCalls++; return nil }
+func (this *StatusFixture) Close() error {
+	this.closeCalls++
+	if this.writeGate != nil && !this.gateClosed {
+		this.gateClosed = true
+		close(this.writeGate) // severing the connection unblocks the parked write
+	}
+	return nil
+}
 
 func (this *StatusFixture) Reader(_ context.Context) (messaging.Reader, error) { panic("nop") }
 func (this *StatusFixture) CommitWriter(_ context.Context) (messaging.CommitWriter, error) {

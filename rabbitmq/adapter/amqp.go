@@ -3,6 +3,7 @@ package adapter
 import (
 	"context"
 	"net"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -25,6 +26,15 @@ func (this amqpConnector) Connect(_ context.Context, socket net.Conn, config Con
 }
 
 type amqpConnection struct{ *amqp.Connection }
+
+// Close bounds the close handshake with a deadline on the underlying socket.
+// Setting the deadline also unblocks any write already wedged on a broker
+// that has stopped reading (a resource alarm), so Close cannot hang.
+func (this amqpConnection) Close() error {
+	return this.Connection.CloseDeadline(time.Now().Add(closeGracePeriod))
+}
+
+const closeGracePeriod = time.Second * 5
 
 func (this amqpConnection) Channel() (Channel, error) {
 	if channel, err := this.Connection.Channel(); err != nil {
