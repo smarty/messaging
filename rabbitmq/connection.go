@@ -26,18 +26,13 @@ func newConnection(inner adapter.Connection, config configuration) messaging.Con
 }
 func (this *defaultConnection) watchBlockedState(notifications chan amqp.Blocking) {
 	// NOTE: the amqp library closes the notification channel when the connection closes.
-	blocked, _ := this.monitor.(blockedMonitor)
 	for notification := range notifications {
 		if notification.Active {
 			this.logger.Printf("[WARN] AMQP connection blocked by broker (reason: %s); publishes will stall until the broker unblocks.", notification.Reason)
-			if blocked != nil {
-				blocked.ConnectionBlocked(notification.Reason)
-			}
+			this.monitor.ConnectionBlocked(notification.Reason)
 		} else {
 			this.logger.Printf("[INFO] AMQP connection unblocked by broker; publishes resume.")
-			if blocked != nil {
-				blocked.ConnectionUnblocked()
-			}
+			this.monitor.ConnectionUnblocked()
 		}
 	}
 }

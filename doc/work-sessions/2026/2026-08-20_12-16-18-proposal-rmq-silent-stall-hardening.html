@@ -235,6 +235,12 @@ threshold verification), so the upgrade must not be reachable by an accidental
 feature: <code>status.Options.FailureThreshold(n)</code> (Phase 3b below), so callers configure
 tolerance instead of each writing a decorator. The context-aware <code>TxCommit</code> redesign
 stays out (future <code>v5</code>).
+<br><br>
+<strong>Follow-up (2026-08-28):</strong> because v4 already breaks compilation, the optional
+<code>blockedMonitor</code> interface (T4) is dissolved: <code>ConnectionBlocked(reason string)</code>
+and <code>ConnectionUnblocked()</code> now belong to the <code>monitor</code> interface itself.
+Every monitor implementation adds the two methods (empty bodies suffice); the capability is fully
+discoverable and the type assertion is gone.
 </div>
 
 <h3 id="fix1">Fix 1 &mdash; Explicit client heartbeat</h3>
@@ -387,7 +393,8 @@ consuming service should confirm its restart policy tolerates brief broker blips
     <td>Monitor extension style: optional interface vs. adding methods to <code>monitor</code>.</td>
     <td>The optional interface keeps every existing monitor compiling and makes adoption gradual.
         Cost: the capability is less discoverable. The changelog and the <code>nop</code> example
-        mitigate this.</td>
+        mitigate this. <em>Superseded 2026-08-28: with the v4 decision, the two methods moved into
+        the <code>monitor</code> interface; see the decision callout in section 2.</em></td>
   </tr>
   <tr>
     <td>T5</td>

@@ -139,6 +139,8 @@ func (nop) Printf(_ string, _ ...any) {}
 
 func (nop) ConnectionOpened(_ error)               {}
 func (nop) ConnectionClosed()                      {}
+func (nop) ConnectionBlocked(_ string)             {}
+func (nop) ConnectionUnblocked()                   {}
 func (nop) DispatchPublished()                     {}
 func (nop) DeliveryReceived()                      {}
 func (nop) DeliveryAcknowledged(_ uint16, _ error) {}

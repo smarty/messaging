@@ -114,7 +114,7 @@ func (this *ConnectionFixture) TestWhenBrokerUnblocksConnection_LogInfo() {
 	this.So(line, should.ContainSubstring, "unblocked")
 }
 
-func (this *ConnectionFixture) TestWhenMonitorImplementsBlockedMonitor_NotifyBlockedThenUnblockedInOrder() {
+func (this *ConnectionFixture) TestWhenBrokerBlocksConnection_NotifyMonitorBlockedThenUnblockedInOrder() {
 	monitor := &blockingMonitor{calls: make(chan string, 4)}
 	this.connection = newConnection(this, configuration{Monitor: monitor, Logger: nop{}})
 
@@ -123,17 +123,6 @@ func (this *ConnectionFixture) TestWhenMonitorImplementsBlockedMonitor_NotifyBlo
 
 	this.So(receive(monitor.calls), should.Equal, "blocked:low memory")
 	this.So(receive(monitor.calls), should.Equal, "unblocked")
-}
-
-func (this *ConnectionFixture) TestWhenMonitorLacksBlockedMonitor_NoPanicAndLogsStillEmitted() {
-	logs := &capturingLogger{lines: make(chan string, 4)}
-	this.connection = newConnection(this, configuration{Monitor: nop{}, Logger: logs})
-
-	this.blocking <- amqp.Blocking{Active: true, Reason: "low memory"}
-	this.blocking <- amqp.Blocking{Active: false}
-
-	this.So(receive(logs.lines), should.ContainSubstring, "[WARN]")
-	this.So(receive(logs.lines), should.ContainSubstring, "[INFO]")
 }
 
 func (this *ConnectionFixture) TestWhenNotificationChannelCloses_WatcherStopsWithoutFurtherCallbacks() {

@@ -11,10 +11,13 @@ for the full background.
 
 1. Rewrite imports: `github.com/smarty/messaging/v3` becomes
    `github.com/smarty/messaging/v4` (including the `go.mod` requirement).
-2. If you implement or fake `rabbitmq/adapter.Connection`, add one method:
+2. Add two methods to your `rabbitmq.Options.Monitor` implementation:
+   `ConnectionBlocked(reason string)` and `ConnectionUnblocked()` (empty
+   bodies are sufficient; see below for the recommended wiring).
+3. If you implement or fake `rabbitmq/adapter.Connection`, add one method:
    `NotifyBlocked(receiver chan amqp.Blocking) chan amqp.Blocking`
    (`return receiver` is a sufficient fake).
-3. Read the status-checker section below and confirm your platform's reaction
+4. Read the status-checker section below and confirm your platform's reaction
    to a failing `/status` before you deploy.
 
 Note: the old `v4.0.0-alpha.*` tags belong to an abandoned 2021 streaming
@@ -59,7 +62,7 @@ rabbitmq.New(rabbitmq.Options.Heartbeat(30 * time.Second))
 Escape hatch: `rabbitmq.Options.Heartbeat(0)` restores the previous wire
 behavior (the client defers to the interval the broker offers).
 
-## New: broker blocked-connection notifications
+## New (and breaking): broker blocked-connection notifications
 
 The connection now registers `NotifyBlocked` with the broker. When a memory or
 disk alarm blocks the connection, the library logs:
@@ -67,14 +70,14 @@ disk alarm blocks the connection, the library logs:
 - `[WARN] AMQP connection blocked by broker (reason: ...)` when the block starts.
 - `[INFO] AMQP connection unblocked by broker; publishes resume.` when it ends.
 
-A monitor can opt in to these events. Add these two methods to your monitor:
+The `monitor` contract now includes these events. Every monitor implements:
 
 ```go
 func (this *myMonitor) ConnectionBlocked(reason string) { ... }
 func (this *myMonitor) ConnectionUnblocked()            { ... }
 ```
 
-Existing monitors compile unchanged. The methods are optional. A blocked
+Empty bodies satisfy the contract. A blocked
 broker does not fail `/status` (the probe write is accepted without error), so
 wire these callbacks to a gauge and an alert; paging is the correct reaction
 to a blocked broker, and a restart does not help.

@@ -14,18 +14,13 @@ type brokerEndpoint struct {
 type monitor interface {
 	ConnectionOpened(error)
 	ConnectionClosed()
+	ConnectionBlocked(reason string)
+	ConnectionUnblocked()
 	DispatchPublished()
 	DeliveryReceived()
 	DeliveryAcknowledged(uint16, error)
 	TransactionCommitted(error)
 	TransactionRolledBack(error)
-}
-
-// blockedMonitor is an optional extension of monitor; implementations
-// receive broker connection.blocked/unblocked notifications.
-type blockedMonitor interface {
-	ConnectionBlocked(reason string)
-	ConnectionUnblocked()
 }
 type logger interface {
 	Printf(format string, args ...any)
