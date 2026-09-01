@@ -1,0 +1,676 @@
+<title>Silent-Stall Hardening Review</title>
+<style>
+  :root {
+    --paper: #fafbfc;
+    --panel: #f1f4f7;
+    --ink: #1c2129;
+    --muted: #5a6472;
+    --border: #d9dfe6;
+    --accent: #0b5fa5;
+    --code-bg: #eef1f4;
+    --good-fg: #2e7d43;
+    --good-bg: #e9f5ec;
+    --warn-fg: #9a6a12;
+    --warn-bg: #fbf3e2;
+    --crit-fg: #b3382c;
+    --crit-bg: #fdecea;
+    --gray-fg: #5a6472;
+    --gray-bg: #eceff2;
+    --scenario-bg: #f4f6f8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14181e;
+      --panel: #1b2129;
+      --ink: #dde3ea;
+      --muted: #8b96a3;
+      --border: #313a45;
+      --accent: #64a9dd;
+      --code-bg: #232b35;
+      --good-fg: #6cc588;
+      --good-bg: #1d2f24;
+      --warn-fg: #d9a84e;
+      --warn-bg: #322917;
+      --crit-fg: #e07a6d;
+      --crit-bg: #382020;
+      --gray-fg: #9aa5b1;
+      --gray-bg: #242b34;
+      --scenario-bg: #191f27;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14181e;
+    --panel: #1b2129;
+    --ink: #dde3ea;
+    --muted: #8b96a3;
+    --border: #313a45;
+    --accent: #64a9dd;
+    --code-bg: #232b35;
+    --good-fg: #6cc588;
+    --good-bg: #1d2f24;
+    --warn-fg: #d9a84e;
+    --warn-bg: #322917;
+    --crit-fg: #e07a6d;
+    --crit-bg: #382020;
+    --gray-fg: #9aa5b1;
+    --gray-bg: #242b34;
+    --scenario-bg: #191f27;
+  }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Charter", "Georgia", serif;
+    font-size: 16.5px;
+    line-height: 1.55;
+  }
+  main {
+    max-width: 48rem;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 5rem;
+  }
+  h1, h2, h3 {
+    font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.2;
+    text-wrap: balance;
+  }
+  h1 { font-size: 1.8rem; margin: 0 0 0.35rem; }
+  h2 { font-size: 1.25rem; margin: 2.8rem 0 0.9rem; border-bottom: 2px solid var(--border); padding-bottom: 0.35rem; }
+  code, pre {
+    font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.85em;
+  }
+  code { background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
+  a { color: var(--accent); }
+  .meta {
+    color: var(--muted);
+    font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+    font-size: 0.9rem;
+    margin-bottom: 1.6rem;
+  }
+
+  .stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin: 1.4rem 0 0;
+  }
+  .stat {
+    flex: 1 1 9rem;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.7rem 0.95rem;
+  }
+  .stat b {
+    display: block;
+    font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+    font-size: 1.35rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat span {
+    color: var(--muted);
+    font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+    font-size: 0.78rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+
+  .digest { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.55rem; }
+  .digest li { padding-left: 0; }
+  .digest .chip { margin-right: 0.45rem; }
+
+  .finding {
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 8px;
+    background: var(--panel);
+    padding: 1rem 1.25rem 1.1rem;
+    margin: 1.1rem 0;
+  }
+  .finding[data-tier="decision"] { border-left-color: var(--warn-fg); }
+  .finding[data-tier="optional"] { border-left-color: var(--border); }
+  .finding header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.55rem;
+    margin-bottom: 0.35rem;
+  }
+  .rank {
+    font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .loc { font-size: 0.8rem; }
+  .finding h3 {
+    font-size: 1.05rem;
+    margin: 0.15rem 0 0.4rem;
+  }
+  .finding p { margin: 0.45rem 0; }
+  .chip {
+    display: inline-block;
+    font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    padding: 0.13rem 0.6rem;
+    white-space: nowrap;
+  }
+  .chip.confirmed  { background: var(--good-bg); color: var(--good-fg); }
+  .chip.plausible  { background: var(--warn-bg); color: var(--warn-fg); }
+  .chip.cat        { background: var(--gray-bg); color: var(--gray-fg); }
+  .chip.quickfix   { background: var(--crit-bg); color: var(--crit-fg); }
+  .chip.decision   { background: var(--warn-bg); color: var(--warn-fg); }
+  .chip.optional   { background: var(--gray-bg); color: var(--gray-fg); }
+  .chip.cleanup    { background: var(--code-bg); color: var(--accent); }
+  .finding.resolved { border-left-color: var(--good-fg); }
+  .finding.resolved header::after {
+    content: "resolved";
+    font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    padding: 0.13rem 0.6rem;
+    white-space: nowrap;
+    background: var(--good-bg);
+    color: var(--good-fg);
+  }
+  .resolution .label { color: var(--good-fg); }
+
+  .scenario {
+    background: var(--scenario-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.6rem 0.9rem;
+    margin: 0.6rem 0;
+    font-size: 0.93rem;
+  }
+  .scenario .label,
+  .fix .label {
+    display: block;
+    font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.25rem;
+  }
+  .fix { margin-top: 0.6rem; font-size: 0.95rem; }
+  .fix .label { display: inline; margin-right: 0.5rem; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.92rem;
+    font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+  }
+  .tablewrap { overflow-x: auto; }
+  th, td { border: 1px solid var(--border); padding: 0.45rem 0.7rem; text-align: left; vertical-align: top; }
+  th { background: var(--panel); }
+
+  ul { padding-left: 1.3rem; }
+  li { margin: 0.3rem 0; }
+  .quiet { color: var(--muted); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<main>
+<h1>Silent-Stall Hardening Review</h1>
+<p class="meta">
+  Branch <code>mikewhat/prevent-silent-stalls</code> &middot; reviewed 2026-08-28 at low effort &middot;
+  65 files, ~1,070 insertions (substantive changes in <code>rabbitmq/</code> and <code>status/</code>;
+  the rest is the mechanical v3&rarr;v4 import rewrite) &middot; claims verified against
+  <code>amqp091-go v1.10.0</code> source
+</p>
+
+<div class="stats">
+  <div class="stat"><b>14</b><span>findings</span></div>
+  <div class="stat"><b>13 / 1</b><span>confirmed / plausible</span></div>
+  <div class="stat"><b>green</b><span>make test (-race)</span></div>
+  <div class="stat"><b>6 / 3 / 1 / 4</b><span>quick fix / decision / optional / cleanup</span></div>
+  <div class="stat"><b>14 / 14</b><span>resolved</span></div>
+</div>
+
+<h2>Triage digest</h2>
+<p class="quiet">Status 2026-08-28: all fourteen findings are resolved on the branch, one commit
+per finding &mdash; see each card's resolution note.</p>
+<ul class="digest">
+  <li><span class="chip quickfix">quick fix</span>
+      Mechanical, clearly correct changes: decouple monitor callbacks from the notification drain
+      path (<a href="#f1">#1</a>), close the leaked connection on <code>Writer</code> failure
+      (<a href="#f4">#4</a>), bound the watcher goroutine's life (<a href="#f5">#5</a>), fix the
+      off-by-one godoc (<a href="#f7">#7</a>), correct the 30s&rarr;15s detection claim
+      (<a href="#f8">#8</a>), and clamp <code>Options.Heartbeat</code> (<a href="#f9">#9</a>).</li>
+  <li><span class="chip decision">decision</span>
+      Judgment calls for Mike: the default damping window is far shorter than the guidance the
+      release notes give (<a href="#f2">#2</a>), credential errors lost their v3 fail-fast path
+      (<a href="#f3">#3</a>), and the probe can wedge on a blocked broker while holding the checker
+      mutex (<a href="#f6">#6</a>).</li>
+  <li><span class="chip optional">optional</span>
+      A narrow registration-window race that drops one blocked notification
+      (<a href="#f10">#10</a>).</li>
+  <li><span class="chip cleanup">cleanup</span>
+      Promoted 2026-08-28 from the items originally cut by the 10-finding cap, after a follow-up
+      investigation: duplicated heartbeat literals (<a href="#f11">#11</a>), fixture goroutine
+      hygiene (<a href="#f12">#12</a>), a stale proposal reference (<a href="#f13">#13</a>), and
+      release-notes prose style (<a href="#f14">#14</a>).</li>
+</ul>
+
+<h2>Findings, most severe first</h2>
+
+<article class="finding resolved" id="f1" data-tier="quickfix">
+  <header>
+    <span class="rank">1</span>
+    <code class="loc">rabbitmq/connection.go:29</code>
+    <span class="chip cat">correctness</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip quickfix">quick fix</span>
+  </header>
+  <h3>A blocking monitor callback can wedge the whole connection</h3>
+  <p>A slow or blocking <code>monitor.ConnectionBlocked</code>/<code>ConnectionUnblocked</code>
+     callback can wedge the entire AMQP connection: <code>amqp091-go</code>'s <code>dispatch0</code>
+     delivers <code>Blocking</code> notifications with an unconditional blocking send from the
+     connection's frame-demux goroutine, and <code>watchBlockedState</code> drains the
+     capacity-1 channel synchronously through user callback code.</p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     A broker memory alarm flaps blocked/unblocked/blocked while a service's
+     <code>ConnectionBlocked</code> callback blocks (a synchronous alert call that hangs during the
+     very incident it reports). Notification 1 is in the callback, notification 2 fills the
+     capacity-1 buffer, notification 3 blocks <code>dispatch0</code>
+     (<code>amqp091-go v1.10.0 connection.go:664-670</code>, a blocking send with no
+     <code>select</code>) &mdash; the reader goroutine stops processing frames, so deliveries, RPC
+     replies, and <code>Close</code> all stall. The stall-prevention feature itself creates a
+     silent stall.</div>
+  <p class="fix"><span class="label">Fix</span>Drain with select/coalescing, or invoke the monitor
+     callbacks off the drain path.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>fcec095</code> &mdash; a relay
+     goroutine drains the broker channel and coalesces to the latest state; monitor callbacks run
+     off the drain path.</p>
+</article>
+
+<article class="finding resolved" id="f2" data-tier="decision">
+  <header>
+    <span class="rank">2</span>
+    <code class="loc">status/config.go:53</code>
+    <span class="chip cat">correctness</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip decision">decision</span>
+  </header>
+  <h3>The default damping window is ~5 seconds, not ~30</h3>
+  <p>The default <code>FailureThreshold</code> of 5 counts probes, not time. With
+     <code>httpstatus</code>'s default 1-second cadence (that library has no tolerance of its own),
+     the out-of-the-box damping window is only about 5 seconds &mdash; far below the release notes'
+     own guidance that the window must exceed a rolling broker restart or failover election
+     (~30s+).</p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     A service upgrades to v4 leaving both defaults in place. A routine 30-second broker rolling
+     restart produces ~30 consecutive probe failures; <code>/status</code> goes red after ~5
+     seconds and the orchestrator restarts the fleet mid-maintenance &mdash; exactly the hasty
+     restart the threshold exists to prevent.</div>
+  <p class="fix"><span class="label">Decide</span>Raise the default, or switch to a time-based
+     tolerance (tolerate failures for a configured duration since the first failure), which is
+     self-contained and immune to cadence changes made in a different library.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>686d7a8</code> &mdash;
+     <code>FailureThreshold</code> replaced by the wall-clock
+     <code>status.Options.FailureTolerance</code> (default 30 seconds), independent of the probe
+     cadence.</p>
+</article>
+
+<article class="finding resolved" id="f3" data-tier="decision">
+  <header>
+    <span class="rank">3</span>
+    <code class="loc">status/status.go:40</code>
+    <span class="chip cat">correctness</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip decision">decision</span>
+  </header>
+  <h3>Credential errors lost their fail-fast path</h3>
+  <p>v3 returned any error containing <code>password</code> on the <em>first</em> probe; v4 routes
+     <code>ACCESS_REFUSED</code>/auth errors through the same tolerance counter as transient blips.
+     Neither the code nor the release notes re-establish immediate reporting for definitive
+     failures.</p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     A pod deploys with a rotated or wrong RabbitMQ password. Under v3 the first
+     <code>/status</code> probe failed and the rollout halted at the first pod; under v4 with the
+     default threshold of 5, every new pod reports healthy for 4 probes &mdash; long enough for a
+     readiness gate to pass and the rollout to replace all healthy old pods before the fleet-wide
+     auth failure surfaces. <code>TestWhenWriteFailsWithPasswordError_ReturnUnderlyingError</code>
+     passes only because <code>Setup</code> pins <code>FailureThreshold(1)</code>, masking the
+     regression at the default.</div>
+  <p class="fix"><span class="label">Decide</span>Should definitive auth errors bypass the
+     tolerance counter? That would partially restore the v3 fail-fast intent.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>cd3dcc6</code> &mdash; AMQP
+     403/530 errors bypass the tolerance window and report on the first probe.</p>
+</article>
+
+<article class="finding resolved" id="f4" data-tier="quickfix">
+  <header>
+    <span class="rank">4</span>
+    <code class="loc">status/status.go:63</code>
+    <span class="chip cat">correctness</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip quickfix">quick fix</span>
+    <span class="chip cat">pre-existing lines</span>
+  </header>
+  <h3>The probe leaks a live connection when Writer fails</h3>
+  <p><code>tryConnect</code> leaks a live AMQP connection on every probe where <code>Connect</code>
+     succeeds but <code>connection.Writer</code> fails: <code>this.connection</code> stays set with
+     <code>this.writer</code> nil, <code>tryWrite</code> returns without <code>Close</code>
+     (Close runs only on Write failure), and the next probe re-dials and overwrites
+     <code>this.connection</code> without closing the old one.</p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     A broker that accepts the AMQP handshake but fails <code>channel.open</code> leaks one TCP
+     connection per probe &mdash; ~720/hour at a 5s cadence &mdash; each pinned forever in
+     <code>defaultConnector.active</code> (<code>rabbitmq/connector.go:62</code>, never pruned on
+     individual Close) and each now carrying a parked <code>watchBlockedState</code> goroutine.
+     The lines are pre-existing, but the honest checker makes sustained failing-probe loops a
+     first-class expected state, and this branch attaches a goroutine to every leak.</div>
+  <p class="fix"><span class="label">Fix</span>Close and nil the connection in the
+     Writer-failure branch.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>17b9a89</code> &mdash; the
+     Writer-failure branch closes and nils the dialed connection; the next probe dials fresh.</p>
+</article>
+
+<article class="finding resolved" id="f5" data-tier="quickfix">
+  <header>
+    <span class="rank">5</span>
+    <code class="loc">rabbitmq/connection.go:24</code>
+    <span class="chip cat">correctness</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip quickfix">quick fix</span>
+  </header>
+  <h3>The watcher goroutine has no exit of its own</h3>
+  <p><code>watchBlockedState</code> exits only when the notification channel closes, and
+     <code>defaultConnection.Close</code> gives it no exit signal &mdash; yet the release notes tell
+     <code>adapter.Connection</code> implementers that <code>return receiver</code> is a sufficient
+     fake, which never closes the channel.</p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     A service that wraps <code>adapter.Connection</code> via the public
+     <code>rabbitmq.Options.Connector</code> seam using the documented one-liner leaks one
+     permanently parked goroutine (plus the captured connection object) per Connect/Close cycle;
+     under connection churn this grows without bound and trips goleak-style detectors in
+     downstream suites. The in-repo test fixtures already leak one watcher per test the same
+     way.</div>
+  <p class="fix"><span class="label">Fix</span>Select on a done channel closed by
+     <code>Close()</code>, bounding the watcher's life regardless of the inner
+     implementation.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>6d7a616</code> &mdash;
+     <code>Close()</code> closes a done channel that bounds both the relay and the watcher.</p>
+</article>
+
+<article class="finding resolved" id="f6" data-tier="decision">
+  <header>
+    <span class="rank">6</span>
+    <code class="loc">status/status.go:53</code>
+    <span class="chip cat">correctness</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip decision">decision</span>
+  </header>
+  <h3>The probe can block forever while holding the checker mutex</h3>
+  <p>The status probe write can block indefinitely while holding the checker mutex during a
+     prolonged broker alarm, contradicting the release notes' claim that "a blocked broker does not
+     fail <code>/status</code>": <code>defaultWriter.Write</code> ignores its <code>ctx</code> and
+     uses a deadline-free AMQP <code>Publish</code>, and a blocked broker stops reading the
+     socket.</p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     During a prolonged memory/disk alarm the probe connection's TCP send buffer eventually fills;
+     one <code>Status</code> call wedges inside <code>Write</code> while holding the lock, every
+     subsequent <code>/status</code> request queues on the mutex and times out at the HTTP layer
+     &mdash; which most platforms count as a failed check &mdash; triggering the restart loop the
+     notes say is the wrong reaction, with no error ever logged by the failure-threshold path.</div>
+  <p class="fix"><span class="label">Decide</span>Add a write deadline to the probe path, or amend
+     the release-notes claim to describe this behavior honestly.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>e581f47</code> &mdash; the
+     probe honors its context deadline and severs the connection on timeout;
+     <code>amqpConnection.Close</code> uses <code>CloseDeadline</code> (5-second grace), so a close
+     never hangs behind a wedged socket write.</p>
+</article>
+
+<article class="finding resolved" id="f7" data-tier="quickfix">
+  <header>
+    <span class="rank">7</span>
+    <code class="loc">status/config.go:38</code>
+    <span class="chip cat">docs</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip quickfix">quick fix</span>
+  </header>
+  <h3>FailureThreshold documentation is off by one probe</h3>
+  <p>The godoc says the option "sets how many consecutive probe failures Status tolerates
+     (returning nil) before it reports the error", but the code reports <em>on</em> the Nth
+     failure, tolerating only N&minus;1. The tolerated-failure log line
+     <code>(%d of %d tolerated)</code> repeats the overstatement.</p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     An operator sizes a damping window per the doc, sets <code>FailureThreshold(6)</code>
+     expecting 6 tolerated failures (~35s at a 5s cadence), but <code>/status</code> actually fails
+     on the 6th probe (~30s) &mdash; one probe interval before the window they validated against
+     their longest routine broker event. The godoc's own third sentence and the test name
+     <code>TestFailureThreshold_DefaultToleratesFourConsecutiveFailures</code> confirm the code
+     intent.</div>
+  <p class="fix"><span class="label">Fix</span>Correct the godoc's first sentence and the log
+     wording.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>686d7a8</code> (by
+     obsolescence) &mdash; the off-by-one godoc vanished with <code>FailureThreshold</code>; tests
+     pin the <code>FailureTolerance</code> boundary from both sides (29s tolerates, 30s
+     reports).</p>
+</article>
+
+<article class="finding resolved" id="f8" data-tier="quickfix">
+  <header>
+    <span class="rank">8</span>
+    <code class="loc">doc/release-notes-v4.0.0.md:55</code>
+    <span class="chip cat">docs</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip quickfix">quick fix</span>
+  </header>
+  <h3>"About 30 seconds" is really about 15</h3>
+  <p>The claim that a dead socket "surfaces as an error within about 30 seconds" is wrong by 2x:
+     <code>amqp091-go v1.10.0</code> starts the heartbeater at interval Heartbeat/2
+     (<code>connection.go:1047</code>) and sets the read deadline to 3&times; that interval
+     (<code>connection.go:815</code>), so a 10s heartbeat yields a ~15-second read deadline.</p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     Operators size restart thresholds and damping windows against these numbers and assume ~30s
+     of network-stall tolerance; any read stall over ~15s already tears down the connection,
+     causing unexpected connection churn during network pauses the fleet was sized to survive. The
+     proposal HTML repeats the same ~30s figure.</div>
+  <p class="fix"><span class="label">Fix</span>Correct the release notes and the proposal to ~15
+     seconds, or double the default heartbeat if ~30s was the intended budget.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>5a4ac2d</code> &mdash; the
+     release notes and the proposal now state ~15 seconds (and ~90 seconds for the old 60-second
+     negotiation), with the heartbeat-every-half-interval mechanism spelled out.</p>
+</article>
+
+<article class="finding resolved" id="f9" data-tier="quickfix">
+  <header>
+    <span class="rank">9</span>
+    <code class="loc">rabbitmq/config.go:73</code>
+    <span class="chip cat">correctness</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip quickfix">quick fix</span>
+  </header>
+  <h3>Options.Heartbeat accepts self-defeating values</h3>
+  <p>A negative duration survives <code>amqp091-go</code>'s <code>pick()</code> as the negotiated
+     value, which disables the client heartbeater and read deadline (heartbeater guard
+     <code>interval &gt; 0</code>) while sending <code>uint16(-1)</code> = 65535 seconds to the
+     broker; a sub-second positive value truncates to 0 and silently defers to the broker,
+     colliding with the documented <code>Heartbeat(0)</code> escape-hatch semantics.</p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     A caller computes the heartbeat from config (a misparsed env var, value-minus-margin
+     arithmetic) and passes &minus;1s or 900ms. Every test passes (fakes just record the
+     duration), the fleet runs with no client heartbeat and a 65535-second broker-side timeout, and
+     the dead-socket blind spot this v4 release exists to close is silently reopened.</div>
+  <p class="fix"><span class="label">Fix</span>Validate or clamp, as the sibling option
+     <code>status.Options.FailureThreshold</code> already does with <code>max(value, 1)</code>.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>706ac4f</code> &mdash;
+     <code>Options.Heartbeat</code> sanitizes its input: negatives fall back to the 10-second
+     default, sub-second positives round up to one second, and only an explicit 0 defers to the
+     broker.</p>
+</article>
+
+<article class="finding resolved" id="f10" data-tier="optional">
+  <header>
+    <span class="rank">10</span>
+    <code class="loc">rabbitmq/connection.go:24</code>
+    <span class="chip cat">correctness</span>
+    <span class="chip plausible">plausible</span>
+    <span class="chip optional">optional</span>
+  </header>
+  <h3>A blocked frame can be dropped during registration</h3>
+  <p><code>NotifyBlocked</code> is registered after <code>amqp.Open</code> returns, but the
+     connection's dispatch goroutine starts before the handshake completes, and
+     <code>dispatch0</code> silently drops <code>connection.blocked</code> frames that arrive while
+     the listener list is empty &mdash; so a blocked notification landing in the registration
+     window is lost with no log and no monitor callback.</p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     Narrow but real: an alarm-related blocked frame delivered between handshake completion and
+     the <code>NotifyBlocked</code> call is dropped, and the service believes the connection is
+     unblocked until the next block/unblock transition, which may be hours away. Stock RabbitMQ
+     usually sends <code>connection.blocked</code> lazily on first publish (after registration),
+     which shrinks &mdash; but does not eliminate &mdash; the window.</div>
+  <p class="fix"><span class="label">Fix</span>Register the channel before or during adapter
+     <code>Connect</code>; requires a small reshape of the adapter seam.</p>
+  <p class="fix resolution"><span class="label">Resolved</span><code>680066f</code> &mdash; the
+     adapter registers the channel during <code>Connect</code>, immediately after the handshake;
+     the seam method became <code>BlockedNotifications() &lt;-chan amqp.Blocking</code>.</p>
+</article>
+
+<h2>Promoted from the 10-finding cap</h2>
+<p class="quiet">The original run confirmed these cleanup items but cut them at the finding cap.
+A follow-up investigation on 2026-08-28 (against the post-fix tree, after findings #1&ndash;#10
+were resolved) re-verified each and promoted the survivors. One original claim was stale and is
+noted where it applies.</p>
+
+<article class="finding resolved" id="f11" data-tier="cleanup">
+  <header>
+    <span class="rank">11</span>
+    <code class="loc">rabbitmq/connector_test.go:70</code>
+    <span class="chip cat">simplification</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip cleanup">cleanup</span>
+  </header>
+  <h3>Five copies of the default-heartbeat literal</h3>
+  <p>The connector tests write <code>10 * time.Second</code> five times (lines 70, 82, 94, 104,
+     and 140) while the same package already defines <code>defaultHeartbeat</code>. Four copies pin
+     the default inside expected-config assertions; one sits in the negative-value clamp test.</p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     Changing the default heartbeat requires five coordinated test edits; missing one leaves a
+     stale assertion that fails with a confusing diff. The counterpoint is real, though: a
+     default-contract test should pin the literal at least once &mdash; asserting
+     <code>defaultHeartbeat</code> against itself proves nothing.</div>
+  <p class="fix"><span class="label">Fix</span>Hoist one test-local constant (or reference
+     <code>defaultHeartbeat</code> everywhere but one deliberate literal pin).</p>
+  <p class="fix resolution"><span class="label">Resolved</span>2026-08-28 &mdash; all five
+     occurrences reference a hoisted test-level constant, <code>expectedDefaultHeartbeat</code>,
+     which pins the literal exactly once, independently of the production constant.</p>
+</article>
+
+<article class="finding resolved" id="f12" data-tier="cleanup">
+  <header>
+    <span class="rank">12</span>
+    <code class="loc">rabbitmq/connection_test.go:200</code>
+    <span class="chip cat">test-hygiene</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip cleanup">cleanup</span>
+  </header>
+  <h3>Test fixtures park ~54 goroutines per suite run</h3>
+  <p>Neither rabbitmq fixture closes the connections it creates, and every
+     <code>newConnection</code> now parks two goroutines (<code>relayBlockedState</code> and
+     <code>watchBlockedState</code>) for the life of the test binary: ~38 from
+     <code>ConnectionFixture</code> (including the orphaned <code>Setup</code> connection in tests
+     that build a second one) and ~16 from <code>ConnectorFixture</code>, whose nil
+     <code>BlockedNotifications</code> channel makes <code>Close</code> the only exit.
+     <em>The originally reported dead channel allocation is stale &mdash; the finding-#10 rework
+     removed it.</em></p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     Production is unaffected (every production path closes). The cost is diagnostic: a
+     goleak-style check cannot be added to the one package whose branch exists for
+     goroutine-lifecycle correctness, so a future regression in the done fan-out (say,
+     <code>deliverLatest</code> losing its <code>done</code> arms) would pass the suite unseen;
+     and any test-timeout panic dump is buried under dozens of identical parked frames.</div>
+  <p class="fix"><span class="label">Fix</span>gunit <code>Teardown</code> methods (precedent:
+     <code>handlers/retry/handler_test.go</code>): the connector fixture closes its connector; the
+     connection fixture tracks every connection through an <code>open()</code> helper and closes
+     them all. The callback-gate closes in two tests must remain &mdash; <code>Close</code> cannot
+     unpark a watcher stuck inside a monitor callback.</p>
+  <p class="fix resolution"><span class="label">Resolved</span>2026-08-28 &mdash; as sketched:
+     <code>ConnectorFixture.Teardown</code> closes the connector (cascading to every tracked
+     connection), and <code>ConnectionFixture</code> routes every connection through an
+     <code>open()</code> helper that a <code>Teardown</code> closes, orphaned Setup connections
+     included. The suite is stable across five <code>-race</code> runs, and a goleak-style check
+     is now possible.</p>
+</article>
+
+<article class="finding resolved" id="f13" data-tier="cleanup">
+  <header>
+    <span class="rank">13</span>
+    <code class="loc">doc/work-sessions/2026/&hellip;proposal&hellip;.html:548</code>
+    <span class="chip cat">docs</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip cleanup">cleanup</span>
+  </header>
+  <h3>The proposal points at deleted release notes</h3>
+  <p>The proposal's Phase 4 checklist annotation still says the release notes were written as
+     <code>doc/release-notes-v3.18.0.md</code>. That file was deleted when the v4 decision renamed
+     them <code>doc/release-notes-v4.0.0.md</code>. (The other <code>v3.18.0</code> mentions in
+     the decision callout are deliberate history.)</p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     A reader following the proposal's pointer finds no such file and may conclude the release
+     notes were never written, or waste time hunting for them.</div>
+  <p class="fix"><span class="label">Fix</span>Update the annotation to name
+     <code>release-notes-v4.0.0.md</code>.</p>
+  <p class="fix resolution"><span class="label">Resolved</span>2026-08-28 &mdash; the annotation
+     now names <code>release-notes-v4.0.0.md</code> and records the v3.18.0 filename as
+     history.</p>
+</article>
+
+<article class="finding resolved" id="f14" data-tier="cleanup">
+  <header>
+    <span class="rank">14</span>
+    <code class="loc">doc/release-notes-v4.0.0.md:61</code>
+    <span class="chip cat">docs</span>
+    <span class="chip confirmed">confirmed</span>
+    <span class="chip cleanup">cleanup</span>
+  </header>
+  <h3>Release-notes prose deviates from ASD-STE100</h3>
+  <p>The branch's Go code is clean against the CLAUDE.md conventions &mdash; receivers, named
+     returns, initializers, and function-boundary rules all conform, with the only lookalikes
+     pre-existing on master. The deviations are prose: roughly a dozen ASD-STE100 violations in
+     the release notes (sentences up to ~45 words, passive voice, idioms such as "blip",
+     "wedged", and "escape hatch", and four different names for the tolerance window), plus five
+     long or passive doc comments in the new Go files.</p>
+  <div class="scenario"><span class="label">Failure scenario</span>
+     The release notes are the migration contract for every consuming team. The ~45-word
+     heartbeat sentence and the shifting "duration / window / tolerance window" vocabulary sit
+     exactly where operators must extract sizing guidance, and a misreading there re-creates the
+     hasty-restart risk the document warns about.</div>
+  <p class="fix"><span class="label">Fix</span>Split the long sentences, name the doer in passive
+     constructions, pick one term per concept ("the tolerance window"), and replace the idioms;
+     apply the same pass to the five flagged doc comments.</p>
+  <p class="fix resolution"><span class="label">Resolved</span>2026-08-28 &mdash; the release notes
+     were rewritten to ASD-STE100: sentences split (the longest was ~45 words), passive
+     constructions named their doer, "the tolerance window" became the single term, the idioms
+     ("blip", "wedged", "hasty", "escape hatch") were replaced, and the definitive-error causes
+     became a vertical list. The five flagged doc comments received the same pass.</p>
+</article>
+
+<h2>How the review ran</h2>
+<ul>
+  <li>Eight finder angles ran as parallel agents over the full diff (<code>master...HEAD</code>),
+      then candidates were deduplicated and adversarially verified.</li>
+  <li>Verification read the <code>amqp091-go v1.10.0</code> source directly: the
+      <code>dispatch0</code> blocking send, the heartbeater deadline math (15s, not 30s),
+      <code>pick()</code> negotiation, and <code>NotifyBlocked</code>-on-closed behavior.</li>
+  <li>The full suite ran with <code>-race</code>: all changed packages pass; one pre-existing
+      flaky timing test in <code>handlers/retry</code> failed by 0.9ms, unrelated to this
+      branch.</li>
+</ul>
+
+</main>

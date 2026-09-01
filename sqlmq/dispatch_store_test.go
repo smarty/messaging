@@ -9,8 +9,8 @@ import (
 
 	"github.com/smarty/gunit"
 	"github.com/smarty/gunit/assert/should"
-	"github.com/smarty/messaging/v3"
-	"github.com/smarty/messaging/v3/sqlmq/adapter"
+	"github.com/smarty/messaging/v4"
+	"github.com/smarty/messaging/v4/sqlmq/adapter"
 )
 
 func TestDispatchStoreFixture(t *testing.T) {

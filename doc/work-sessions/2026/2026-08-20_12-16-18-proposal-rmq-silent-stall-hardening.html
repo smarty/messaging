@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proposal: Harden RabbitMQ Publishing Against Silent Stalls</title>
+<style>
+  :root {
+    --ink: #1a1f27;
+    --muted: #5b6572;
+    --paper: #ffffff;
+    --panel: #f6f8fa;
+    --border: #d8dee5;
+    --accent: #0b5fa5;
+    --warn-bg: #fff7e6;
+    --warn-border: #e0b25a;
+    --good-bg: #eefaf0;
+    --good-border: #7cc48a;
+    --bad: #b3382c;
+    --code-bg: #f0f2f5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto;
+    max-width: 60rem;
+    padding: 2.5rem 2rem 5rem;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Charter", "Georgia", serif;
+    font-size: 17px;
+    line-height: 1.55;
+  }
+  h1, h2, h3, h4 { font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; line-height: 1.2; }
+  h1 { font-size: 1.9rem; margin-bottom: 0.3rem; }
+  h2 { font-size: 1.4rem; margin-top: 2.8rem; border-bottom: 2px solid var(--border); padding-bottom: 0.35rem; }
+  h3 { font-size: 1.12rem; margin-top: 2rem; color: var(--accent); }
+  h4 { font-size: 1rem; margin-top: 1.4rem; }
+  .meta { color: var(--muted); font-size: 0.95rem; margin-bottom: 2rem;
+          font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; }
+  code, pre {
+    font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.86em;
+  }
+  code { background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
+  pre {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.9rem 1.1rem;
+    overflow-x: auto;
+    line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1rem 0;
+    font-size: 0.95rem;
+  }
+  th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; vertical-align: top; }
+  th { background: var(--panel); font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; }
+  .callout {
+    border-left: 4px solid var(--warn-border);
+    background: var(--warn-bg);
+    padding: 0.8rem 1.1rem;
+    border-radius: 0 8px 8px 0;
+    margin: 1.2rem 0;
+  }
+  .callout.good { border-left-color: var(--good-border); background: var(--good-bg); }
+  .fig {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem;
+    margin: 1.5rem 0;
+    overflow-x: auto;
+  }
+  .fig figcaption {
+    color: var(--muted);
+    font-size: 0.88rem;
+    margin-top: 0.7rem;
+    font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+  }
+  ul.checklist { list-style: none; padding-left: 0.3rem; }
+  ul.checklist li { margin: 0.45rem 0; padding-left: 1.9rem; position: relative; }
+  ul.checklist li::before {
+    content: "";
+    position: absolute; left: 0; top: 0.22em;
+    width: 0.95em; height: 0.95em;
+    border: 2px solid var(--accent);
+    border-radius: 4px;
+    background: #fff;
+  }
+  ul.checklist li.done::before {
+    content: "✓";
+    color: #fff;
+    background: var(--accent);
+    text-align: center;
+    line-height: 1.05em;
+    font-size: 0.85em;
+  }
+  .phase { border: 1px solid var(--border); border-radius: 10px; padding: 0.2rem 1.3rem 1rem; margin: 1.3rem 0; }
+  .phase h3 { margin-top: 1rem; }
+  .tag {
+    display: inline-block;
+    font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    padding: 0.12rem 0.65rem;
+    margin-left: 0.4rem;
+    vertical-align: middle;
+  }
+  .tag.red   { background: #fdecea; color: var(--bad); }
+  .tag.green { background: var(--good-bg); color: #22703a; }
+  .tag.gray  { background: var(--panel); color: var(--muted); border: 1px solid var(--border); }
+  .accomplish th:first-child { width: 34%; }
+  .small { font-size: 0.9rem; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<h1>Harden RabbitMQ Publishing Against Silent Stalls</h1>
+<div class="meta">
+  Proposal &mdash; 2026-08-20 &middot; Repository: <code>github.com/smarty/messaging</code> (v3) &middot;
+  Author: Claude, for Michael Whatcott &middot; Status: <strong>draft, awaiting review</strong>
+</div>
+
+<h2 id="background">1. Background</h2>
+
+<p>
+The hobbes environment shows event-delivery delays of many hours. An investigation of
+<code>billing-context</code>, the <code>harness/v2</code> pipeline, and this library found
+that a publisher can stall <em>silently</em>. The service stays healthy in every visible way
+while events sit undispatched. This library has three blind spots that make such a stall
+invisible:
+</p>
+
+<ol>
+  <li>
+    <strong>No client heartbeat.</strong> The adapter builds <code>amqp.Config</code> without a
+    <code>Heartbeat</code> value (<code>rabbitmq/adapter/amqp.go:14</code>). The
+    <code>amqp091-go</code> library then defers to the interval the broker offers. If a broker or
+    a proxy offers zero, the connection runs with no heartbeats and <em>no read deadline</em>.
+    A half-open TCP connection then blocks <code>Publish</code> and <code>TxCommit</code> forever.
+  </li>
+  <li>
+    <strong>Blocked-connection notifications are discarded.</strong> When a RabbitMQ memory or
+    disk alarm trips, the broker blocks all publishing connections: it accepts bytes and stops
+    reading. <code>TxCommit</code> then blocks indefinitely with no error. The broker announces
+    this state with a <code>connection.blocked</code> notification, but no code registers
+    <code>NotifyBlocked</code>, so the announcement vanishes.
+  </li>
+  <li>
+    <strong>The status checker swallows errors.</strong>
+    <code>status/status.go:29-40</code> returns healthy for every failure unless the error text
+    contains the word <code>"password"</code>. A service whose broker is unreachable still
+    reports a green <code>/status</code>.
+  </li>
+</ol>
+
+<figure class="fig">
+<svg viewBox="0 0 880 300" width="880" height="300" role="img" aria-label="Publish path with three blind spots">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b6572"/>
+    </marker>
+  </defs>
+  <!-- lanes -->
+  <rect x="10"  y="20" width="250" height="230" rx="10" fill="#ffffff" stroke="#d8dee5"/>
+  <rect x="300" y="20" width="290" height="230" rx="10" fill="#ffffff" stroke="#d8dee5"/>
+  <rect x="630" y="20" width="240" height="230" rx="10" fill="#ffffff" stroke="#d8dee5"/>
+  <text x="135" y="45" text-anchor="middle" font-family="Avenir Next, Arial" font-size="14" font-weight="600" fill="#1a1f27">Application</text>
+  <text x="445" y="45" text-anchor="middle" font-family="Avenir Next, Arial" font-size="14" font-weight="600" fill="#1a1f27">messaging/v3</text>
+  <text x="750" y="45" text-anchor="middle" font-family="Avenir Next, Arial" font-size="14" font-weight="600" fill="#1a1f27">RabbitMQ broker</text>
+
+  <!-- app boxes -->
+  <rect x="35" y="70" width="200" height="44" rx="7" fill="#f6f8fa" stroke="#5b6572"/>
+  <text x="135" y="97" text-anchor="middle" font-family="SF Mono, Menlo, monospace" font-size="12" fill="#1a1f27">outbox dispatcher</text>
+  <rect x="35" y="180" width="200" height="44" rx="7" fill="#f6f8fa" stroke="#5b6572"/>
+  <text x="135" y="207" text-anchor="middle" font-family="SF Mono, Menlo, monospace" font-size="12" fill="#1a1f27">/status health check</text>
+
+  <!-- library boxes -->
+  <rect x="325" y="70" width="240" height="44" rx="7" fill="#f6f8fa" stroke="#5b6572"/>
+  <text x="445" y="90" text-anchor="middle" font-family="SF Mono, Menlo, monospace" font-size="12" fill="#1a1f27">writer.Write / TxCommit</text>
+  <text x="445" y="106" text-anchor="middle" font-family="Avenir Next, Arial" font-size="11" fill="#b3382c">blind spots 1 + 2: blocks forever</text>
+  <rect x="325" y="180" width="240" height="44" rx="7" fill="#f6f8fa" stroke="#5b6572"/>
+  <text x="445" y="200" text-anchor="middle" font-family="SF Mono, Menlo, monospace" font-size="12" fill="#1a1f27">status.Checker</text>
+  <text x="445" y="216" text-anchor="middle" font-family="Avenir Next, Arial" font-size="11" fill="#b3382c">blind spot 3: swallows errors</text>
+
+  <!-- broker boxes -->
+  <rect x="655" y="70" width="190" height="44" rx="7" fill="#fff7e6" stroke="#e0b25a"/>
+  <text x="750" y="90" text-anchor="middle" font-family="Avenir Next, Arial" font-size="12" fill="#1a1f27">memory / disk alarm</text>
+  <text x="750" y="106" text-anchor="middle" font-family="Avenir Next, Arial" font-size="11" fill="#5b6572">stops reading the socket</text>
+  <rect x="655" y="180" width="190" height="44" rx="7" fill="#fff7e6" stroke="#e0b25a"/>
+  <text x="750" y="200" text-anchor="middle" font-family="Avenir Next, Arial" font-size="12" fill="#1a1f27">connection.blocked</text>
+  <text x="750" y="216" text-anchor="middle" font-family="Avenir Next, Arial" font-size="11" fill="#5b6572">notification is sent, then dropped</text>
+
+  <!-- arrows -->
+  <line x1="235" y1="92"  x2="325" y2="92"  stroke="#5b6572" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="565" y1="92"  x2="655" y2="92"  stroke="#5b6572" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="235" y1="202" x2="325" y2="202" stroke="#5b6572" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="655" y1="202" x2="565" y2="202" stroke="#b3382c" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+</svg>
+<figcaption>
+Figure 1 &mdash; The publish path and its three blind spots. A broker alarm (top right) makes
+<code>TxCommit</code> block with no error. The <code>connection.blocked</code> notification
+(bottom right, dashed) arrives but no listener consumes it. The status checker reports healthy
+regardless.
+</figcaption>
+</figure>
+
+<div class="callout">
+<strong>Evidence first.</strong> These fixes are visibility and detection hardening. They are
+worth doing on their own merits, but confirm the hobbes diagnosis (broker alarms, heartbeat
+configuration, stranded <code>Messages</code> rows) in parallel. None of these fixes
+<em>unblocks</em> a broker that is out of memory or disk.
+</div>
+
+<h2 id="approach">2. Approach</h2>
+
+<p>All three fixes land in this repository (<code>messaging/v3</code>) as one minor release
+(target: <code>v3.18.0</code>). No fix changes the wire behavior of a healthy system.
+Consuming services adopt the release with a version bump; the new monitor callbacks are
+opt-in.</p>
+
+<div class="callout">
+<strong>Decision (2026-08-27, during implementation):</strong> the release ships as
+<strong><code>v4.0.0</code></strong>, not <code>v3.18.0</code>. Rationale: safe adoption of the
+honest status checker requires deliberate caller-side work (failure-tolerance configuration and
+threshold verification), so the upgrade must not be reachable by an accidental
+<code>go get -u</code>; in Go, only a major version guarantees that. The scope also grows by one
+feature: <code>status.Options.FailureThreshold(n)</code> (Phase 3b below; later revised to the
+time-based <code>FailureTolerance(duration)</code>), so callers configure tolerance instead of
+each writing a decorator. The context-aware <code>TxCommit</code> redesign
+stays out (future <code>v5</code>).
+<br><br>
+<strong>Follow-up (2026-08-28):</strong> because v4 already breaks compilation, the optional
+<code>blockedMonitor</code> interface (T4) is dissolved: <code>ConnectionBlocked(reason string)</code>
+and <code>ConnectionUnblocked()</code> now belong to the <code>monitor</code> interface itself.
+Every monitor implementation adds the two methods (empty bodies suffice); the capability is fully
+discoverable and the type assertion is gone.
+</div>
+
+<h3 id="fix1">Fix 1 &mdash; Explicit client heartbeat</h3>
+
+<h4>What changes</h4>
+<ul>
+  <li>Add a <code>Heartbeat time.Duration</code> field to <code>adapter.Config</code>
+      (<code>rabbitmq/adapter/contracts.go</code>).</li>
+  <li>Pass it through in <code>amqpConnector.Connect</code>:
+      <code>amqp.Config{..., Heartbeat: config.Heartbeat}</code>
+      (<code>rabbitmq/adapter/amqp.go</code>).</li>
+  <li>Add <code>rabbitmq.Options.Heartbeat(value time.Duration)</code> with a default of
+      <strong>10 seconds</strong> (<code>rabbitmq/config.go</code>), and populate the field in
+      <code>defaultConnector.configuration()</code> (<code>rabbitmq/connector.go</code>).</li>
+</ul>
+
+<h4>Why 10 seconds</h4>
+<p>
+The <code>amqp091-go</code> library uses 10 seconds in its own <code>Dial</code> helpers, so the
+value is battle-tested. The client sends a heartbeat every half interval and enforces a read
+deadline of three of those sends (1.5&times; the negotiated interval), so a dead connection
+surfaces as an error within about 15 seconds.
+<em>(Corrected 2026-08-28 per code-review finding #8; this document originally claimed ~30
+seconds by reading the deadline as three full intervals.)</em>
+</p>
+
+<h4>Heartbeat negotiation, before and after</h4>
+<table>
+  <tr><th>Broker offers</th><th>Today (client sends 0)</th><th>After fix (client sends 10s)</th></tr>
+  <tr><td>60s (RabbitMQ default)</td><td>60s &mdash; dead socket found in ~90s</td><td>10s &mdash; dead socket found in ~15s</td></tr>
+  <tr><td>0 (disabled, or a proxy)</td><td><strong>none &mdash; dead socket blocks forever</strong></td><td>10s &mdash; dead socket found in ~15s</td></tr>
+</table>
+
+<table class="accomplish">
+  <tr><th>Accomplishes</th><td>A half-open TCP connection (idle-timeout LB, NAT, broker failover) now
+      surfaces as an error within ~15 seconds. The retry loops in <code>harness</code> and
+      <code>sqlmq</code> then reconnect and resume. Blind spot 1 closes fully.</td></tr>
+  <tr><th>Does not accomplish</th><td>It does not detect an alarm-blocked broker. A blocked broker keeps
+      its socket alive and keeps sending heartbeats, so the connection looks healthy. Fix 2 covers
+      that case.</td></tr>
+</table>
+
+<h3 id="fix2">Fix 2 &mdash; Register <code>NotifyBlocked</code> and surface the state</h3>
+
+<h4>What changes</h4>
+<ul>
+  <li>Extend the <code>adapter.Connection</code> interface with
+      <code>NotifyBlocked(chan amqp.Blocking) chan amqp.Blocking</code>. The adapter package
+      already exposes <code>amqp.Delivery</code> and <code>amqp.Publishing</code>, so this type
+      stays consistent with the existing seam. The concrete <code>amqpConnection</code> delegates
+      to the embedded <code>*amqp.Connection</code>.</li>
+  <li>In <code>newConnection</code> (<code>rabbitmq/connection.go</code>), register a channel and
+      start one goroutine per connection that ranges over it:
+      <ul>
+        <li>On <code>Blocking{Active: true}</code>: log
+            <code>[WARN] AMQP connection blocked by broker (reason: %s); publishes will stall until the broker unblocks.</code></li>
+        <li>On <code>Blocking{Active: false}</code>: log
+            <code>[INFO] AMQP connection unblocked by broker; publishes resume.</code></li>
+      </ul>
+      The <code>amqp091-go</code> library closes the channel when the connection closes, so the
+      goroutine exits naturally. No new lifecycle management is needed.</li>
+  <li>Notify the monitor through an <em>optional</em> interface, checked once at connection
+      construction:
+<pre><code>type blockedMonitor interface {
+    ConnectionBlocked(reason string)
+    ConnectionUnblocked()
+}</code></pre>
+      Existing monitor implementations (for example <code>rmqMonitor</code> in
+      <code>billing-context</code>) keep compiling unchanged. A service opts in by adding the two
+      methods.</li>
+</ul>
+
+<p class="small">
+Note: <code>amqp091-go</code> already declares the <code>connection.blocked</code> client
+capability during the handshake (<code>openTune</code>), so the broker already sends these
+notifications today. This fix only stops discarding them.
+</p>
+
+<table class="accomplish">
+  <tr><th>Accomplishes</th><td>An alarm-blocked broker becomes visible the moment it blocks: a greppable
+      <code>[WARN]</code> log line with the broker's stated reason, plus an optional monitor hook a
+      service can wire to metrics and alerting (klaxon). The hobbes-style "hours of silence"
+      becomes a one-line diagnosis. Blind spot 2 closes.</td></tr>
+  <tr><th>Does not accomplish</th><td>It does not unstick the publish. The broker still holds the
+      connection until its alarm clears. Detection and paging are the goal; capacity on the broker
+      is an operations concern.</td></tr>
+</table>
+
+<h3 id="fix3">Fix 3 &mdash; Honest status checker</h3>
+
+<h4>What changes</h4>
+<ul>
+  <li>In <code>status/status.go</code>, <code>Status(ctx)</code> returns the error from
+      <code>tryWrite</code> unconditionally. Delete the <code>strings.Contains(..., "password")</code>
+      filter.</li>
+  <li>Log each failure at <code>[WARN]</code> with the underlying error, so a failing health check
+      explains itself.</li>
+  <li>Keep the existing reset behavior: on any write failure the checker closes and discards its
+      cached connection, so the next probe dials fresh.</li>
+</ul>
+
+<h4>Behavior change, stated plainly</h4>
+<p>
+Today a service with an unreachable broker reports healthy. After this fix it reports failing,
+and the platform (load balancer, orchestrator) reacts according to its own policy. That reaction
+is the point: for a wedged publisher, a restart runs outbox recovery and drains the backlog.
+The <code>httpstatus</code> library already de-bounces through its own polling cadence; each
+consuming service should confirm its restart policy tolerates brief broker blips
+(see Trade-offs).
+</p>
+
+<table class="accomplish">
+  <tr><th>Accomplishes</th><td>Connection failures, channel failures, and dial errors now fail
+      <code>/status</code>. Operators see the failure where they already look. Blind spot 3
+      closes for every error the checker can observe.</td></tr>
+  <tr><th>Does not accomplish</th><td>It cannot detect an alarm-blocked broker. The checker's probe is a
+      fire-and-forget <code>Write</code> on an async channel; a blocked broker accepts the bytes
+      without error. Making the probe use publisher confirms would fix that but changes the
+      probe's cost and semantics &mdash; recorded under Future Work, not in scope here.</td></tr>
+</table>
+
+<h2 id="tradeoffs">3. Trade-offs and open questions</h2>
+
+<table>
+  <tr><th>#</th><th>Concern</th><th>Assessment</th></tr>
+  <tr>
+    <td>T1</td>
+    <td>Fix 3 changes default health semantics for every consumer of <code>status</code>.</td>
+    <td>Intentional. The current behavior hides real outages. Risk: a transient broker blip
+        marks a fleet unhealthy and the orchestrator restarts it. Mitigation: release notes call
+        out the change; each service verifies its <code>httpstatus</code> thresholds before
+        upgrading. Open question: do we want an <code>Options.LenientErrors()</code> escape hatch
+        for one release? My recommendation: no &mdash; honest by default, no hatch.</td>
+  </tr>
+  <tr>
+    <td>T2</td>
+    <td>Default heartbeat value.</td>
+    <td>10s matches <code>amqp091-go</code>'s own default and gives ~15s detection. A larger value
+        (30s/60s) reduces already-negligible traffic but slows detection. Open question: also
+        honor a <code>heartbeat=</code> query parameter on the broker URL? My recommendation:
+        option-only for now; add URL parsing only if a real need appears.</td>
+  </tr>
+  <tr>
+    <td>T3</td>
+    <td>Extending the <code>adapter.Connection</code> interface breaks third-party adapter
+        implementations.</td>
+    <td>The interface is public but the only known implementation is the in-repo
+        <code>amqpConnection</code> plus test fakes. A compile error with a one-method fix is
+        acceptable for a minor release; the changelog documents it.</td>
+  </tr>
+  <tr>
+    <td>T4</td>
+    <td>Monitor extension style: optional interface vs. adding methods to <code>monitor</code>.</td>
+    <td>The optional interface keeps every existing monitor compiling and makes adoption gradual.
+        Cost: the capability is less discoverable. The changelog and the <code>nop</code> example
+        mitigate this. <em>Superseded 2026-08-28: with the v4 decision, the two methods moved into
+        the <code>monitor</code> interface; see the decision callout in section 2.</em></td>
+  </tr>
+  <tr>
+    <td>T5</td>
+    <td>One goroutine per connection for blocked notifications.</td>
+    <td>Negligible. Connections are few and long-lived, and the channel close bounds the
+        goroutine's life to the connection's life.</td>
+  </tr>
+  <tr>
+    <td>T6</td>
+    <td>These fixes do not put a deadline on <code>TxCommit</code> itself.</td>
+    <td>Correct. The heartbeat read-deadline covers the dead-socket case, and blocked-broker
+        waits are intentional back-pressure. A context-aware commit is a larger v4-shaped change;
+        see Future Work.</td>
+  </tr>
+</table>
+
+<h2 id="checklists">4. Implementation checklists</h2>
+
+<p>All phases follow red/green TDD. Tests use the existing conventions: <code>gunit</code>
+fixtures, <code>this.So(actual, should.Equal, expected)</code>, fakes over the adapter seam.
+Run <code>make test</code> in the <code>messaging</code> repository after each green step.</p>
+
+<div class="phase">
+<h3>Phase 1 &mdash; Explicit client heartbeat</h3>
+<ul class="checklist">
+  <li class="done"><span class="tag red">red</span> In <code>rabbitmq/connector_test.go</code>, add assertions to the
+      existing connect tests: the <code>adapter.Config</code> received by the fake connector carries
+      <code>Heartbeat == 10 * time.Second</code> by default.</li>
+  <li class="done"><span class="tag red">red</span> Add a test that configures
+      <code>Options.Heartbeat(30 * time.Second)</code> and asserts the fake connector receives 30s.</li>
+  <li class="done"><span class="tag red">red</span> Run <code>go test ./rabbitmq/...</code> &mdash; confirm both tests fail
+      because <code>adapter.Config</code> has no <code>Heartbeat</code> field (compile error is the
+      right reason) or because the value is zero.</li>
+  <li class="done"><span class="tag green">green</span> Add the <code>Heartbeat time.Duration</code> field to
+      <code>adapter.Config</code> in <code>rabbitmq/adapter/contracts.go</code>.</li>
+  <li class="done"><span class="tag green">green</span> Set <code>Heartbeat: config.Heartbeat</code> in the
+      <code>amqp.Config</code> literal in <code>rabbitmq/adapter/amqp.go</code>.</li>
+  <li class="done"><span class="tag green">green</span> Add <code>Heartbeat</code> to <code>configuration</code> and
+      <code>Options.Heartbeat(value time.Duration)</code> in <code>rabbitmq/config.go</code>; register the
+      10s default in <code>defaults()</code>.</li>
+  <li class="done"><span class="tag green">green</span> Populate the field in
+      <code>defaultConnector.configuration()</code> in <code>rabbitmq/connector.go</code>.</li>
+  <li class="done"><span class="tag green">green</span> Run <code>go test ./rabbitmq/...</code> &mdash; confirm all tests pass.</li>
+  <li class="done"><span class="tag gray">refactor</span> Run <code>make test</code>; tidy naming and comments.</li>
+</ul>
+</div>
+
+<div class="phase">
+<h3>Phase 2 &mdash; NotifyBlocked registration and surfacing</h3>
+<ul class="checklist">
+  <li class="done"><span class="tag red">red</span> In <code>rabbitmq/connection_test.go</code>, extend the fake
+      <code>adapter.Connection</code> with a controllable <code>NotifyBlocked</code> channel (compile
+      breakage across test fakes is expected and is the right reason).</li>
+  <li class="done"><span class="tag red">red</span> Add a test: emitting <code>amqp.Blocking{Active: true, Reason: "low memory"}</code>
+      produces one <code>[WARN]</code> log line containing the reason.</li>
+  <li class="done"><span class="tag red">red</span> Add a test: emitting <code>Active: false</code> produces one
+      <code>[INFO]</code> log line.</li>
+  <li class="done"><span class="tag red">red</span> Add a test with a fixture monitor that implements the optional
+      <code>blockedMonitor</code> interface: it receives <code>ConnectionBlocked("low memory")</code> then
+      <code>ConnectionUnblocked()</code>, in order.</li>
+  <li class="done"><span class="tag red">red</span> Add a test with the plain (non-implementing) monitor: no panic, logs
+      still emitted.</li>
+  <li class="done"><span class="tag red">red</span> Add a test: closing the notification channel ends the watcher
+      goroutine (run with <code>-race</code>; assert no further callbacks after close).</li>
+  <li class="done"><span class="tag red">red</span> Run <code>go test ./rabbitmq/... -race</code> &mdash; confirm failures for
+      the right reasons.</li>
+  <li class="done"><span class="tag green">green</span> Add <code>NotifyBlocked(chan amqp.Blocking) chan amqp.Blocking</code>
+      to the <code>adapter.Connection</code> interface; delegate on <code>amqpConnection</code>.</li>
+  <li class="done"><span class="tag green">green</span> Define the unexported <code>blockedMonitor</code> interface in
+      <code>rabbitmq/contracts.go</code>.</li>
+  <li class="done"><span class="tag green">green</span> In <code>newConnection</code>, register a buffered channel
+      (capacity 1), start the watcher goroutine, and implement the log + optional-monitor behavior.</li>
+  <li class="done"><span class="tag green">green</span> Run <code>go test ./rabbitmq/... -race</code> &mdash; confirm all tests pass.</li>
+  <li class="done"><span class="tag gray">refactor</span> Run <code>make test</code>; confirm no goroutine leaks in
+      the full suite.</li>
+</ul>
+</div>
+
+<div class="phase">
+<h3>Phase 3 &mdash; Honest status checker</h3>
+<ul class="checklist">
+  <li class="done"><span class="tag red">red</span> Create <code>status/status_test.go</code> (the package has no tests
+      today) with a <code>gunit</code> fixture and fake connector/connection/writer.</li>
+  <li class="done"><span class="tag red">red</span> Test: connect fails &rarr; <code>Status</code> returns that error.</li>
+  <li class="done"><span class="tag red">red</span> Test: <code>Write</code> fails with a generic error &rarr;
+      <code>Status</code> returns that error and closes the cached connection (next call re-dials).</li>
+  <li class="done"><span class="tag red">red</span> Test: <code>Write</code> fails with a password error &rarr; still
+      returns the error (behavior preserved).</li>
+  <li class="done"><span class="tag red">red</span> Test: <code>Write</code> succeeds &rarr; <code>Status</code> returns
+      nil and reuses the cached connection.</li>
+  <li class="done"><span class="tag red">red</span> Run <code>go test ./status/...</code> &mdash; confirm the generic-error
+      tests fail because the current code returns nil.</li>
+  <li class="done"><span class="tag green">green</span> Rewrite <code>Status</code>: return the error from
+      <code>tryWrite</code> unconditionally; remove the <code>strings</code> import; add the
+      <code>[WARN]</code> log line.</li>
+  <li class="done"><span class="tag green">green</span> Run <code>go test ./status/...</code> &mdash; confirm all tests pass.</li>
+  <li class="done"><span class="tag gray">refactor</span> Run <code>make test</code> for the whole module.</li>
+</ul>
+</div>
+
+<div class="phase">
+<h3>Phase 3b &mdash; Built-in failure tolerance (added 2026-08-27 with the v4 decision)</h3>
+<p class="small">The checker reports a failure only after <em>n</em> consecutive probe failures;
+one success resets the count. Default: 5 (with the <code>httpstatus</code> default 1-second
+cadence, ~5 seconds of damping; services set their own cadence and threshold). Every tolerated
+failure still logs at <code>[WARN]</code>.
+<em>Revised 2026-08-28 per code-review finding #2: the probe counter became wall-clock time
+&mdash; <code>status.Options.FailureTolerance(duration)</code>, default 30 seconds &mdash; so the
+damping window no longer depends on the probe cadence configured in <code>httpstatus</code>.
+<code>FailureTolerance(0)</code> reports the first failure. Also per finding #3: definitive AMQP
+errors (403 <code>ACCESS_REFUSED</code>, 530 <code>NOT_ALLOWED</code>) bypass the window and
+report on the first probe, restoring and broadening the v3 password fail-fast. Also per finding
+#6: the probe write honors its context deadline &mdash; on timeout the checker severs its
+connection, and <code>amqpConnection.Close</code> now uses <code>CloseDeadline</code> (5-second
+grace) so a close can never hang behind a wedged socket write. Also per finding #9:
+<code>Options.Heartbeat</code> sanitizes its input &mdash; sub-second positive values round up to
+one second, negative values fall back to the default, and only an explicit 0 defers to the
+broker. Also per finding #10: the adapter registers the blocked-notification channel during
+<code>Connect</code>, immediately after the AMQP handshake, and the seam method became
+<code>BlockedNotifications() &lt;-chan amqp.Blocking</code> &mdash; closing the registration window
+in which a <code>connection.blocked</code> frame could be silently dropped.</em></p>
+<ul class="checklist">
+  <li class="done"><span class="tag red">red</span> Test: threshold 3 configured; two consecutive failures &rarr;
+      <code>Status</code> returns nil both times; the third failure returns the error.</li>
+  <li class="done"><span class="tag red">red</span> Test: threshold 3; two failures, then a success, then a failure
+      &rarr; nil (the success reset the count).</li>
+  <li class="done"><span class="tag red">red</span> Test: default threshold is 5 (four failures return nil; the fifth
+      returns the error).</li>
+  <li class="done"><span class="tag red">red</span> Test: <code>FailureThreshold(1)</code> restores hair-trigger
+      honesty (first failure returns the error).</li>
+  <li class="done"><span class="tag red">red</span> Run <code>go test ./status/...</code> &mdash; confirm failures for the
+      right reasons.</li>
+  <li class="done"><span class="tag green">green</span> Add <code>Options.FailureThreshold(value int)</code> and the
+      consecutive-failure counter to <code>defaultStatusChecker</code>; register the default of 5.</li>
+  <li class="done"><span class="tag green">green</span> Run <code>go test ./status/...</code> &mdash; confirm all tests pass.</li>
+  <li class="done"><span class="tag gray">refactor</span> Run <code>make test</code>; adjust existing Phase 3 tests to
+      configure <code>FailureThreshold(1)</code> where they assert first-failure returns.</li>
+</ul>
+</div>
+
+<div class="phase">
+<h3>Phase 4 &mdash; Release and downstream adoption</h3>
+<ul class="checklist">
+  <li class="done">Update <code>CONTRIBUTING.md</code>/changelog notes: new <code>Options.Heartbeat</code>, the
+      optional <code>blockedMonitor</code> interface, the <code>adapter.Connection</code> interface
+      addition (T3), and the status-checker behavior change (T1).
+      <span class="small">(Done &mdash; the repository has no changelog, and <code>CONTRIBUTING.md</code>
+      is a generic contribution guide. First written as <code>doc/release-notes-v3.18.0.md</code>, then
+      replaced by <code>doc/release-notes-v4.0.0.md</code> with the v4 decision.)</span></li>
+  <li class="done">Convert the module path to <code>github.com/smarty/messaging/v4</code>: update
+      <code>go.mod</code> (with <code>retract</code> directives for the abandoned
+      <code>v4.0.0-alpha.*</code> tags) and rewrite every self-import; run <code>make test</code>.</li>
+  <li class="done">Rewrite the release notes as <code>doc/release-notes-v4.0.0.md</code>: status-checker change
+      first, migration steps (import rewrite, adapter fake method), <code>FailureThreshold</code>,
+      and the <code>Options.Heartbeat(0)</code> escape hatch.</li>
+  <li>Tag and release <code>v4.0.0</code> (release performed by Mike, not by Claude).</li>
+  <li>In <code>billing-context</code>: bump <code>go.mod</code>; add
+      <code>ConnectionBlocked</code>/<code>ConnectionUnblocked</code> to <code>rmqMonitor</code>
+      (<code>main/api/monitor.go</code>) backed by a new gauge
+      (<code>amqp_connection_blocked</code>) and a klaxon failure record; alert on the gauge.</li>
+  <li>In <code>subscription-context</code> (both <code>api</code> and <code>counter</code>): bump
+      <code>go.mod</code>; wire the same monitor methods into <code>rmqMonitor</code>.</li>
+  <li>Before each service rollout: confirm its <code>httpstatus</code> failure threshold tolerates a
+      brief broker blip (T1).</li>
+  <li>Deploy to hobbes first and observe: heartbeat visible in the RabbitMQ management UI per
+      connection; a forced memory alarm (<code>rabbitmqctl set_vm_memory_high_watermark 0.0000001</code>
+      in a test window) produces the <code>[WARN]</code> blocked log and the gauge within seconds.</li>
+</ul>
+</div>
+
+<h2 id="future">5. Out of scope / future work</h2>
+<ul>
+  <li><strong>Context-aware commit.</strong> <code>TxCommit</code> has no deadline parameter. A
+      cancelable commit is an API change fit for the v4 line, not this release.</li>
+  <li><strong>Status probe with publisher confirms.</strong> Would let <code>/status</code> detect a
+      blocked broker directly. Deliberately deferred; Fix 2 covers detection.</li>
+  <li><strong>Legacy <code>sqlmq</code> gaps.</strong> The startup-only, unscoped, silent recovery
+      sweep deserves its own proposal (periodic sweep, type scoping, a recovery count log line).
+      Kept separate to keep this release small.</li>
+  <li><strong>Harness recovery visibility in dashboards.</strong> <code>RecoveryComplete</code> is
+      logged today; a metric would help. Belongs to the <code>harness</code> repository.</li>
+</ul>
+
+<h2 id="verification">6. How we know it worked</h2>
+<ul>
+  <li>Kill a broker connection at the TCP level (drop rule) &mdash; the publisher logs a write error
+      and reconnects within ~15 seconds instead of hanging.</li>
+  <li>Trip a memory alarm in a test window &mdash; the service logs
+      <code>AMQP connection blocked by broker</code> within seconds and the gauge rises.</li>
+  <li>Stop the broker &mdash; <code>/status</code> reports failing with the underlying error text.</li>
+  <li>All existing consumers compile and their suites pass after the version bump, with no code
+      changes required beyond optional monitor adoption.</li>
+</ul>
+
+</body>
+</html>

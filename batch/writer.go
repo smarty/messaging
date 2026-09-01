@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/smarty/messaging/v3"
+	"github.com/smarty/messaging/v4"
 )
 
 type Writer struct {

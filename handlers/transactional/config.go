@@ -1,6 +1,6 @@
 package transactional
 
-import "github.com/smarty/messaging/v3"
+import "github.com/smarty/messaging/v4"
 
 func New(connector messaging.Connector, factory handlerFunc, options ...option) messaging.Handler {
 	this := handler{connector: connector, factory: factory}

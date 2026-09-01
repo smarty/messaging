@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -14,6 +15,7 @@ type Config struct {
 	Username    string
 	Password    string
 	VirtualHost string
+	Heartbeat   time.Duration
 }
 
 type Connector interface {
@@ -22,6 +24,13 @@ type Connector interface {
 
 type Connection interface {
 	Channel() (Channel, error)
+
+	// BlockedNotifications returns a channel of broker blocked/unblocked
+	// notifications. The implementation registers the channel during Connect
+	// (not on first call), so a registration window never drops a
+	// notification. The channel closes when the connection closes.
+	BlockedNotifications() <-chan amqp.Blocking
+
 	io.Closer
 }
 

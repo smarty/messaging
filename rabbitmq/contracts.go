@@ -14,6 +14,8 @@ type brokerEndpoint struct {
 type monitor interface {
 	ConnectionOpened(error)
 	ConnectionClosed()
+	ConnectionBlocked(reason string)
+	ConnectionUnblocked()
 	DispatchPublished()
 	DeliveryReceived()
 	DeliveryAcknowledged(uint16, error)

@@ -3,7 +3,7 @@ package streaming
 import (
 	"context"
 
-	"github.com/smarty/messaging/v3"
+	"github.com/smarty/messaging/v4"
 )
 
 func New(connector messaging.Connector, options ...option) messaging.ListenCloser {

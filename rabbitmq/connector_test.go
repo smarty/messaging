@@ -7,15 +7,20 @@ import (
 	"testing"
 	"time"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/smarty/gunit"
 	"github.com/smarty/gunit/assert/should"
-	"github.com/smarty/messaging/v3"
-	"github.com/smarty/messaging/v3/rabbitmq/adapter"
+	"github.com/smarty/messaging/v4"
+	"github.com/smarty/messaging/v4/rabbitmq/adapter"
 )
 
 func TestConnectorFixture(t *testing.T) {
 	gunit.Run(new(ConnectorFixture), t)
 }
+
+// expectedDefaultHeartbeat pins the default-heartbeat contract independently
+// of the production constant; a change to the default must fail here once.
+const expectedDefaultHeartbeat = time.Second * 10
 
 type ConnectorFixture struct {
 	*gunit.Fixture
@@ -42,6 +47,9 @@ func (this *ConnectorFixture) Setup() {
 	this.brokerAddress = "amqp://my-username:my-password@localhost:5672/my-vhost"
 	this.initializeConnector()
 }
+func (this *ConnectorFixture) Teardown() {
+	_ = this.connector.Close() // release the goroutines parked behind each connection
+}
 func (this *ConnectorFixture) initializeConnector() {
 	this.connector = New(
 		Options.Address(this.brokerAddress),
@@ -66,6 +74,7 @@ func (this *ConnectorFixture) TestWhenConnectingToBroker_UseDialedNetworkConnect
 		Username:    "my-username",
 		Password:    "my-password",
 		VirtualHost: "my-vhost",
+		Heartbeat:   expectedDefaultHeartbeat,
 	})
 }
 func (this *ConnectorFixture) TestCredentialsFromQueryString() {
@@ -77,6 +86,7 @@ func (this *ConnectorFixture) TestCredentialsFromQueryString() {
 		Username:    "My-Username-1",
 		Password:    "My-Password-1",
 		VirtualHost: "the-vhost",
+		Heartbeat:   expectedDefaultHeartbeat,
 	})
 }
 func (this *ConnectorFixture) TestCredentialsFromQueryString_PreferUserInfo() {
@@ -88,7 +98,32 @@ func (this *ConnectorFixture) TestCredentialsFromQueryString_PreferUserInfo() {
 		Username:    "username-1",
 		Password:    "password-1",
 		VirtualHost: "the-vhost",
+		Heartbeat:   expectedDefaultHeartbeat,
 	})
+}
+func (this *ConnectorFixture) TestConfiguredHeartbeatOverridesDefault() {
+	this.assertConfiguredHeartbeat(30*time.Second, 30*time.Second)
+}
+func (this *ConnectorFixture) TestZeroHeartbeat_DefersToTheBroker() {
+	this.assertConfiguredHeartbeat(0, 0)
+}
+func (this *ConnectorFixture) TestNegativeHeartbeat_ReplacedByTheDefault() {
+	this.assertConfiguredHeartbeat(-time.Second, expectedDefaultHeartbeat)
+}
+func (this *ConnectorFixture) TestSubSecondHeartbeat_RoundsUpToOneSecond() {
+	this.assertConfiguredHeartbeat(900*time.Millisecond, time.Second)
+}
+func (this *ConnectorFixture) assertConfiguredHeartbeat(configured, expected time.Duration) {
+	this.connector = New(
+		Options.Address(this.brokerAddress),
+		Options.Connector(this),
+		Options.Dialer(this),
+		Options.Heartbeat(configured),
+	)
+
+	_, _ = this.connector.Connect(this.ctx)
+
+	this.So(this.connectConfig.Heartbeat, should.Equal, expected)
 }
 func (this *ConnectorFixture) TestWhenNoCredentialsFound_ConnectUsingDefaultCredentials() {
 	this.brokerAddress = "amqp://localhost:5672/another-vhost"
@@ -109,6 +144,7 @@ func (this *ConnectorFixture) TestWhenNoCredentialsFound_ConnectUsingDefaultCred
 		Username:    "guest",
 		Password:    "guest",
 		VirtualHost: "another-vhost",
+		Heartbeat:   expectedDefaultHeartbeat,
 	})
 }
 
@@ -152,8 +188,9 @@ func (this *ConnectorFixture) Connect(ctx context.Context, socket net.Conn, conf
 	return this, this.connectError
 }
 
-func (this *ConnectorFixture) Close() error                      { this.callsToClose++; return nil }
-func (this *ConnectorFixture) Channel() (adapter.Channel, error) { panic("nop") }
+func (this *ConnectorFixture) Close() error                               { this.callsToClose++; return nil }
+func (this *ConnectorFixture) Channel() (adapter.Channel, error)          { panic("nop") }
+func (this *ConnectorFixture) BlockedNotifications() <-chan amqp.Blocking { return nil }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

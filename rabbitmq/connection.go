@@ -4,8 +4,9 @@ import (
 	"context"
 	"sync"
 
-	"github.com/smarty/messaging/v3"
-	"github.com/smarty/messaging/v3/rabbitmq/adapter"
+	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/smarty/messaging/v4"
+	"github.com/smarty/messaging/v4/rabbitmq/adapter"
 )
 
 type defaultConnection struct {
@@ -13,13 +14,65 @@ type defaultConnection struct {
 	config  configuration
 	logger  logger
 	monitor monitor
+	done    chan struct{}
 	closer  sync.Once
 }
 
 func newConnection(inner adapter.Connection, config configuration) messaging.Connection {
 	// NOTE: using pointer type to allow for pointer equality check
 	config.Monitor.ConnectionOpened(nil)
-	return &defaultConnection{inner: inner, config: config, logger: config.Logger, monitor: config.Monitor}
+	this := &defaultConnection{inner: inner, config: config, logger: config.Logger, monitor: config.Monitor, done: make(chan struct{})}
+	relay := make(chan amqp.Blocking, 1)
+	go relayBlockedState(inner.BlockedNotifications(), relay, this.done)
+	go this.watchBlockedState(relay)
+	return this
+}
+
+// relayBlockedState keeps the amqp library's frame-dispatch goroutine from
+// ever blocking on notification delivery. It drains promptly and, when the
+// consumer lags (a slow monitor callback), keeps only the latest state.
+// It exits when the amqp library closes the notification channel or when done
+// closes. An adapter.Connection implementation that never closes the channel
+// therefore cannot leak the goroutine. Closing relay ends the watcher in turn.
+func relayBlockedState(notifications <-chan amqp.Blocking, relay chan amqp.Blocking, done chan struct{}) {
+	defer close(relay)
+	for {
+		select {
+		case <-done:
+			return
+		case notification, open := <-notifications:
+			if !open || !deliverLatest(notification, relay, done) {
+				return
+			}
+		}
+	}
+}
+func deliverLatest(notification amqp.Blocking, relay chan amqp.Blocking, done chan struct{}) bool {
+	select {
+	case <-done: // checked first: never deliver after the connection closes
+		return false
+	default:
+	}
+	for {
+		select {
+		case <-done:
+			return false
+		case relay <- notification:
+			return true
+		case <-relay: // discard the stale state; only the latest matters
+		}
+	}
+}
+func (this *defaultConnection) watchBlockedState(notifications chan amqp.Blocking) {
+	for notification := range notifications {
+		if notification.Active {
+			this.logger.Printf("[WARN] AMQP connection blocked by broker (reason: %s); publishes will stall until the broker unblocks.", notification.Reason)
+			this.monitor.ConnectionBlocked(notification.Reason)
+		} else {
+			this.logger.Printf("[INFO] AMQP connection unblocked by broker; publishes resume.")
+			this.monitor.ConnectionUnblocked()
+		}
+	}
 }
 func (this *defaultConnection) Reader(_ context.Context) (messaging.Reader, error) {
 	if channel, err := this.inner.Channel(); err != nil {
@@ -57,6 +110,7 @@ func (this *defaultConnection) writer(transactional bool) (messaging.CommitWrite
 
 func (this *defaultConnection) Close() (err error) {
 	this.closer.Do(func() {
+		close(this.done)
 		err = this.inner.Close()
 		this.monitor.ConnectionClosed()
 	})

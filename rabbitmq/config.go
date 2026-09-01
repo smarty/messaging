@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/smarty/messaging/v3"
-	"github.com/smarty/messaging/v3/rabbitmq/adapter"
+	"github.com/smarty/messaging/v4"
+	"github.com/smarty/messaging/v4/rabbitmq/adapter"
 )
 
 func New(options ...option) messaging.Connector {
@@ -27,6 +27,7 @@ type configuration struct {
 	Monitor              monitor
 	Now                  func() time.Time
 	TopologyFailurePanic bool
+	Heartbeat            time.Duration
 }
 
 var Options singleton
@@ -68,6 +69,24 @@ func (singleton) Monitor(value monitor) option {
 }
 func (singleton) Now(value func() time.Time) option {
 	return func(this *configuration) { this.Now = value }
+}
+
+// Heartbeat sets the AMQP heartbeat interval the client requests. A value of
+// 0 defers to the interval the broker offers (which disables the client-side
+// dead-socket protection). The wire protocol carries whole seconds, so a
+// positive value below one second rounds up to one second. This option
+// replaces a negative value with the default.
+func (singleton) Heartbeat(value time.Duration) option {
+	return func(this *configuration) { this.Heartbeat = sanitizeHeartbeat(value) }
+}
+func sanitizeHeartbeat(value time.Duration) time.Duration {
+	if value < 0 {
+		return defaultHeartbeat
+	}
+	if value > 0 && value < time.Second {
+		return time.Second
+	}
+	return value
 }
 func (singleton) apply(options ...option) option {
 	return func(this *configuration) {
@@ -118,11 +137,13 @@ func (singleton) defaults(options ...option) []option {
 		Options.Logger(defaultLogger),
 		Options.Monitor(defaultMonitor),
 		Options.Now(defaultNow),
+		Options.Heartbeat(defaultHeartbeat),
 	}, options...)
 }
 
 const (
-	defaultAddress = "amqp://guest:guest@127.0.0.1:5672/"
+	defaultAddress   = "amqp://guest:guest@127.0.0.1:5672/"
+	defaultHeartbeat = 10 * time.Second
 )
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -133,6 +154,8 @@ func (nop) Printf(_ string, _ ...any) {}
 
 func (nop) ConnectionOpened(_ error)               {}
 func (nop) ConnectionClosed()                      {}
+func (nop) ConnectionBlocked(_ string)             {}
+func (nop) ConnectionUnblocked()                   {}
 func (nop) DispatchPublished()                     {}
 func (nop) DeliveryReceived()                      {}
 func (nop) DeliveryAcknowledged(_ uint16, _ error) {}

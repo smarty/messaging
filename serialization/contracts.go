@@ -3,7 +3,7 @@ package serialization
 import (
 	"errors"
 
-	"github.com/smarty/messaging/v3"
+	"github.com/smarty/messaging/v4"
 )
 
 type Serializer interface {

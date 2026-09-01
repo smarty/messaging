@@ -3,7 +3,7 @@ package multi
 import (
 	"context"
 
-	"github.com/smarty/messaging/v3"
+	"github.com/smarty/messaging/v4"
 )
 
 type handler []messaging.Handler

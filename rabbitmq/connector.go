@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/smarty/messaging/v3"
-	"github.com/smarty/messaging/v3/rabbitmq/adapter"
+	"github.com/smarty/messaging/v4"
+	"github.com/smarty/messaging/v4/rabbitmq/adapter"
 )
 
 type defaultConnector struct {
@@ -69,6 +69,7 @@ func (this *defaultConnector) configuration() (string, adapter.Config) {
 		Username:    username,
 		Password:    password,
 		VirtualHost: parseVirtualHost(this.broker.Address.Path),
+		Heartbeat:   this.config.Heartbeat,
 	}
 }
 func parseAuthentication(info *url.Userinfo, queryUsername, queryPassword string) (string, string) {
