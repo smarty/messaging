@@ -143,6 +143,15 @@ The startup read also reports what it found: `[INFO] Startup recovery found
 [N] undispatched message(s) in durable storage.` The line does not appear when
 the table holds no undispatched rows.
 
+## `retry`: exponential backoff no longer overflows
+
+With `MaxBackoff` set, the delay was computed as `Backoff << attempt`. Five
+seconds shifted 31 times overflows a 64-bit duration, so attempt 31 produced a
+negative delay (no sleep) and attempts 62 and up produced zero. A poison batch
+that had been retrying at the cap for about two and a half hours flipped into
+a zero-delay loop that opened a transaction and logged a stack trace on every
+iteration. The delay now stays at `MaxBackoff` once the shift would overflow.
+
 ## `streaming`: new monitor
 
 `streaming.Options.Monitor` is new. The consumer runtime had no monitor at
