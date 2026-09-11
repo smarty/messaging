@@ -1,9 +1,11 @@
 package sqlmq
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -24,9 +26,11 @@ type DispatchProcessorFixture struct {
 	channel      chan messaging.Dispatch
 	sleepTimeout time.Duration
 	listener     messaging.ListenCloser
+	log          bytes.Buffer
 
 	writeCount        int
 	writeFailureUntil int
+	writeBlocks       bool
 	writeContext      context.Context
 	writeDispatches   []messaging.Dispatch
 	writeError        error
@@ -61,6 +65,7 @@ func (this *DispatchProcessorFixture) initializeDispatchProcessor() {
 		Options.Channel(this.channel),
 		Options.RetryTimeout(this.sleepTimeout),
 		Options.StorageHandle(&sql.DB{}),
+		Options.Logger(this),
 	)
 }
 func (this *DispatchProcessorFixture) listen(sleep time.Duration) {
@@ -148,6 +153,39 @@ func (this *DispatchProcessorFixture) TestWhenClosingDuringSleepRetry_SleepIsCut
 	this.So(completed, should.BeLessThan, time.Millisecond*10)
 }
 
+func (this *DispatchProcessorFixture) TestWhenClosingWhileStartupReadIsBlockedOnFullChannel_ListenStillReturns() {
+	this.channel = make(chan messaging.Dispatch, 1)
+	this.initializeDispatchProcessor()
+	this.writeBlocks = true
+	this.loadResult = []messaging.Dispatch{{MessageID: 1}, {MessageID: 2}, {MessageID: 3}, {MessageID: 4}, {MessageID: 5}}
+
+	returned := make(chan struct{})
+	go func() {
+		defer close(returned)
+		this.listen(time.Millisecond * 5)
+	}()
+
+	select {
+	case <-returned:
+		this.So(true, should.BeTrue)
+	case <-time.After(time.Millisecond * 50):
+		this.So("Listen did not return within 50ms", should.BeBlank)
+	}
+}
+
+func (this *DispatchProcessorFixture) TestWhenStartupReadFindsRows_LogTheCount() {
+	this.loadResult = []messaging.Dispatch{{MessageID: 1}, {MessageID: 2}}
+
+	this.listen(time.Millisecond * 5)
+
+	this.So(this.log.String(), should.ContainSubstring, "[INFO] Startup recovery found [2] undispatched message(s) in durable storage.")
+}
+func (this *DispatchProcessorFixture) TestWhenStartupReadFindsNoRows_LogNothing() {
+	this.listen(time.Millisecond * 5)
+
+	this.So(this.log.String(), should.NotContainSubstring, "Startup recovery found")
+}
+
 func (this *DispatchProcessorFixture) TestWhenListening_ReadPendingDispatchesFromStorage() {
 	expected := []messaging.Dispatch{{MessageID: 1}, {MessageID: 2}, {MessageID: 3}}
 	this.loadResult = expected
@@ -180,7 +218,15 @@ func (this *DispatchProcessorFixture) SkipTestWhenInitializeOperationDoesNotGetA
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+func (this *DispatchProcessorFixture) Printf(format string, args ...any) {
+	_, _ = fmt.Fprintf(&this.log, format+"\n", args...)
+}
+
 func (this *DispatchProcessorFixture) Write(ctx context.Context, dispatches ...messaging.Dispatch) (int, error) {
+	if this.writeBlocks {
+		<-ctx.Done()
+		return 0, ctx.Err()
+	}
 	this.writeCount++
 	this.writeContext = ctx
 	this.writeDispatches = append(this.writeDispatches, dispatches...)

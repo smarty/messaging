@@ -29,4 +29,5 @@ type logger interface {
 var (
 	ErrAlreadyExclusive = errors.New("unable to open additional stream, an exclusive stream already exists")
 	ErrMultipleStreams  = errors.New("unable to open exclusive stream, another stream already exists")
+	ErrCommitTimeout    = errors.New("the broker did not acknowledge the transaction within the commit timeout")
 )

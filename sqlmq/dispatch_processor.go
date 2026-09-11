@@ -62,10 +62,17 @@ func (this *dispatchProcessor) listenProcess(waiter *sync.WaitGroup) {
 
 func (this *dispatchProcessor) readPending() bool {
 	dispatches, err := this.store.Load(this.ctx, this.latestID)
+	if len(dispatches) > 0 {
+		this.logger.Printf("[INFO] Startup recovery found [%d] undispatched message(s) in durable storage.", len(dispatches))
+	}
 
 	for _, dispatch := range dispatches {
 		this.latestID = dispatch.MessageID
-		this.channel <- dispatch
+		select {
+		case this.channel <- dispatch:
+		case <-this.ctx.Done():
+			return false // shutting down; the rows stay durable for the next startup
+		}
 	}
 
 	if err != nil {

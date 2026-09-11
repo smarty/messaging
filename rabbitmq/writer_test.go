@@ -1,8 +1,10 @@
 package rabbitmq
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -32,9 +34,19 @@ type WriterFixture struct {
 	publishExchanges []string
 	publishKeys      []string
 	publishMessages  []amqp.Publishing
+
+	commitGate     chan struct{}
+	commitBlocks   bool
+	commitReturned bool
+	severCalls     int
+
+	log              bytes.Buffer
+	committedErrors  []error
+	rolledBackErrors []error
 }
 
 func (this *WriterFixture) Setup() {
+	this.commitGate = make(chan struct{})
 	this.initializeWriter()
 }
 func (this *WriterFixture) initializeWriter() {
@@ -42,9 +54,12 @@ func (this *WriterFixture) initializeWriter() {
 	Options.apply(
 		Options.Now(func() time.Time { return this.now }),
 		Options.PanicOnTopologyError(this.panicOnTopologyFailure),
+		Options.CommitTimeout(5*time.Millisecond),
+		Options.Logger(this),
+		Options.Monitor(this),
 	)(&config)
 
-	this.writer = newWriter(this, config)
+	this.writer = newWriter(this, this.sever, config)
 }
 
 func (this *WriterFixture) TestWhenCloseInvoked_UnderlyingChannelClosed() {
@@ -95,6 +110,53 @@ func (this *WriterFixture) TestWhenTopologyNotEstablished_DontPanicIfIsNotTopolo
 	err := this.writer.Commit()
 
 	this.So(err, should.Equal, this.commitError)
+}
+
+func (this *WriterFixture) TestWhenCommitCompletesInTime_ReturnNilWithoutSevering() {
+	err := this.writer.Commit()
+
+	this.So(err, should.BeNil)
+	this.So(this.severCalls, should.Equal, 0)
+	this.So(this.committedErrors, should.Equal, []error{nil})
+}
+
+func (this *WriterFixture) TestWhenCommitExceedsTimeout_SeverConnectionAndReturnTimeoutError() {
+	this.commitBlocks = true
+
+	err := this.writer.Commit()
+
+	this.So(err, should.Equal, ErrCommitTimeout)
+	this.So(this.severCalls, should.Equal, 1)
+	this.So(this.committedErrors, should.Equal, []error{ErrCommitTimeout})
+	this.So(this.log.String(), should.ContainSubstring, "[WARN] AMQP transaction commit did not complete within [5ms]; severing the connection.")
+}
+
+func (this *WriterFixture) TestWhenCommitExceedsTimeout_WaitForPendingCallToReturn() {
+	this.commitBlocks = true
+
+	_ = this.writer.Commit()
+
+	this.So(this.commitReturned, should.BeTrue)
+}
+
+func (this *WriterFixture) TestWhenRollbackExceedsTimeout_SeverConnectionAndReturnTimeoutError() {
+	this.commitBlocks = true
+
+	err := this.writer.Rollback()
+
+	this.So(err, should.Equal, ErrCommitTimeout)
+	this.So(this.severCalls, should.Equal, 1)
+	this.So(this.commitReturned, should.BeTrue)
+	this.So(this.rolledBackErrors, should.Equal, []error{ErrCommitTimeout})
+	this.So(this.log.String(), should.ContainSubstring, "[WARN] AMQP transaction rollback did not complete within [5ms]; severing the connection.")
+}
+
+func (this *WriterFixture) TestWhenCommitExceedsTimeout_DoNotPanicEvenWhenTopologyPanicEnabled() {
+	this.panicOnTopologyFailure = true
+	this.initializeWriter()
+	this.commitBlocks = true
+
+	this.So(func() { _ = this.writer.Commit() }, should.NotPanic)
 }
 
 func (this *WriterFixture) TestWhenWrite_TopicMissing() {
@@ -211,9 +273,44 @@ func (this *WriterFixture) TestWhenWriterFailsMidwayThrough_ReturnNumberOfWrites
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func (this *WriterFixture) Close() error      { return this.closeError }
-func (this *WriterFixture) TxCommit() error   { return this.commitError }
-func (this *WriterFixture) TxRollback() error { return this.rollbackError }
+func (this *WriterFixture) Close() error { return this.closeError }
+func (this *WriterFixture) TxCommit() error {
+	if this.commitBlocks {
+		<-this.commitGate
+		this.commitReturned = true
+		return amqp.ErrClosed
+	}
+	return this.commitError
+}
+func (this *WriterFixture) TxRollback() error {
+	if this.commitBlocks {
+		<-this.commitGate
+		this.commitReturned = true
+		return amqp.ErrClosed
+	}
+	return this.rollbackError
+}
+func (this *WriterFixture) sever() error {
+	this.severCalls++
+	close(this.commitGate)
+	return nil
+}
+func (this *WriterFixture) Printf(format string, args ...any) {
+	_, _ = fmt.Fprintf(&this.log, format+"\n", args...)
+}
+func (this *WriterFixture) ConnectionOpened(_ error)               {}
+func (this *WriterFixture) ConnectionClosed()                      {}
+func (this *WriterFixture) ConnectionBlocked(_ string)             {}
+func (this *WriterFixture) ConnectionUnblocked()                   {}
+func (this *WriterFixture) DispatchPublished()                     {}
+func (this *WriterFixture) DeliveryReceived()                      {}
+func (this *WriterFixture) DeliveryAcknowledged(_ uint16, _ error) {}
+func (this *WriterFixture) TransactionCommitted(err error) {
+	this.committedErrors = append(this.committedErrors, err)
+}
+func (this *WriterFixture) TransactionRolledBack(err error) {
+	this.rolledBackErrors = append(this.rolledBackErrors, err)
+}
 func (this *WriterFixture) Publish(exchange, key string, envelope amqp.Publishing) error {
 	this.publishExchanges = append(this.publishExchanges, exchange)
 	this.publishKeys = append(this.publishKeys, key)

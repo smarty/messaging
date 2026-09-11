@@ -28,11 +28,14 @@ type ConnectionFixture struct {
 	channelError error
 	closeError   error
 	txCalls      int
+	closeCalls   int
+	commitGate   chan struct{}
 
 	blocking chan amqp.Blocking
 }
 
 func (this *ConnectionFixture) Setup() {
+	this.commitGate = make(chan struct{})
 	this.connection = this.open(configuration{Monitor: nop{}, Logger: nop{}})
 }
 func (this *ConnectionFixture) open(config configuration) messaging.Connection {
@@ -196,6 +199,18 @@ func (this *ConnectionFixture) TestWhenConnectionCloses_WatcherStopsEvenWhenNoti
 	this.So(receive(monitor.calls), should.Equal, "")
 }
 
+func (this *ConnectionFixture) TestWhenCommitWriterTimesOut_CloseConnectionExactlyOnceAndNotifyMonitor() {
+	monitor := &closingMonitor{calls: make(chan string, 4)}
+	this.connection = this.open(configuration{Monitor: monitor, Logger: nop{}, CommitTimeout: time.Millisecond * 5})
+	writer, _ := this.connection.CommitWriter(context.Background())
+
+	err := writer.Commit()
+
+	this.So(err, should.Equal, ErrCommitTimeout)
+	this.So(this.closeCalls, should.Equal, 1)
+	this.So(receive(monitor.calls), should.Equal, "closed")
+}
+
 func (this *ConnectionFixture) TestWhenClosing_InvokeUnderlyingConnection() {
 	this.closeError = errors.New("")
 
@@ -207,7 +222,13 @@ func (this *ConnectionFixture) TestWhenClosing_InvokeUnderlyingConnection() {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 func (this *ConnectionFixture) Channel() (adapter.Channel, error) { return this, this.channelError }
-func (this *ConnectionFixture) Close() error                      { return this.closeError }
+func (this *ConnectionFixture) Close() error {
+	this.closeCalls++
+	if this.closeCalls == 1 {
+		close(this.commitGate) // the pending TxCommit returns once the connection is gone
+	}
+	return this.closeError
+}
 func (this *ConnectionFixture) BlockedNotifications() <-chan amqp.Blocking {
 	// a fresh channel per connection, like the real adapter; tests send into
 	// the most recent connection's channel
@@ -227,8 +248,11 @@ func (this *ConnectionFixture) Consume(_, _ string) (<-chan amqp.Delivery, error
 func (this *ConnectionFixture) Ack(deliveryTag uint64, multiple bool) error       { panic("nop") }
 func (this *ConnectionFixture) CancelConsumer(consumerID string) error            { panic("nop") }
 func (this *ConnectionFixture) Publish(_, _ string, _ amqp.Publishing) error      { panic("nop") }
-func (this *ConnectionFixture) TxCommit() error                                   { panic("nop") }
-func (this *ConnectionFixture) TxRollback() error                                 { panic("nop") }
+func (this *ConnectionFixture) TxCommit() error {
+	<-this.commitGate
+	return amqp.ErrClosed
+}
+func (this *ConnectionFixture) TxRollback() error { panic("nop") }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -246,6 +270,13 @@ func (this *blockingMonitor) record(call string) {
 		<-this.gate
 	}
 }
+
+type closingMonitor struct {
+	nop
+	calls chan string
+}
+
+func (this *closingMonitor) ConnectionClosed() { this.calls <- "closed" }
 
 type capturingLogger struct{ lines chan string }
 

@@ -97,6 +97,11 @@
     content: ""; position: absolute; left: 0; top: 0.3rem;
     width: 1.05rem; height: 1.05rem; border: 2px solid var(--muted); border-radius: 4px; background: #fff;
   }
+  ul.checklist li.done::before {
+    content: "\2713"; background: var(--good-bg); border-color: var(--good-border); color: #2c7a3d;
+    font-size: 0.8rem; font-weight: 700; line-height: 1.05rem; text-align: center;
+  }
+  ul.checklist li.done { color: var(--muted); }
   ul.checklist li.red::after, ul.checklist li.green::after {
     font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; font-size: 0.7rem; font-weight: 600;
     padding: 0.05rem 0.4rem; border-radius: 3px; margin-left: 0.5rem; vertical-align: middle;
@@ -581,92 +586,91 @@ Each phase follows red-green-refactor. Run <code>make test</code> after every gr
 
 <h4>1a. Option and configuration</h4>
 <ul class="checklist">
-  <li class="red">In <code>rabbitmq/config_test.go</code>, add tests: the default <code>CommitTimeout</code> is 30 s; a zero value becomes the default; a negative value becomes the default; a positive value is kept.</li>
-  <li class="red">Run <code>go test ./rabbitmq/</code>. Confirm a compile error on the missing option.</li>
-  <li class="green">Add <code>CommitTimeout time.Duration</code> to <code>configuration</code>, the <code>Options.CommitTimeout</code> option with a <code>sanitizeCommitTimeout</code> helper, the <code>defaultCommitTimeout</code> constant, and the default in <code>defaults</code>.</li>
-  <li class="green">Run the tests. Confirm they pass.</li>
-  <li>Add a doc comment on the option in the style of <code>Options.Heartbeat</code>.</li>
+  <li class="red done">In <code>rabbitmq/config_test.go</code>, add tests: the default <code>CommitTimeout</code> is 30 s; a zero value becomes the default; a negative value becomes the default; a positive value is kept.</li>
+  <li class="red done">Run <code>go test ./rabbitmq/</code>. Confirm a compile error on the missing option.</li>
+  <li class="green done">Add <code>CommitTimeout time.Duration</code> to <code>configuration</code>, the <code>Options.CommitTimeout</code> option with a <code>sanitizeCommitTimeout</code> helper, the <code>defaultCommitTimeout</code> constant, and the default in <code>defaults</code>.</li>
+  <li class="green done">Run the tests. Confirm they pass.</li>
+  <li class="done">Add a doc comment on the option in the style of <code>Options.Heartbeat</code>.</li>
 </ul>
 
 <h4>1b. Sentinel error</h4>
 <ul class="checklist">
-  <li>Add <code>ErrCommitTimeout</code> to <code>rabbitmq/contracts.go</code> beside the existing sentinel errors.</li>
+  <li class="done">Add <code>ErrCommitTimeout</code> to <code>rabbitmq/contracts.go</code> beside the existing sentinel errors.</li>
 </ul>
 
 <h4>1c. Writer timeout and sever</h4>
 <ul class="checklist">
-  <li class="red">In <code>rabbitmq/writer_test.go</code>, extend <code>WriterFixture</code>: a <code>commitGate chan struct{}</code>, a <code>commitBlocks bool</code>, a <code>severCalls int</code>, a <code>commitReturned bool</code>, and a <code>sever()</code> method that increments the count and closes the gate. Make the fake <code>TxCommit</code> and <code>TxRollback</code> wait on the gate when <code>commitBlocks</code> is true, then return <code>amqp.ErrClosed</code>.</li>
-  <li class="red">Change <code>initializeWriter</code> to pass <code>this.sever</code> and a 5 ms <code>CommitTimeout</code>.</li>
-  <li class="red">Add test: when <code>TxCommit</code> completes in time, <code>Commit</code> returns nil and <code>severCalls</code> is 0.</li>
-  <li class="red">Add test: when <code>TxCommit</code> blocks, <code>Commit</code> returns <code>ErrCommitTimeout</code>, <code>severCalls</code> is 1, the monitor received the error, and the log contains the WARN line with the timeout.</li>
-  <li class="red">Add test: when <code>TxCommit</code> blocks, <code>Commit</code> does not return until the fake <code>TxCommit</code> has returned (assert <code>commitReturned</code> after <code>Commit</code>).</li>
-  <li class="red">Add test: when <code>TxRollback</code> blocks, <code>Rollback</code> behaves the same way.</li>
-  <li class="red">Add test: <code>tryPanic</code> does not panic on <code>ErrCommitTimeout</code> even with <code>PanicOnTopologyError(true)</code>.</li>
-  <li class="red">Run <code>go test ./rabbitmq/</code>. Confirm a compile error on the new <code>newWriter</code> signature.</li>
-  <li class="green">Add <code>sever</code> and <code>commitTimeout</code> fields to <code>defaultWriter</code>. Change <code>newWriter(inner, sever, config)</code>. Implement <code>await</code>. Route <code>Commit</code> and <code>Rollback</code> through it.</li>
-  <li class="green">Run the tests. Confirm they pass, including the existing writer tests.</li>
-  <li>Refactor: confirm the WARN wording matches the table in section 2.</li>
+  <li class="red done">In <code>rabbitmq/writer_test.go</code>, extend <code>WriterFixture</code>: a <code>commitGate chan struct{}</code>, a <code>commitBlocks bool</code>, a <code>severCalls int</code>, a <code>commitReturned bool</code>, and a <code>sever()</code> method that increments the count and closes the gate. Make the fake <code>TxCommit</code> and <code>TxRollback</code> wait on the gate when <code>commitBlocks</code> is true, then return <code>amqp.ErrClosed</code>.</li>
+  <li class="red done">Change <code>initializeWriter</code> to pass <code>this.sever</code> and a 5 ms <code>CommitTimeout</code>.</li>
+  <li class="red done">Add test: when <code>TxCommit</code> completes in time, <code>Commit</code> returns nil and <code>severCalls</code> is 0.</li>
+  <li class="red done">Add test: when <code>TxCommit</code> blocks, <code>Commit</code> returns <code>ErrCommitTimeout</code>, <code>severCalls</code> is 1, the monitor received the error, and the log contains the WARN line with the timeout.</li>
+  <li class="red done">Add test: when <code>TxCommit</code> blocks, <code>Commit</code> does not return until the fake <code>TxCommit</code> has returned (assert <code>commitReturned</code> after <code>Commit</code>).</li>
+  <li class="red done">Add test: when <code>TxRollback</code> blocks, <code>Rollback</code> behaves the same way.</li>
+  <li class="red done">Add test: <code>tryPanic</code> does not panic on <code>ErrCommitTimeout</code> even with <code>PanicOnTopologyError(true)</code>.</li>
+  <li class="red done">Run <code>go test ./rabbitmq/</code>. Confirm a compile error on the new <code>newWriter</code> signature.</li>
+  <li class="green done">Add <code>sever</code> and <code>commitTimeout</code> fields to <code>defaultWriter</code>. Change <code>newWriter(inner, sever, config)</code>. Implement <code>await</code>. Route <code>Commit</code> and <code>Rollback</code> through it.</li>
+  <li class="green done">Run the tests. Confirm they pass, including the existing writer tests. <em>(Note: the two call sites in <code>connection.go</code> had to be updated here so the package compiles; they now pass <code>this.Close</code>.)</em></li>
+  <li class="done">Refactor: confirm the WARN wording matches the table in section 2.</li>
 </ul>
 
 <h4>1d. Connection wiring</h4>
 <ul class="checklist">
-  <li class="red">In <code>rabbitmq/connection_test.go</code>, make the fake channel's <code>TxCommit</code> block on a gate that the fake connection's <code>Close</code> closes. Add test: a <code>CommitWriter</code> whose commit times out closes the connection exactly once and fires <code>ConnectionClosed</code> on the monitor.</li>
-  <li class="red">Run the tests. Confirm the compile error on <code>newWriter</code> call sites.</li>
-  <li class="green">In <code>defaultConnection.writer</code>, call <code>newWriter(channel, this.Close, this.config)</code>. Update any other call site (<code>reader_test.go</code>, <code>stream_test.go</code>) so the package compiles.</li>
-  <li class="green">Run <code>go test ./rabbitmq/</code>. Confirm all pass.</li>
+  <li class="red done">In <code>rabbitmq/connection_test.go</code>, make the fake channel's <code>TxCommit</code> block on a gate that the fake connection's <code>Close</code> closes. Add test: a <code>CommitWriter</code> whose commit times out closes the connection exactly once and fires <code>ConnectionClosed</code> on the monitor.</li>
+  <li class="red done">Run the tests. Confirm the compile error on <code>newWriter</code> call sites. <em>(Deviation: no compile error occurred, because the call sites were already updated in 1c so that package could compile for its GREEN run. The new test passed on first run and serves as a confirmation test.)</em></li>
+  <li class="green done">In <code>defaultConnection.writer</code>, call <code>newWriter(channel, this.Close, this.config)</code>. Update any other call site (<code>reader_test.go</code>, <code>stream_test.go</code>) so the package compiles. <em>(No other call sites existed.)</em></li>
+  <li class="green done">Run <code>go test ./rabbitmq/</code>. Confirm all pass.</li>
 </ul>
 
 <h3>Phase 2 &mdash; Deferred outbox handoff (<code>sqlmq</code>)</h3>
 
 <h4>2a. Options and configuration</h4>
 <ul class="checklist">
-  <li class="red">In <code>sqlmq/config_test.go</code>, add tests: the default <code>HandoffTimeout</code> is 10 s; zero and negative values become the default. The default <code>DeferredHandoffCapacity</code> is 8192; zero and negative values become the default. <code>Options.apply</code> creates one <code>deferredHandoffs</code> tracker bound to the configured channel.</li>
-  <li class="red">Run <code>go test ./sqlmq/</code>. Confirm the compile error.</li>
-  <li class="green">Add <code>HandoffTimeout</code>, <code>DeferredHandoffCapacity</code>, and <code>Deferred *deferredHandoffs</code> to <code>configuration</code>. Add the two options, sanitizers, constants, and defaults. Create the tracker in <code>apply</code> after the channel is known.</li>
-  <li class="green">Run the tests. Confirm they pass.</li>
+  <li class="red done">In <code>sqlmq/config_test.go</code>, add tests: the default <code>HandoffTimeout</code> is 10 s; zero and negative values become the default. The default <code>DeferredHandoffCapacity</code> is 8192; zero and negative values become the default. <code>Options.apply</code> creates one <code>deferredHandoffs</code> tracker bound to the configured channel.</li>
+  <li class="red done">Run <code>go test ./sqlmq/</code>. Confirm the compile error.</li>
+  <li class="green done">Add <code>HandoffTimeout</code>, <code>DeferredHandoffCapacity</code>, and <code>Deferred *deferredHandoffs</code> to <code>configuration</code>. Add the two options, sanitizers, constants, and defaults. Create the tracker in <code>apply</code> after the channel is known. <em>(Note: the <code>deferredHandoffs</code> struct and constructor were created here so <code>apply</code> compiles; <code>TryDefer</code> is left for 2b.)</em></li>
+  <li class="green done">Run the tests. Confirm they pass.</li>
 </ul>
 
 <h4>2b. Deferred handoff tracker</h4>
 <ul class="checklist">
-  <li class="red">Create <code>sqlmq/deferred_handoffs_test.go</code> with a fixture. Add tests: <code>TryDefer</code> under the cap returns true and the messages arrive on the channel once it has room; <code>TryDefer</code> that would exceed the cap returns false and leaves <code>pending</code> unchanged; the goroutine exits on context cancellation and <code>pending</code> returns to 0; <code>pending</code> returns to 0 after a full delivery.</li>
-  <li class="red">Run the tests. Confirm the compile error on the missing type.</li>
-  <li class="green">Create <code>sqlmq/deferred_handoffs.go</code> with <code>newDeferredHandoffs(output, capacity)</code> and <code>TryDefer</code> as sketched.</li>
-  <li class="green">Run the tests. Confirm they pass under <code>-race</code>.</li>
+  <li class="red done">Create <code>sqlmq/deferred_handoffs_test.go</code> with a fixture. Add tests: <code>TryDefer</code> under the cap returns true and the messages arrive on the channel once it has room; <code>TryDefer</code> that would exceed the cap returns false and leaves <code>pending</code> unchanged; the goroutine exits on context cancellation and <code>pending</code> returns to 0; <code>pending</code> returns to 0 after a full delivery.</li>
+  <li class="red done">Run the tests. Confirm the compile error on the missing type. <em>(The error was on the missing <code>TryDefer</code> method; the type itself was created in 2a.)</em></li>
+  <li class="green done">Create <code>sqlmq/deferred_handoffs.go</code> with <code>newDeferredHandoffs(output, capacity)</code> and <code>TryDefer</code> as sketched.</li>
+  <li class="green done">Run the tests. Confirm they pass under <code>-race</code>.</li>
 </ul>
 
 <h4>2c. Receiver: timeout, deferral, cap fallback, shutdown</h4>
 <ul class="checklist">
-  <li class="red">In <code>sqlmq/dispatch_receiver_test.go</code>, give <code>DispatchReceiverFixture</code> a log buffer and a <code>Printf</code> method, passed as <code>Options.Logger</code>. Pass a 5 ms <code>HandoffTimeout</code>. Let each test choose the channel capacity and <code>DeferredHandoffCapacity</code> before <code>initializeDispatchWriter</code>.</li>
-  <li class="red">Add test (deferral): channel capacity 1, already full, one dispatch. <code>Commit</code> returns nil, calls the SQL commit once, and logs the WARN naming 1 committed and 1 not accepted. After draining the channel, the dispatch arrives within 50 ms.</li>
-  <li class="red">Add test (partial deferral): channel capacity 2, three dispatches. <code>Commit</code> returns nil; the channel holds the first two; the log names 3 committed and 1 not accepted; the third arrives after a drain.</li>
-  <li class="red">Add test (cap fallback): <code>DeferredHandoffCapacity</code> 1, channel capacity 1 already full, two dispatches. <code>Commit</code> blocks; a goroutine drains the channel after 10 ms; <code>Commit</code> then returns nil; the log contains the capacity WARN.</li>
-  <li class="red">Add test (shutdown): channel full, context cancelled before <code>Commit</code>. <code>Commit</code> returns nil and logs the INFO line naming the remaining count.</li>
-  <li class="red">Change <code>TestWhenTransactionContextCancelled_DoNotBlockWhenWritingToOutputChannel</code> to expect nil.</li>
-  <li class="red">Add test (happy path): with room in the channel, <code>Commit</code> returns nil and logs nothing.</li>
-  <li class="red">Run the tests. Confirm the new tests fail on the missing fields or on the changed return value.</li>
-  <li class="green">Add <code>handoffTimeout</code> and <code>deferred</code> fields to <code>dispatchReceiver</code>. Implement <code>handoff(dispatches, timeout) (remaining []messaging.Dispatch)</code> with the three-way select (zero timeout means no timer). Rewrite the tail of <code>Commit</code> as sketched.</li>
-  <li class="green">Run the tests. Confirm they pass under <code>-race</code>.</li>
-  <li>Refactor: confirm every return after the SQL commit is <code>nil</code>. Confirm the log wording matches the table.</li>
+  <li class="red done">In <code>sqlmq/dispatch_receiver_test.go</code>, give <code>DispatchReceiverFixture</code> a log buffer and a <code>Printf</code> method, passed as <code>Options.Logger</code>. Pass a 5 ms <code>HandoffTimeout</code>. Let each test choose the channel capacity and <code>DeferredHandoffCapacity</code> before <code>initializeDispatchWriter</code>.</li>
+  <li class="red done">Add test (deferral): channel capacity 1, already full, one dispatch. <code>Commit</code> returns nil, calls the SQL commit once, and logs the WARN naming 1 committed and 1 not accepted. After draining the channel, the dispatch arrives within 50 ms.</li>
+  <li class="red done">Add test (partial deferral): channel capacity 2, three dispatches. <code>Commit</code> returns nil; the channel holds the first two; the log names 3 committed and 1 not accepted; the third arrives after a drain.</li>
+  <li class="red done">Add test (cap fallback): <code>DeferredHandoffCapacity</code> 1, channel capacity 1 already full, two dispatches. <code>Commit</code> blocks; a goroutine drains the channel after 10 ms; <code>Commit</code> then returns nil; the log contains the capacity WARN.</li>
+  <li class="red done">Add test (shutdown): channel full, context cancelled before <code>Commit</code>. <code>Commit</code> returns nil and logs the INFO line naming the remaining count.</li>
+  <li class="red done">Change <code>TestWhenTransactionContextCancelled_DoNotBlockWhenWritingToOutputChannel</code> to expect nil.</li>
+  <li class="red done">Add test (happy path): with room in the channel, <code>Commit</code> returns nil and logs nothing.</li>
+  <li class="red done">Run the tests. Confirm the new tests fail on the missing fields or on the changed return value. <em>(They failed by hanging: the deferral tests blocked in <code>Commit</code> until the 1 s suite timeout, because no handoff timer existed yet.)</em></li>
+  <li class="green done">Add <code>handoffTimeout</code> and <code>deferred</code> fields to <code>dispatchReceiver</code>. Implement <code>handoff(dispatches, timeout) (remaining []messaging.Dispatch)</code> with the three-way select (zero timeout means no timer). Rewrite the tail of <code>Commit</code> as sketched.</li>
+  <li class="green done">Run the tests. Confirm they pass under <code>-race</code>.</li>
+  <li class="done">Refactor: confirm every return after the SQL commit is <code>nil</code>. Confirm the log wording matches the table.</li>
 </ul>
 
 <h3>Phase 3 &mdash; Shutdown-safe startup read (<code>sqlmq</code>)</h3>
 <ul class="checklist">
-  <li class="red">In <code>sqlmq/dispatch_processor_test.go</code>, give <code>DispatchProcessorFixture</code> a log buffer and <code>Printf</code>, passed as <code>Options.Logger</code>.</li>
-  <li class="red">Add test: with a channel of capacity 1, a fake <code>Load</code> that returns 5 dispatches, and a fake sender that blocks until the context ends, <code>Close</code> makes <code>Listen</code> return within 50 ms.</li>
-  <li class="red">Add test: when <code>Load</code> returns two dispatches, the log contains the INFO line naming 2 messages. When it returns none, the log has no INFO line.</li>
-  <li class="red">Run the tests. Confirm the shutdown test fails because <code>Listen</code> never returns, and the log test fails on the missing line.</li>
-  <li class="green">In <code>readPending</code>, replace the bare send with a <code>select</code> on the channel send and <code>this.ctx.Done()</code>. Return false when the context ends. Add the INFO line.</li>
-  <li class="green">Run the tests. Confirm they pass, including <code>TestWhenListening_ReadPendingDispatchesFromStorage</code>.</li>
+  <li class="red done">In <code>sqlmq/dispatch_processor_test.go</code>, give <code>DispatchProcessorFixture</code> a log buffer and <code>Printf</code>, passed as <code>Options.Logger</code>.</li>
+  <li class="red done">Add test: with a channel of capacity 1, a fake <code>Load</code> that returns 5 dispatches, and a fake sender that blocks until the context ends, <code>Close</code> makes <code>Listen</code> return within 50 ms.</li>
+  <li class="red done">Add test: when <code>Load</code> returns two dispatches, the log contains the INFO line naming 2 messages. When it returns none, the log has no INFO line.</li>
+  <li class="red done">Run the tests. Confirm the shutdown test fails because <code>Listen</code> never returns, and the log test fails on the missing line.</li>
+  <li class="green done">In <code>readPending</code>, replace the bare send with a <code>select</code> on the channel send and <code>this.ctx.Done()</code>. Return false when the context ends. Add the INFO line.</li>
+  <li class="green done">Run the tests. Confirm they pass, including <code>TestWhenListening_ReadPendingDispatchesFromStorage</code>.</li>
 </ul>
 
 <h3>Phase 4 &mdash; Release</h3>
 <ul class="checklist">
-  <li>Run <code>make test</code> at the repository root. Confirm all packages pass under <code>-race</code>.</li>
-  <li>Run the test suite three times. Confirm the timer-based tests are stable.</li>
-  <li>Write <code>doc/release-notes-v4.1.0.md</code> in ASD-STE100 style. Cover: the three options and their defaults, the sever behavior and its effect on shared connections, the handoff returning success on timeout and on shutdown, the deferred handoff and its cap, the shutdown-hang fix, and the new log lines with levels.</li>
-  <li>Add a short "Bounded waits" section to <code>README.md</code> that lists the three options.</li>
-  <li>Confirm no exported interface changed: <code>go build ./...</code> against a copy of a v4.0.1 consumer compiles without edits.</li>
-  <li>Tag <code>v4.1.0</code> after review.</li>
+  <li class="done">Run <code>make test</code> at the repository root. Confirm all packages pass under <code>-race</code>.</li>
+  <li class="done">Run the test suite three times. Confirm the timer-based tests are stable.</li>
+  <li class="done">Write <code>doc/release-notes-v4.1.0.md</code> in ASD-STE100 style. Cover: the three options and their defaults, the sever behavior and its effect on shared connections, the handoff returning success on timeout and on shutdown, the deferred handoff and its cap, the shutdown-hang fix, and the new log lines with levels.</li>
+  <li class="done">Add a short "Bounded waits" section to <code>README.md</code> that lists the three options.</li>
+  <li class="done">Confirm no exported interface changed: <code>go build ./...</code> against a copy of a v4.0.1 consumer compiles without edits. <em>(Verified two ways: a full <code>go doc -all</code> diff of every package between the <code>v4.0.1</code> tag and this tree shows only the added <code>ErrCommitTimeout</code>; and a scratch consumer implementing v4.0.1-shaped <code>rabbitmq</code>/<code>sqlmq</code> monitors and <code>adapter.Connection</code>/<code>Channel</code> fakes builds against this tree without edits.)</em></li>
 </ul>
 
 <h2>5. Out of scope / future work</h2>

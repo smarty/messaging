@@ -1,9 +1,11 @@
 package sqlmq
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -20,10 +22,12 @@ func TestDispatchReceiverFixture(t *testing.T) {
 type DispatchReceiverFixture struct {
 	*gunit.Fixture
 
-	ctx         context.Context
-	ctxShutdown context.CancelFunc
-	channel     chan messaging.Dispatch
-	writer      messaging.CommitWriter
+	ctx              context.Context
+	ctxShutdown      context.CancelFunc
+	channel          chan messaging.Dispatch
+	deferredCapacity int
+	writer           messaging.CommitWriter
+	log              bytes.Buffer
 
 	commitCalls   int
 	commitError   error
@@ -46,6 +50,9 @@ func (this *DispatchReceiverFixture) initializeDispatchWriter() {
 		Options.Context(this.ctx),
 		Options.StorageHandle(&sql.DB{}),
 		Options.Channel(this.channel),
+		Options.HandoffTimeout(time.Millisecond*5),
+		Options.DeferredHandoffCapacity(this.deferredCapacity),
+		Options.Logger(this),
 	)(&config)
 	config.MessageStore = this
 	this.writer = newDispatchReceiver(this.ctx, this, config)
@@ -111,8 +118,90 @@ func (this *DispatchReceiverFixture) TestWhenTransactionContextCancelled_DoNotBl
 
 	err := this.writer.Commit()
 
-	this.So(err, should.Equal, context.Canceled)
+	this.So(err, should.BeNil)
 	this.So(len(this.channel), should.Equal, cap(this.channel))
+}
+
+func (this *DispatchReceiverFixture) TestWhenHandoffExceedsTimeout_DeferRemainingAndReturnNil() {
+	this.channel = make(chan messaging.Dispatch, 1)
+	this.channel <- messaging.Dispatch{} // full
+	this.initializeDispatchWriter()
+	_, _ = this.writer.Write(nil, messaging.Dispatch{MessageID: 1})
+
+	err := this.writer.Commit()
+
+	this.So(err, should.BeNil)
+	this.So(this.commitCalls, should.Equal, 1)
+	this.So(this.log.String(), should.ContainSubstring,
+		"[WARN] Committed [1] message(s) to durable storage, but the dispatch processor did not accept [1] of them within [5ms]. The handoff continues in the background.")
+	this.So(receiveDispatch(this.channel), should.Equal, messaging.Dispatch{}) // drain
+	this.So(receiveDispatch(this.channel), should.Equal, messaging.Dispatch{MessageID: 1})
+}
+
+func (this *DispatchReceiverFixture) TestWhenHandoffPartiallyCompletes_DeferOnlyTheRemainder() {
+	this.channel = make(chan messaging.Dispatch, 2)
+	this.initializeDispatchWriter()
+	_, _ = this.writer.Write(nil, messaging.Dispatch{MessageID: 1}, messaging.Dispatch{MessageID: 2}, messaging.Dispatch{MessageID: 3})
+
+	err := this.writer.Commit()
+
+	this.So(err, should.BeNil)
+	this.So(len(this.channel), should.Equal, 2)
+	this.So(this.log.String(), should.ContainSubstring,
+		"[WARN] Committed [3] message(s) to durable storage, but the dispatch processor did not accept [1] of them within [5ms]. The handoff continues in the background.")
+	this.So(receiveDispatch(this.channel), should.Equal, messaging.Dispatch{MessageID: 1})
+	this.So(receiveDispatch(this.channel), should.Equal, messaging.Dispatch{MessageID: 2})
+	this.So(receiveDispatch(this.channel), should.Equal, messaging.Dispatch{MessageID: 3})
+}
+
+func (this *DispatchReceiverFixture) TestWhenDeferredCapacityReached_BlockUntilProcessorAcceptsRemainder() {
+	this.deferredCapacity = 1
+	this.channel = make(chan messaging.Dispatch, 1)
+	this.channel <- messaging.Dispatch{} // full
+	this.initializeDispatchWriter()
+	_, _ = this.writer.Write(nil, messaging.Dispatch{MessageID: 1}, messaging.Dispatch{MessageID: 2})
+	drained := make(chan []messaging.Dispatch, 1)
+	go func() {
+		time.Sleep(time.Millisecond * 10)
+		var results []messaging.Dispatch
+		for i := 0; i < 3; i++ {
+			results = append(results, receiveDispatch(this.channel))
+		}
+		drained <- results
+	}()
+
+	err := this.writer.Commit()
+
+	this.So(err, should.BeNil)
+	this.So(<-drained, should.Equal, []messaging.Dispatch{{}, {MessageID: 1}, {MessageID: 2}})
+	this.So(this.log.String(), should.ContainSubstring,
+		"[WARN] Deferred handoff capacity [1] reached; waiting for the dispatch processor to accept [2] message(s).")
+}
+
+func (this *DispatchReceiverFixture) TestWhenContextEndsDuringHandoff_ReturnNilAndLogRemainingCount() {
+	this.channel = make(chan messaging.Dispatch, 1)
+	this.channel <- messaging.Dispatch{} // full
+	this.initializeDispatchWriter()
+	_, _ = this.writer.Write(nil, messaging.Dispatch{MessageID: 1}, messaging.Dispatch{MessageID: 2})
+	this.ctxShutdown()
+
+	err := this.writer.Commit()
+
+	this.So(err, should.BeNil)
+	this.So(this.commitCalls, should.Equal, 1)
+	this.So(len(this.channel), should.Equal, 1)
+	this.So(this.log.String(), should.ContainSubstring,
+		"[INFO] Context ended during handoff; [2] committed message(s) remain in durable storage for the next startup.")
+}
+
+func (this *DispatchReceiverFixture) TestWhenHandoffCompletesInTime_ReturnNilAndLogNothing() {
+	_, _ = this.writer.Write(nil, messaging.Dispatch{MessageID: 1}, messaging.Dispatch{MessageID: 2})
+
+	err := this.writer.Commit()
+
+	this.So(err, should.BeNil)
+	this.So(len(this.channel), should.Equal, 2)
+	this.So(this.log.String(), should.BeBlank)
 }
 
 func (this *DispatchReceiverFixture) TestWhenCommittingWithoutAnyDispatches_CommitShouldStillBeInvoked() {
@@ -150,6 +239,10 @@ func (this *DispatchReceiverFixture) TestWhenClosing_Nop() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+func (this *DispatchReceiverFixture) Printf(format string, args ...any) {
+	_, _ = fmt.Fprintf(&this.log, format+"\n", args...)
+}
 
 func (this *DispatchReceiverFixture) Commit() error   { this.commitCalls++; return this.commitError }
 func (this *DispatchReceiverFixture) Rollback() error { return this.rollbackError }

@@ -97,7 +97,7 @@ func (this *defaultConnection) writer(transactional bool) (messaging.CommitWrite
 	}
 
 	if !transactional {
-		return newWriter(channel, this.config), nil
+		return newWriter(channel, this.Close, this.config), nil
 	}
 
 	if err = channel.Tx(); err != nil {
@@ -105,7 +105,7 @@ func (this *defaultConnection) writer(transactional bool) (messaging.CommitWrite
 		return nil, err
 	}
 
-	return newWriter(channel, this.config), nil
+	return newWriter(channel, this.Close, this.config), nil
 }
 
 func (this *defaultConnection) Close() (err error) {

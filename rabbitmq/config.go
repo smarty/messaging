@@ -28,6 +28,7 @@ type configuration struct {
 	Now                  func() time.Time
 	TopologyFailurePanic bool
 	Heartbeat            time.Duration
+	CommitTimeout        time.Duration
 }
 
 var Options singleton
@@ -88,6 +89,24 @@ func sanitizeHeartbeat(value time.Duration) time.Duration {
 	}
 	return value
 }
+
+// CommitTimeout bounds how long a CommitWriter waits for the broker to
+// acknowledge a transaction commit or rollback. When the bound elapses, the
+// writer logs a warning, closes the connection it belongs to (which is what
+// makes the pending call return), and returns ErrCommitTimeout. Every channel
+// on that connection is lost, so share a connection between a consumer and a
+// transactional writer only if the consumer can tolerate a reconnect. A zero
+// or negative value is replaced with the default, so the bound cannot be
+// disabled by accident.
+func (singleton) CommitTimeout(value time.Duration) option {
+	return func(this *configuration) { this.CommitTimeout = sanitizeCommitTimeout(value) }
+}
+func sanitizeCommitTimeout(value time.Duration) time.Duration {
+	if value <= 0 {
+		return defaultCommitTimeout
+	}
+	return value
+}
 func (singleton) apply(options ...option) option {
 	return func(this *configuration) {
 		for _, item := range Options.defaults(options...) {
@@ -138,12 +157,14 @@ func (singleton) defaults(options ...option) []option {
 		Options.Monitor(defaultMonitor),
 		Options.Now(defaultNow),
 		Options.Heartbeat(defaultHeartbeat),
+		Options.CommitTimeout(defaultCommitTimeout),
 	}, options...)
 }
 
 const (
-	defaultAddress   = "amqp://guest:guest@127.0.0.1:5672/"
-	defaultHeartbeat = 10 * time.Second
+	defaultAddress       = "amqp://guest:guest@127.0.0.1:5672/"
+	defaultHeartbeat     = 10 * time.Second
+	defaultCommitTimeout = 30 * time.Second
 )
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
