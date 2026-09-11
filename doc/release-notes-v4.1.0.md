@@ -314,9 +314,10 @@ The subscriber now closes the shared connection only when the connection
 itself is unusable: when opening a channel on it fails, or when the connection
 reports that it is already closed. A failure to open a stream, or a stream
 that ends, leaves the connection up for the other subscriptions. The
-`rabbitmq` connection exposes `Closed()`, and the pool replaces a cached
-connection that reports closed, so a connection severed by a commit timeout
-is not handed to the next subscriber.
+`rabbitmq` connection exposes `Closed()`, the `serialization` decorator
+forwards it, and the pool replaces a cached connection that reports closed,
+so a connection severed by a commit timeout is not handed to the next
+subscriber.
 
 ## `streaming`: connection pool race fixed
 

@@ -42,6 +42,7 @@ type ConnectorFixture struct {
 	commitError       error
 	rollbackError     error
 	writeError        error
+	closed            bool
 
 	streamConfig        messaging.StreamConfig
 	streamReadDelivery  *messaging.Delivery
@@ -55,6 +56,22 @@ func (this *ConnectorFixture) Setup() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+func (this *ConnectorFixture) TestWhenTransportReportsClosed_DecoratedConnectionForwardsIt() {
+	connection, _ := this.connector.Connect(this.originalContext)
+	reporter, ok := connection.(interface{ Closed() bool })
+	this.So(ok, should.BeTrue) // an embedded interface does not promote methods it does not declare
+
+	this.So(reporter.Closed(), should.BeFalse)
+	this.closed = true
+	this.So(reporter.Closed(), should.BeTrue)
+}
+func (this *ConnectorFixture) TestWhenTransportCannotReportClosed_DecoratedConnectionReportsOpen() {
+	connector := New(plainConnector{}, Options.Decoder(this), Options.Encoder(this))
+	connection, _ := connector.Connect(this.originalContext)
+
+	this.So(connection.(interface{ Closed() bool }).Closed(), should.BeFalse)
+}
 
 func (this *ConnectorFixture) TestWhenOpeningConnectionFails_ReturnUnderlyingError() {
 	this.connectError = errors.New("")
@@ -275,6 +292,7 @@ func (this *ConnectorFixture) Connect(ctx context.Context) (messaging.Connection
 	this.connectContext = ctx
 	return this, this.connectError
 }
+func (this *ConnectorFixture) Closed() bool { return this.closed }
 func (this *ConnectorFixture) Close() error {
 	return this.closeError
 }
@@ -328,3 +346,18 @@ func (this *ConnectorFixture) Decode(delivery *messaging.Delivery) error {
 	delivery.MessageID = 42
 	return this.decodeError
 }
+
+// plainConnector yields a connection with no Closed method.
+type plainConnector struct{}
+
+func (plainConnector) Connect(context.Context) (messaging.Connection, error) {
+	return plainConnection{}, nil
+}
+func (plainConnector) Close() error { return nil }
+
+type plainConnection struct{}
+
+func (plainConnection) Reader(context.Context) (messaging.Reader, error)             { panic("nop") }
+func (plainConnection) Writer(context.Context) (messaging.Writer, error)             { panic("nop") }
+func (plainConnection) CommitWriter(context.Context) (messaging.CommitWriter, error) { panic("nop") }
+func (plainConnection) Close() error                                                 { return nil }
