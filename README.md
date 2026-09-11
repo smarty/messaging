@@ -583,24 +583,28 @@ broker's 404 for a missing exchange, message TTL is honored in milliseconds, a c
 forces closed reaches the monitor and the log, a deleted queue ends the stream with a named reason, and
 the status probe passes on a healthy broker and fails definitively on a missing probe exchange.
 
-One test reproduces the September 2026 incident. It declares a quorum queue, stops two of the three
-cluster nodes so the queue is in minority, and proves that a transactional publish times out within
-`BrokerTimeout`, severs, and is reported, that a status probe on that exchange fails within the bound,
-and that publishing resumes without a restart when the nodes return. It also shows the severed
-transaction's message arriving after recovery, which is why consumers must be idempotent.
+`make test.integration.ghost` reproduces the September 2026 incident as a timeline. The Makefile
+declares nothing itself and the tests stop nothing themselves: three Go tests each observe one phase,
+and the Makefile stops and starts cluster nodes between them. Phase one proves a transactional publish
+to a quorum queue commits. The Makefile then stops two of the three nodes so the queue is in minority.
+Phase two proves the publish times out within `BrokerTimeout`, severs, and is reported, and that a
+status probe on that exchange fails within the bound. The Makefile restarts the nodes in reverse order.
+Phase three proves publishing resumes without a restart, and shows the severed transaction's message
+arriving after recovery, which is why consumers must be idempotent. The phases share a queue name
+through `INTEGRATION_GHOST_QUEUE` and skip when it is unset.
 
 ```sh
-make test.integration.local   # starts the cluster with docker or podman compose, runs the tests, stops it
-make test.integration         # against a cluster you already started with the compose file
+make test.integration.local   # starts the cluster with docker or podman compose, runs everything, stops it
+make test.integration         # the single-process tests, against a cluster you already started
+make test.integration.ghost   # the incident timeline, against a cluster you already started
 ```
 
 `doc/docker-compose.integration.yml` runs three nodes that form a cluster from a static peer list, with
 node one on `5678` and its management API on `15678`, chosen not to collide with sibling repositories'
 compose stacks. The health check verifies the listeners, not just the node, and runs as the `rabbitmq`
 user because under podman the container's root cannot read the Erlang cookie. Point the tests elsewhere
-with `INTEGRATION_RABBITMQ_ADDR` and `INTEGRATION_RABBITMQ_MANAGEMENT`. The cluster test stops and starts
-nodes through `docker compose` using `INTEGRATION_COMPOSE_FILE` and skips when that file is absent, so
-the other tests still run against a single broker you started by hand.
+with `INTEGRATION_RABBITMQ_ADDR` and `INTEGRATION_RABBITMQ_MANAGEMENT`. No test runs a container
+command; only the Makefile does.
 
 CI runs the integration suite when a tag is pushed, not on every branch push, from
 `.github/workflows/integration.yml`.

@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,32 +26,7 @@ import (
 var (
 	brokerAddress     = envOr("INTEGRATION_RABBITMQ_ADDR", "amqp://guest:guest@127.0.0.1:5678/")
 	managementAddress = envOr("INTEGRATION_RABBITMQ_MANAGEMENT", "http://guest:guest@127.0.0.1:15678")
-
-	// The compose file lets a test stop and start cluster nodes. When it is
-	// absent (a single broker someone started by hand), cluster tests skip.
-	composeFile  = envOr("INTEGRATION_COMPOSE_FILE", "../doc/docker-compose.integration.yml")
-	containerCLI = envOr("INTEGRATION_CONTAINER_CLI", "docker")
 )
-
-func composeAvailable() bool {
-	_, err := os.Stat(composeFile)
-	return err == nil
-}
-
-// compose runs a docker/podman compose subcommand against the integration
-// stack, for example compose("stop", "rabbitmq2").
-func compose(args ...string) error {
-	_, err := composeOutput(args...)
-	return err
-}
-func composeOutput(args ...string) (string, error) {
-	command := exec.Command(containerCLI, append([]string{"compose", "-f", composeFile}, args...)...)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		return string(output), fmt.Errorf("%s compose %s: %w\n%s", containerCLI, strings.Join(args, " "), err, output)
-	}
-	return string(output), nil
-}
 
 func envOr(key, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok && value != "" {
@@ -211,6 +185,20 @@ func (this *management) QuorumLeader(name string) string {
 	}
 	_ = json.Unmarshal(body, &queue)
 	return queue.Leader
+}
+
+// QuorumStatus returns the raw membership fields of a quorum queue, for
+// failure output.
+func (this *management) QuorumStatus(name string) string {
+	_, body := this.do(http.MethodGet, "/api/queues/%2F/"+name, nil)
+	var queue struct {
+		State   string   `json:"state"`
+		Leader  string   `json:"leader"`
+		Members []string `json:"members"`
+		Online  []string `json:"online"`
+	}
+	_ = json.Unmarshal(body, &queue)
+	return fmt.Sprintf("state=%s leader=%s members=%v online=%v", queue.State, queue.Leader, queue.Members, queue.Online)
 }
 
 // QuorumOnline returns how many of a quorum queue's members are online.
