@@ -92,12 +92,17 @@ func (this *dispatchProcessor) write() bool {
 			return false
 		}
 
-		if err := this.store.Confirm(this.ctx, this.buffer); err != nil {
+		confirmed, err := this.store.Confirm(this.ctx, this.buffer)
+		if err != nil {
 			this.logger.Printf("[WARN] Unable to mark messages as dispatched in durable storage [%s].", err)
 			return false
 		}
+		if confirmed != len(this.buffer) {
+			this.logger.Printf("[WARN] Confirmed [%d] of [%d] published message(s) in durable storage. Another instance may have published the rest, or MessageIDs are out of step with the table (compare AutoincrementStride with auto_increment_increment).",
+				confirmed, len(this.buffer))
+		}
 
-		this.monitor.MessageConfirmed(len(this.buffer))
+		this.monitor.MessageConfirmed(confirmed)
 		this.clearBuffer()
 	}
 }
@@ -126,6 +131,7 @@ func (this *dispatchProcessor) writeBufferToSender() bool {
 	}
 
 	if _, err := this.sender.Write(this.ctx, this.buffer...); err != nil {
+		this.logger.Printf("[WARN] Unable to publish [%d] message(s) to the transport [%s]; retrying in [%s].", len(this.buffer), err, this.retryWait)
 		return false
 	}
 

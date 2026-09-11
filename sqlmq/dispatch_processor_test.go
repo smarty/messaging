@@ -37,6 +37,7 @@ type DispatchProcessorFixture struct {
 
 	confirmCount        int
 	confirmFailureUntil int
+	confirmShortBy      int
 	confirmContext      context.Context
 	confirmDispatches   []messaging.Dispatch
 	confirmError        error
@@ -107,7 +108,7 @@ func (this *DispatchProcessorFixture) TestWhenDispatchesArePending_ItShouldPubli
 	this.So(this.confirmDispatches, should.Equal, expected)
 }
 func (this *DispatchProcessorFixture) TestWhenWritingToSenderFails_TryAgain() {
-	this.writeError = errors.New("")
+	this.writeError = errors.New("broker down")
 	this.writeFailureUntil = 1 // 0th attempt fails, subsequent attempts pass
 
 	expected := []messaging.Dispatch{{MessageID: 1}, {MessageID: 2}, {MessageID: 3}}
@@ -124,6 +125,19 @@ func (this *DispatchProcessorFixture) TestWhenWritingToSenderFails_TryAgain() {
 	this.So(this.confirmCount, should.Equal, 1)
 	this.So(this.confirmContext, should.NotBeNil)
 	this.So(this.confirmDispatches, should.Equal, expected)
+	this.So(this.log.String(), should.ContainSubstring,
+		"[WARN] Unable to publish [3] message(s) to the transport [broker down]; retrying in [100µs].")
+}
+func (this *DispatchProcessorFixture) TestWhenConfirmAffectsFewerRowsThanPublished_LogTheMismatch() {
+	this.confirmShortBy = 2
+	for _, item := range []messaging.Dispatch{{MessageID: 1}, {MessageID: 2}, {MessageID: 3}} {
+		this.channel <- item
+	}
+
+	this.listen(time.Millisecond)
+
+	this.So(this.log.String(), should.ContainSubstring,
+		"[WARN] Confirmed [1] of [3] published message(s) in durable storage. Another instance may have published the rest, or MessageIDs are out of step with the table (compare AutoincrementStride with auto_increment_increment).")
 }
 func (this *DispatchProcessorFixture) TestWhenConfirmDispatchFails_TryAgainWithoutWritingToSenderTwice() {
 	this.confirmError = errors.New("")
@@ -266,14 +280,14 @@ func (this *DispatchProcessorFixture) Load(ctx context.Context, id uint64) ([]me
 
 	return result[0:this.loadMaxResultsPer], this.loadError
 }
-func (this *DispatchProcessorFixture) Confirm(ctx context.Context, dispatches []messaging.Dispatch) error {
+func (this *DispatchProcessorFixture) Confirm(ctx context.Context, dispatches []messaging.Dispatch) (int, error) {
 	this.confirmCount++
 	this.confirmContext = ctx
 	this.confirmDispatches = append(this.confirmDispatches, dispatches...)
 	if this.confirmFailureUntil > this.confirmCount-1 {
-		return this.confirmError
+		return 0, this.confirmError
 	} else {
-		return nil
+		return len(dispatches) - this.confirmShortBy, nil
 	}
 }
 func (this *DispatchProcessorFixture) Store(ctx context.Context, writer adapter.Writer, dispatches []messaging.Dispatch) error {

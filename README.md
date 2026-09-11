@@ -519,6 +519,8 @@ the publisher is behind. The rows are durable and the next start publishes them.
 | `WARN` | `Deferred handoff capacity [8192] reached; waiting for the dispatch processor to accept [M] message(s).`                                                    |
 | `INFO` | `Context ended during handoff; [M] committed message(s) remain in durable storage for the next startup.`                                                    |
 | `INFO` | `Startup recovery found [N] undispatched message(s) in durable storage.`                                                                                    |
+| `WARN` | `Unable to publish [N] message(s) to the transport [...]; retrying in [5s].`                                                                                |
+| `WARN` | `Confirmed [M] of [N] published message(s) in durable storage. ...`                                                                                        |
 
 ### A minimal checklist per service
 

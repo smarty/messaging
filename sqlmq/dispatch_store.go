@@ -91,9 +91,14 @@ func (this dispatchStore) Load(ctx context.Context, id uint64) (results []messag
 
 	return results, rows.Err()
 }
-func (this dispatchStore) Confirm(ctx context.Context, dispatches []messaging.Dispatch) error {
+
+// Confirm marks the dispatches as published and reports how many rows it
+// actually updated. Fewer than len(dispatches) is not an error: another
+// instance's startup read may have published and confirmed some of them
+// first. The caller decides whether the gap is worth a warning.
+func (this dispatchStore) Confirm(ctx context.Context, dispatches []messaging.Dispatch) (confirmed int, err error) {
 	if len(dispatches) == 0 {
-		return nil
+		return 0, nil
 	}
 
 	defer this.confirmStatement.Reset()
@@ -109,8 +114,12 @@ func (this dispatchStore) Confirm(ctx context.Context, dispatches []messaging.Di
 	now := this.now().UTC().Format("2006-01-02 15:04:05.000000")
 	const statementFormat = "UPDATE Messages SET dispatched = '%s' WHERE dispatched IS NULL AND id IN (%s);"
 	statement := fmt.Sprintf(statementFormat, now, this.confirmStatement.String())
-	_, err := this.db.ExecContext(ctx, statement)
-	return err
+	result, err := this.db.ExecContext(ctx, statement)
+	if err != nil {
+		return 0, err
+	}
+	affected, _ := result.RowsAffected()
+	return int(affected), nil
 }
 
 func closeResource(resource io.Closer) {

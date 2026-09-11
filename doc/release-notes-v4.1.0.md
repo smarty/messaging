@@ -123,6 +123,22 @@ A crash loses deferred messages from memory only. The startup read publishes
 them from the table. This is the same guarantee the outbox gives every message
 between its SQL commit and its broker confirm.
 
+## `sqlmq`: publish failures and short confirms are logged
+
+The dispatch processor retried a failed publish every `RetryTimeout` without
+saying so. A permanent error, such as a dispatch with an empty topic, stalled
+the whole outbox in silence. It now logs
+`[WARN] Unable to publish [N] message(s) to the transport [...]; retrying in [5s].`
+on every attempt.
+
+`Confirm` now reports how many rows it updated, and `MessageConfirmed`
+receives that number rather than the batch size. When fewer rows than
+published are confirmed, the processor logs a `WARN` naming both counts. That
+happens legitimately when another instance's startup read published the same
+rows first, and it happens when `AutoincrementStride` does not match the
+server's `auto_increment_increment`, in which case the MessageIDs are wrong
+and the log line is the only signal.
+
 ## `sqlmq`: the outbox channel is no longer closed at shutdown
 
 The dispatch processor used to close the outbox channel when `Listen`

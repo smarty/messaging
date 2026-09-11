@@ -257,7 +257,7 @@ func (this *DispatchReceiverFixture) Store(ctx context.Context, writer adapter.W
 func (this *DispatchReceiverFixture) Load(ctx context.Context, id uint64) ([]messaging.Dispatch, error) {
 	panic("nop")
 }
-func (this *DispatchReceiverFixture) Confirm(ctx context.Context, dispatches []messaging.Dispatch) error {
+func (this *DispatchReceiverFixture) Confirm(ctx context.Context, dispatches []messaging.Dispatch) (int, error) {
 	panic("nop")
 }
 
