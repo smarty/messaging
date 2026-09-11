@@ -2,6 +2,7 @@ package rabbitmq
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -56,6 +57,12 @@ func (this defaultWriter) publish(messages []messaging.Dispatch) (count int, err
 		if len(message.Topic) == 0 {
 			return count, messaging.ErrEmptyDispatchTopic
 		}
+		if key, value, ok := invalidHeader(message.Headers); !ok {
+			// amqp091 discovers an unsupported type mid-frame and shuts the whole
+			// connection down, taking every channel with it; reject it here instead.
+			this.logger.Printf("[WARN] Dispatch rejected: header [%s] has unsupported type [%T].", key, value)
+			return count, fmt.Errorf("%w: header [%s] has unsupported type [%T]", ErrInvalidHeader, key, value)
+		}
 
 		count++
 		converted := toAMQPDispatch(message, now)
@@ -70,6 +77,18 @@ func (this defaultWriter) publish(messages []messaging.Dispatch) (count int, err
 	}
 
 	return count, nil
+}
+
+// invalidHeader reports the first header whose value the AMQP table encoding
+// cannot carry (for example uint64, time.Duration, []string, or a nested
+// map[string]any that is not an amqp.Table).
+func invalidHeader(headers map[string]any) (key string, value any, ok bool) {
+	for key, value = range headers {
+		if err := (amqp.Table{key: value}).Validate(); err != nil {
+			return key, value, false
+		}
+	}
+	return "", nil, true
 }
 func formatPartition(value uint64) string {
 	if value == 0 {

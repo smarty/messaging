@@ -33,4 +33,5 @@ var (
 	ErrPublishTimeout     = errors.New("the broker did not accept the publish within the commit timeout")
 	ErrAcknowledgeTimeout = errors.New("the broker did not accept the acknowledgement within the commit timeout")
 	ErrCloseTimeout       = errors.New("the broker did not answer the channel close within the commit timeout")
+	ErrInvalidHeader      = errors.New("a dispatch header value has a type the AMQP wire format cannot carry")
 )

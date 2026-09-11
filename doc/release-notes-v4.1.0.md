@@ -88,6 +88,17 @@ connects fresh) leaked a closed connection and its buffers for the life of
 the process. A connection now removes itself from the list when it closes,
 whether by its owner, by a sever, or by the broker.
 
+## `rabbitmq`: unsupported header values are rejected before the wire
+
+`Dispatch.Headers` passed straight through to the AMQP client, which
+discovers an unsupported Go type (`uint64`, `time.Duration`, `[]string`, a
+nested `map[string]any`) while writing the frame and then shuts the whole
+connection down, closing every channel and consumer on it. The caller
+reconnected and retried the same message, which churned connections
+forever. `Write` now validates each header first and returns
+`ErrInvalidHeader` naming the key and type, with a `WARN`, before anything
+reaches the channel.
+
 ## `rabbitmq`: message TTL is now sent in milliseconds (behavior change)
 
 `Dispatch.Expiration` was rendered as whole seconds. The broker interprets the

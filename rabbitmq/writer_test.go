@@ -180,6 +180,19 @@ func (this *WriterFixture) TestWhenChannelCloseBlocks_CloseSeversTheConnectionAn
 	this.So(this.severCalls, should.Equal, 1)
 }
 
+func (this *WriterFixture) TestWhenWriteHasAnUnsupportedHeaderValue_RejectBeforePublishingAndNameTheKey() {
+	count, err := this.writer.Write(context.Background(), messaging.Dispatch{
+		Topic:   "a",
+		Headers: map[string]any{"fine": "yes", "bad": uint64(42)}, // uint64 is not an AMQP table type
+	})
+
+	this.So(errors.Is(err, ErrInvalidHeader), should.BeTrue)
+	this.So(err.Error(), should.ContainSubstring, "[bad]")
+	this.So(count, should.Equal, 0)
+	this.So(this.publishExchanges, should.BeEmpty) // nothing reached the channel, so the connection survives
+	this.So(this.log.String(), should.ContainSubstring, "[WARN] Dispatch rejected: header [bad] has unsupported type [uint64]")
+}
+
 func (this *WriterFixture) TestWhenWrite_TopicMissing() {
 	count, err := this.writer.Write(context.Background(), messaging.Dispatch{})
 
