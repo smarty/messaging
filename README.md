@@ -34,32 +34,32 @@ Requires Go 1.25 or later and a RabbitMQ broker. The outbox requires a MySQL-com
 
 The root package, `messaging`, declares the vocabulary. Every other package speaks it.
 
-| Type           | Meaning                                                                                              |
-|----------------|------------------------------------------------------------------------------------------------------|
-| `Connector`    | Opens a `Connection`. Also an `io.Closer`.                                                           |
-| `Connection`   | Produces a `Reader`, a `Writer`, or a `CommitWriter`.                                                |
-| `Reader`       | Opens a `Stream` from a `StreamConfig` (queue name, topics, buffer sizes, topology flags).           |
-| `Stream`       | `Read` one `Delivery` at a time; `Acknowledge` one or many.                                          |
-| `Writer`       | `Write` one or many `Dispatch` values. A `CommitWriter` adds `Commit` and `Rollback`.                |
+| Type           | Meaning                                                                                                 |
+|----------------|---------------------------------------------------------------------------------------------------------|
+| `Connector`    | Opens a `Connection`. Also an `io.Closer`.                                                              |
+| `Connection`   | Produces a `Reader`, a `Writer`, or a `CommitWriter`.                                                   |
+| `Reader`       | Opens a `Stream` from a `StreamConfig` (queue name, topics, buffer sizes, topology flags).              |
+| `Stream`       | `Read` one `Delivery` at a time; `Acknowledge` one or many.                                             |
+| `Writer`       | `Write` one or many `Dispatch` values. A `CommitWriter` adds `Commit` and `Rollback`.                   |
 | `Dispatch`     | An outbound message: topic, partition key, type, content type, payload, headers, and a `Message` value. |
-| `Delivery`     | An inbound message: the same fields plus delivery and source identifiers and the raw upstream object. |
-| `Handler`      | `Handle(ctx, messages ...any)`. It returns nothing. Failure is a panic (see [Consuming](#consuming)). |
-| `ListenCloser` | Something with a blocking `Listen()` and a `Close()`. Background processors implement it.            |
+| `Delivery`     | An inbound message: the same fields plus delivery and source identifiers and the raw upstream object.   |
+| `Handler`      | `Handle(ctx, messages ...any)`. It returns nothing. Failure is a panic (see [Consuming](#consuming)).   |
+| `ListenCloser` | Something with a blocking `Listen()` and a `Close()`. Background processors implement it.               |
 
 ## Packages
 
-| Package                  | Role                                                                                                                                        |
-|--------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| Package                  | Role                                                                                                                                                                 |
+|--------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `rabbitmq`               | The transport. A `Connector` over [`amqp091-go`](https://github.com/rabbitmq/amqp091-go). Heartbeats, blocked-connection notifications, bounded transaction commits. |
-| `serialization`          | A decorator. Encodes `Dispatch.Message` into `Payload` on the way out and decodes `Delivery.Payload` into `Message` on the way in. JSON by default. |
-| `sqlmq`                  | A decorator and the outbox. Its `CommitWriter` stores messages in a SQL table inside your transaction. A background processor publishes them later. |
-| `batch`                  | A `Writer` that does connect, write, and commit as one publish, and redials after any error. `sqlmq` uses it to publish.                    |
-| `streaming`              | The consumer runtime. Opens a stream per subscription, runs one goroutine per handler, batches deliveries, calls handlers, acknowledges.       |
-| `handlers/transactional` | Wraps a handler in a `CommitWriter`. With `sqlmq`, the handler receives the live `*sql.Tx` and a `Writer` bound to the same transaction.       |
-| `handlers/retry`         | Recovers a panic from the inner handler and runs the batch again with backoff and jitter.                                                   |
-| `handlers/sqltx`         | Like `transactional`, for a plain `*sql.DB` with no messaging.                                                                              |
-| `handlers/multi`         | Fans one batch to several handlers in order.                                                                                                |
-| `status`                 | A health probe for `/status` endpoints. Tolerates brief broker failures. Reports credential and permission faults at once.                  |
+| `serialization`          | A decorator. Encodes `Dispatch.Message` into `Payload` on the way out and decodes `Delivery.Payload` into `Message` on the way in. JSON by default.                  |
+| `sqlmq`                  | A decorator and the outbox. Its `CommitWriter` stores messages in a SQL table inside your transaction. A background processor publishes them later.                  |
+| `batch`                  | A `Writer` that does connect, write, and commit as one publish, and redials after any error. `sqlmq` uses it to publish.                                             |
+| `streaming`              | The consumer runtime. Opens a stream per subscription, runs one goroutine per handler, batches deliveries, calls handlers, acknowledges.                             |
+| `handlers/transactional` | Wraps a handler in a `CommitWriter`. With `sqlmq`, the handler receives the live `*sql.Tx` and a `Writer` bound to the same transaction.                             |
+| `handlers/retry`         | Recovers a panic from the inner handler and runs the batch again with backoff and jitter.                                                                            |
+| `handlers/sqltx`         | Like `transactional`, for a plain `*sql.DB` with no messaging.                                                                                                       |
+| `handlers/multi`         | Fans one batch to several handlers in order.                                                                                                                         |
+| `status`                 | A health probe for `/status` endpoints. Tolerates brief broker failures. Reports credential and permission faults at once.                                           |
 
 `rabbitmq/adapter` and `sqlmq/adapter` are thin interfaces over the AMQP client and `database/sql`.
 They exist so the packages above them can be tested with fakes. You will only touch them in tests.
@@ -207,16 +207,16 @@ A `NULL` in `dispatched` means the row has not reached the broker. The flow is:
 
 Options you are most likely to set:
 
-| Option                                    | Default   | Purpose                                                                 |
-|-------------------------------------------|-----------|-------------------------------------------------------------------------|
-| `Options.StorageHandle(*sql.DB)`          | required  | The database. `Options.DataSource(driver, dsn)` opens one for you.      |
-| `Options.ChannelBufferCapacity(int)`      | 1024      | Size of the in-memory channel between handlers and the processor.       |
-| `Options.RetryTimeout(time.Duration)`     | 5 s       | Sleep between publish attempts after an error.                          |
-| `Options.IsolationLevel(sql.IsolationLevel)` | ReadCommitted | Isolation for the outbox transaction.                              |
-| `Options.AutoincrementStride(uint8)`      | 1         | Gap between consecutive ids; used to assign `MessageID`s after a batch insert. Match your server's `auto_increment_increment`. |
-| `Options.HandoffTimeout(time.Duration)`   | 10 s      | See [Bounded waits](#bounded-waits).                                    |
-| `Options.DeferredHandoffCapacity(int)`    | 8192      | See [Bounded waits](#bounded-waits).                                    |
-| `Options.Logger`, `Options.Monitor`       | no-op     | See [Monitoring and alerting](#monitoring-and-alerting).                |
+| Option                                       | Default       | Purpose                                                                                                                        |
+|----------------------------------------------|---------------|--------------------------------------------------------------------------------------------------------------------------------|
+| `Options.StorageHandle(*sql.DB)`             | required      | The database. `Options.DataSource(driver, dsn)` opens one for you.                                                             |
+| `Options.ChannelBufferCapacity(int)`         | 1024          | Size of the in-memory channel between handlers and the processor.                                                              |
+| `Options.RetryTimeout(time.Duration)`        | 5 s           | Sleep between publish attempts after an error.                                                                                 |
+| `Options.IsolationLevel(sql.IsolationLevel)` | ReadCommitted | Isolation for the outbox transaction.                                                                                          |
+| `Options.AutoincrementStride(uint8)`         | 1             | Gap between consecutive ids; used to assign `MessageID`s after a batch insert. Match your server's `auto_increment_increment`. |
+| `Options.HandoffTimeout(time.Duration)`      | 10 s          | See [Bounded waits](#bounded-waits).                                                                                           |
+| `Options.DeferredHandoffCapacity(int)`       | 8192          | See [Bounded waits](#bounded-waits).                                                                                           |
+| `Options.Logger`, `Options.Monitor`          | no-op         | See [Monitoring and alerting](#monitoring-and-alerting).                                                                       |
 
 ## Consuming
 
@@ -233,19 +233,19 @@ crashes the process; the broker redelivers the batch after restart. Design handl
 
 Subscription options you are most likely to set:
 
-| Option                                                | Default    | Purpose                                                                     |
-|-------------------------------------------------------|------------|-----------------------------------------------------------------------------|
-| `SubscriptionOptions.Name(string)`                    | empty      | Consumer or group name reported to the broker.                              |
-| `SubscriptionOptions.Topics(...string)`               | none       | Exchanges to bind the queue to.                                             |
-| `SubscriptionOptions.AddWorkers(...messaging.Handler)`| required   | One goroutine per handler. All workers share one stream.                    |
-| `SubscriptionOptions.BufferCapacity(uint16)`          | 1          | Deliveries prefetched into local memory.                                    |
-| `SubscriptionOptions.BatchCapacity(uint16)`           | 1          | Maximum deliveries per `Handle` call. Batches never wait to fill.           |
-| `SubscriptionOptions.FullThrottle()`                  | off        | Sets both capacities to the maximum.                                        |
-| `SubscriptionOptions.EstablishTopology(bool)`         | true       | Declare the queue and exchanges and bind them on connect.                   |
-| `SubscriptionOptions.StreamReplication(bool)`         | false      | Use quorum queues.                                                          |
-| `SubscriptionOptions.FullDeliveryToHandler(bool)`     | false      | Pass `messaging.Delivery` values instead of `Delivery.Message`.             |
-| `SubscriptionOptions.ReconnectDelay(time.Duration)`   | 5 s        | Pause before reopening a stream after it ends.                              |
-| `SubscriptionOptions.ShutdownStrategy(strategy, timeout)` | Drain, 5 s | See [Shutdown](#shutdown).                                              |
+| Option                                                    | Default    | Purpose                                                           |
+|-----------------------------------------------------------|------------|-------------------------------------------------------------------|
+| `SubscriptionOptions.Name(string)`                        | empty      | Consumer or group name reported to the broker.                    |
+| `SubscriptionOptions.Topics(...string)`                   | none       | Exchanges to bind the queue to.                                   |
+| `SubscriptionOptions.AddWorkers(...messaging.Handler)`    | required   | One goroutine per handler. All workers share one stream.          |
+| `SubscriptionOptions.BufferCapacity(uint16)`              | 1          | Deliveries prefetched into local memory.                          |
+| `SubscriptionOptions.BatchCapacity(uint16)`               | 1          | Maximum deliveries per `Handle` call. Batches never wait to fill. |
+| `SubscriptionOptions.FullThrottle()`                      | off        | Sets both capacities to the maximum.                              |
+| `SubscriptionOptions.EstablishTopology(bool)`             | true       | Declare the queue and exchanges and bind them on connect.         |
+| `SubscriptionOptions.StreamReplication(bool)`             | false      | Use quorum queues.                                                |
+| `SubscriptionOptions.FullDeliveryToHandler(bool)`         | false      | Pass `messaging.Delivery` values instead of `Delivery.Message`.   |
+| `SubscriptionOptions.ReconnectDelay(time.Duration)`       | 5 s        | Pause before reopening a stream after it ends.                    |
+| `SubscriptionOptions.ShutdownStrategy(strategy, timeout)` | Drain, 5 s | See [Shutdown](#shutdown).                                        |
 
 `retry` options: `Backoff` (5 s), `MaxBackoff` (0, which disables growth), `JitterFactor` (0 to 1),
 `MaxAttempts` (effectively unlimited), `ImmediateRetry(values...)` for panic values that should not
@@ -254,27 +254,27 @@ sleep, `LogStackTrace` (on).
 Pass `streaming.Options.Monitor` and `streaming.Options.Logger`. Without them the runtime retries
 forever in silence. The monitor carries rates and durations; the logger carries the error text.
 
-| Callback                                        | When                                                                                          |
-|-------------------------------------------------|-----------------------------------------------------------------------------------------------|
-| `StreamOpened(stream, err)`                     | Once per attempt to open a subscription. `err == nil` means live; otherwise it names the failing step. |
-| `StreamClosed(stream)`                          | Once when a live session ends, for any reason. A reconnect follows unless shutting down.      |
-| `BatchHandled(stream, count, duration)`         | After `Handle` returns or panics. `count` is messages handed to the handler. `duration` includes inner retries. |
-| `BatchAcknowledged(stream, count, err)`         | After each acknowledgement attempt. A non-nil error ends the worker; the broker redelivers.    |
-| `ShutdownForced(stream)`                        | When workers miss the shutdown timeout and in-flight deliveries are abandoned.                |
+| Callback                                | When                                                                                                            |
+|-----------------------------------------|-----------------------------------------------------------------------------------------------------------------|
+| `StreamOpened(stream, err)`             | Once per attempt to open a subscription. `err == nil` means live; otherwise it names the failing step.          |
+| `StreamClosed(stream)`                  | Once when a live session ends, for any reason. A reconnect follows unless shutting down.                        |
+| `BatchHandled(stream, count, duration)` | After `Handle` returns or panics. `count` is messages handed to the handler. `duration` includes inner retries. |
+| `BatchAcknowledged(stream, count, err)` | After each acknowledgement attempt. A non-nil error ends the worker; the broker redelivers.                     |
+| `ShutdownForced(stream)`                | When workers miss the shutdown timeout and in-flight deliveries are abandoned.                                  |
 
 Every callback carries the queue name from `NewSubscription`, so one monitor serves every
 subscription in a process and labels its metrics per stream. `BatchHandled` and `BatchAcknowledged`
 fire once per batch on the hot path, so keep implementations cheap. The log lines:
 
-| Level  | Line                                                                                                  | When                                                      |
-|--------|-------------------------------------------------------------------------------------------------------|-----------------------------------------------------------|
-| `WARN` | `Unable to open connection for stream [queue] [...]`                                                  | Broker unreachable. Retried after `ReconnectDelay`.       |
-| `WARN` | `Unable to open reader for stream [queue] [...]`                                                      | Channel refused. Retried after `ReconnectDelay`.          |
-| `WARN` | `Unable to open stream [queue] [...]`                                                                 | Queue or exchange missing, topology refused. Retried.     |
-| `WARN` | `Unable to acknowledge [N] delivery(ies) from stream [queue] [...]; the broker will redeliver them.`   | The handler ran; the batch will run again after reconnect.|
+| Level  | Line                                                                                                   | When                                                           |
+|--------|--------------------------------------------------------------------------------------------------------|----------------------------------------------------------------|
+| `WARN` | `Unable to open connection for stream [queue] [...]`                                                   | Broker unreachable. Retried after `ReconnectDelay`.            |
+| `WARN` | `Unable to open reader for stream [queue] [...]`                                                       | Channel refused. Retried after `ReconnectDelay`.               |
+| `WARN` | `Unable to open stream [queue] [...]`                                                                  | Queue or exchange missing, topology refused. Retried.          |
+| `WARN` | `Unable to acknowledge [N] delivery(ies) from stream [queue] [...]; the broker will redeliver them.`   | The handler ran; the batch will run again after reconnect.     |
 | `WARN` | `Workers on stream [queue] did not conclude within [5s] of shutdown; abandoning in-flight deliveries.` | Shutdown timeout hit; the next start begins with redeliveries. |
-| `INFO` | `Stream [queue] ended [...]`                                                                          | A stream read failed, usually a broker close.             |
-| `INFO` | `Subscription to stream [queue] concluded; reconnecting in [5s].`                                     | The reconnect loop is about to run.                       |
+| `INFO` | `Stream [queue] ended [...]`                                                                           | A stream read failed, usually a broker close.                  |
+| `INFO` | `Subscription to stream [queue] concluded; reconnecting in [5s].`                                      | The reconnect loop is about to run.                            |
 
 ## Serialization
 
@@ -292,11 +292,11 @@ Three consumer-side failure modes each have an `Ignore*` switch. When on, the li
 reports the error to the monitor, and delivers the message with a `nil` `Message`. When off, the error
 ends the stream read and the subscription reconnects.
 
-| Condition                       | Switch                                         | Default |
-|---------------------------------|------------------------------------------------|---------|
-| Type name not in `ReadTypes`    | `Options.IgnoreUnknownMessageTypes(bool)`      | off     |
-| No deserializer for content type| `Options.IgnoreUnknownContentTypes(bool)`      | off     |
-| Payload does not parse          | `Options.IgnoreDeserializationErrors(bool)`    | off     |
+| Condition                        | Switch                                      | Default |
+|----------------------------------|---------------------------------------------|---------|
+| Type name not in `ReadTypes`     | `Options.IgnoreUnknownMessageTypes(bool)`   | off     |
+| No deserializer for content type | `Options.IgnoreUnknownContentTypes(bool)`   | off     |
+| Payload does not parse           | `Options.IgnoreDeserializationErrors(bool)` | off     |
 
 `Options.AllowedTypes(map[string]struct{})` filters by wire type name. A filtered message is
 acknowledged without reaching the handler.
@@ -324,12 +324,12 @@ Confirm your platform does that before you deploy.
 Every wait in the publish path has a time limit. Each option replaces a zero or negative value with its
 default, so a bound cannot be disabled by accident.
 
-| Package    | Option                            | Default       | Bounds                                                                 |
-|------------|-----------------------------------|---------------|------------------------------------------------------------------------|
+| Package    | Option                            | Default       | Bounds                                                                                                      |
+|------------|-----------------------------------|---------------|-------------------------------------------------------------------------------------------------------------|
 | `rabbitmq` | `Options.BrokerTimeout`           | 30 seconds    | Every wait on the broker: commit, rollback, publish, acknowledge, channel close, and the connect handshake. |
-| `rabbitmq` | `Options.Heartbeat`               | 10 seconds    | How long a dead socket goes unnoticed (about 1.5 times this value).   |
-| `sqlmq`    | `Options.HandoffTimeout`          | 10 seconds    | The wait, after the SQL commit, to hand messages to the dispatcher.    |
-| `sqlmq`    | `Options.DeferredHandoffCapacity` | 8192 messages | The messages that background handoffs may hold in memory at one time.  |
+| `rabbitmq` | `Options.Heartbeat`               | 10 seconds    | How long a dead socket goes unnoticed (about 1.5 times this value).                                         |
+| `sqlmq`    | `Options.HandoffTimeout`          | 10 seconds    | The wait, after the SQL commit, to hand messages to the dispatcher.                                         |
+| `sqlmq`    | `Options.DeferredHandoffCapacity` | 8192 messages | The messages that background handoffs may hold in memory at one time.                                       |
 
 What happens at each bound:
 
@@ -379,13 +379,13 @@ Count a commit as a success when `err == nil`, as a timeout when
 `errors.Is(err, rabbitmq.ErrCommitTimeout)`, and as a failure otherwise. Keep the timeout counter
 separate, because a single callback cannot tell a timeout from a broker refusal.
 
-| Callback                                        | Metric                                      | Type      |
-|-------------------------------------------------|---------------------------------------------|-----------|
-| `streaming` `StreamOpened(stream, err)`         | `consumer_stream_opened_total{stream,result}` | counter |
-| `streaming` `StreamClosed(stream)`              | `consumer_stream_closed_total{stream}`      | counter   |
-| `streaming` `BatchHandled(stream, count, d)`    | `consumer_batch_seconds{stream}`            | histogram |
-| `streaming` `BatchAcknowledged(stream, n, err)` | `consumer_acknowledged_total{stream,result}` | counter  |
-| `streaming` `ShutdownForced(stream)`            | `consumer_shutdown_forced_total{stream}`    | counter   |
+| Callback                                        | Metric                                        | Type      |
+|-------------------------------------------------|-----------------------------------------------|-----------|
+| `streaming` `StreamOpened(stream, err)`         | `consumer_stream_opened_total{stream,result}` | counter   |
+| `streaming` `StreamClosed(stream)`              | `consumer_stream_closed_total{stream}`        | counter   |
+| `streaming` `BatchHandled(stream, count, d)`    | `consumer_batch_seconds{stream}`              | histogram |
+| `streaming` `BatchAcknowledged(stream, n, err)` | `consumer_acknowledged_total{stream,result}`  | counter   |
+| `streaming` `ShutdownForced(stream)`            | `consumer_shutdown_forced_total{stream}`      | counter   |
 
 The `retry`, `transactional`, `sqltx`, and `serialization` packages have their own small monitors
 (`HandleAttempted`, `TransactionStarted/Committed/RolledBack`, `MessageEncoded/Decoded`). Count
@@ -419,12 +419,12 @@ func newStreamingMonitor(queues ...string) streamingMonitor {
 func newStreamMetrics(stream string) streamMetrics {
 	label := metrics.Options.Label("stream", stream)
 	return streamMetrics{
-		opened:       metrics.NewCounter("consumer_streams_opened", label),
-		openFailures: metrics.NewCounter("consumer_stream_open_failures", label),
-		closed:       metrics.NewCounter("consumer_streams_closed", label),
-		acknowledged: metrics.NewCounter("consumer_deliveries_acknowledged", label),
-		ackFailures:  metrics.NewCounter("consumer_acknowledge_failures", label),
-		forced:       metrics.NewCounter("consumer_shutdowns_forced", label),
+		opened:        metrics.NewCounter("consumer_streams_opened", label),
+		openFailures:  metrics.NewCounter("consumer_stream_open_failures", label),
+		closed:        metrics.NewCounter("consumer_streams_closed", label),
+		acknowledged:  metrics.NewCounter("consumer_deliveries_acknowledged", label),
+		ackFailures:   metrics.NewCounter("consumer_acknowledge_failures", label),
+		forced:        metrics.NewCounter("consumer_shutdowns_forced", label),
 		batchDuration: metrics.NewHistogram("consumer_batch_duration_milliseconds", label,
 			metrics.Options.Bucket(1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000)),
 	}
@@ -527,7 +527,7 @@ the publisher is behind. The rows are durable and the next start publishes them.
 | `INFO` | `Context ended during handoff; [M] committed message(s) remain in durable storage for the next startup.`                                                    |
 | `INFO` | `Startup recovery found [N] undispatched message(s) in durable storage.`                                                                                    |
 | `WARN` | `Unable to publish [N] message(s) to the transport [...]; retrying in [5s].`                                                                                |
-| `WARN` | `Confirmed [M] of [N] published message(s) in durable storage. ...`                                                                                        |
+| `WARN` | `Confirmed [M] of [N] published message(s) in durable storage. ...`                                                                                         |
 
 ### A minimal checklist per service
 
@@ -583,9 +583,9 @@ The module path is `github.com/smarty/messaging/v4`. Adding a method to any pack
 interface breaks every implementer and is a major-version change. Additive options and new sentinel
 errors are minor versions.
 
-| Release | Notes                                                                                              |
-|---------|----------------------------------------------------------------------------------------------------|
-| v4.1.0  | [`doc/release-notes-v4.1.0.md`](doc/release-notes-v4.1.0.md): bounded commit, deferred outbox handoff, shutdown-safe startup read. |
+| Release | Notes                                                                                                                                                             |
+|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| v4.1.0  | [`doc/release-notes-v4.1.0.md`](doc/release-notes-v4.1.0.md): bounded commit, deferred outbox handoff, shutdown-safe startup read.                                |
 | v4.0.0  | [`doc/release-notes-v4.0.0.md`](doc/release-notes-v4.0.0.md): honest status checker, client heartbeat, blocked-connection notifications. Migration steps from v3. |
 
 The `v4.0.0-alpha.*` tags belong to an abandoned 2021 experiment and are retracted in `go.mod`.
