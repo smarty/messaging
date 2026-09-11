@@ -38,6 +38,18 @@ sqlmq.New(transport,
 )
 ```
 
+## `rabbitmq`: message TTL is now sent in milliseconds (behavior change)
+
+`Dispatch.Expiration` was rendered as whole seconds. The broker interprets the
+AMQP expiration property as milliseconds, so a one-hour TTL expired after 3.6
+seconds and any value below one second expired after one millisecond. Expired
+messages vanish with no error, so this went unnoticed since the original
+writer. The writer now sends `Expiration.Milliseconds()`, with a floor of 1.
+
+A service that tuned its TTL against the old scale will see messages live
+1000 times longer than before. Review every `Dispatch.Expiration` value when
+you upgrade. A service that never sets `Expiration` is unaffected.
+
 ## `rabbitmq`: bounded transaction commit and rollback
 
 `CommitWriter.Commit` and `CommitWriter.Rollback` now wait at most

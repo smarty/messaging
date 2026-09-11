@@ -203,7 +203,7 @@ func (this *WriterFixture) TestWhenWrite_PublishToUnderlyingChannel() {
 			Priority:        0,
 			CorrelationId:   "3",
 			ReplyTo:         "",
-			Expiration:      "60",
+			Expiration:      "60000",
 			MessageId:       "2",
 			Timestamp:       time.Time{},
 			Type:            "message-type",
@@ -240,10 +240,10 @@ func (this *WriterFixture) TestWhenWriteTransientMessage_PublishTransientMessage
 		},
 	})
 }
-func (this *WriterFixture) TestWhenWriteExpirationLessThanOneSecond_UseOneSecondExpiration() {
+func (this *WriterFixture) TestWhenWriteExpirationLessThanOneMillisecond_UseOneMillisecondExpiration() {
 	count, err := this.writer.Write(context.Background(), messaging.Dispatch{
 		Topic:      "a",
-		Expiration: time.Second - 1,
+		Expiration: time.Millisecond - 1,
 	})
 
 	this.So(err, should.BeNil)
@@ -260,6 +260,16 @@ func (this *WriterFixture) TestWhenWriteExpirationLessThanOneSecond_UseOneSecond
 			Expiration:    "1",
 		},
 	})
+}
+func (this *WriterFixture) TestWhenWriteExpirationIsSubSecond_EmitWholeMilliseconds() {
+	count, err := this.writer.Write(context.Background(), messaging.Dispatch{
+		Topic:      "a",
+		Expiration: 1500 * time.Millisecond,
+	})
+
+	this.So(err, should.BeNil)
+	this.So(count, should.Equal, 1)
+	this.So(this.publishMessages[0].Expiration, should.Equal, "1500")
 }
 func (this *WriterFixture) TestWhenWriterFailsMidwayThrough_ReturnNumberOfWritesThusFarAndError() {
 	this.publishError = errors.New("")

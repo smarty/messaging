@@ -82,13 +82,16 @@ func toAMQPDispatch(dispatch messaging.Dispatch, now time.Time) amqp.Publishing 
 		Body:            dispatch.Payload,
 	}
 }
+
+// computeExpiration renders the per-message TTL. The broker interprets the
+// AMQP expiration property as a string of whole milliseconds.
 func computeExpiration(expiration time.Duration) string {
 	if expiration == 0 {
 		return ""
-	} else if seconds := int(expiration.Seconds()); seconds <= 0 {
+	} else if milliseconds := expiration.Milliseconds(); milliseconds <= 0 {
 		return "1"
 	} else {
-		return strconv.FormatUint(uint64(seconds), 10)
+		return strconv.FormatInt(milliseconds, 10)
 	}
 }
 func computePersistence(durable bool) uint8 {
