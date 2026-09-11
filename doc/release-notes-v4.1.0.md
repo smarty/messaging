@@ -61,6 +61,24 @@ service.
 A successful probe now means the broker accepted the publish and answered
 the commit. It still does not prove the message was routed anywhere.
 
+## `rabbitmq`: closes initiated by the broker or network are reported
+
+The connection registered for blocked notifications but never for close
+notifications. A heartbeat timeout, a `CONNECTION_FORCED` from a node
+shutdown, the 30-minute consumer acknowledgement timeout (`406`), or a
+deleted queue surfaced only as a bare `EOF` on the next read, the reason was
+lost, and `ConnectionClosed` never fired, so an open-minus-closed gauge
+drifted upward forever.
+
+The connection now logs
+`[WARN] AMQP connection closed by the broker or network [...]`, fires
+`ConnectionClosed` exactly once, and reports `Closed()` as true. A stream
+whose channel the broker closed returns the broker's error from `Read`
+instead of `EOF`; a consumer the broker cancelled returns an error naming the
+consumer that wraps `io.EOF`. When a connection closes while the broker has
+it blocked, the monitor receives `ConnectionUnblocked`, so a blocked gauge
+does not stick at 1 after a sever.
+
 ## `rabbitmq`: message TTL is now sent in milliseconds (behavior change)
 
 `Dispatch.Expiration` was rendered as whole seconds. The broker interprets the

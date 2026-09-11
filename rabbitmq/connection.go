@@ -18,6 +18,12 @@ type defaultConnection struct {
 	closer  sync.Once
 }
 
+// closeNotifier is satisfied by the real adapter connection, which promotes
+// amqp.Connection.NotifyClose. It is optional so existing fakes keep working.
+type closeNotifier interface {
+	NotifyClose(receiver chan *amqp.Error) chan *amqp.Error
+}
+
 func newConnection(inner adapter.Connection, config configuration) messaging.Connection {
 	// NOTE: using pointer type to allow for pointer equality check
 	config.Monitor.ConnectionOpened(nil)
@@ -25,7 +31,28 @@ func newConnection(inner adapter.Connection, config configuration) messaging.Con
 	relay := make(chan amqp.Blocking, 1)
 	go relayBlockedState(inner.BlockedNotifications(), relay, this.done)
 	go this.watchBlockedState(relay)
+	if notifier, ok := inner.(closeNotifier); ok {
+		go this.watchClose(notifier.NotifyClose(make(chan *amqp.Error, 1)))
+	}
 	return this
+}
+
+// watchClose reports a close that the broker or the network initiated: a
+// heartbeat timeout, CONNECTION_FORCED, a node shutdown. Without it those
+// surfaced only as a bare EOF on the next read, and ConnectionClosed never
+// fired, so open-minus-closed gauges drifted upward.
+func (this *defaultConnection) watchClose(closes <-chan *amqp.Error) {
+	select {
+	case <-this.done:
+	case reason, open := <-closes:
+		if open && reason != nil {
+			this.closer.Do(func() {
+				close(this.done)
+				this.logger.Printf("[WARN] AMQP connection closed by the broker or network [%s].", reason)
+				this.monitor.ConnectionClosed()
+			})
+		}
+	}
 }
 
 // relayBlockedState keeps the amqp library's frame-dispatch goroutine from
@@ -64,7 +91,9 @@ func deliverLatest(notification amqp.Blocking, relay chan amqp.Blocking, done ch
 	}
 }
 func (this *defaultConnection) watchBlockedState(notifications chan amqp.Blocking) {
+	blocked := false
 	for notification := range notifications {
+		blocked = notification.Active
 		if notification.Active {
 			this.logger.Printf("[WARN] AMQP connection blocked by broker (reason: %s); publishes will stall until the broker unblocks.", notification.Reason)
 			this.monitor.ConnectionBlocked(notification.Reason)
@@ -72,6 +101,10 @@ func (this *defaultConnection) watchBlockedState(notifications chan amqp.Blockin
 			this.logger.Printf("[INFO] AMQP connection unblocked by broker; publishes resume.")
 			this.monitor.ConnectionUnblocked()
 		}
+	}
+	if blocked { // the connection closed while blocked (a sever, a drop); no unblock will ever arrive for it
+		this.logger.Printf("[INFO] AMQP connection closed while blocked; treating it as unblocked.")
+		this.monitor.ConnectionUnblocked()
 	}
 }
 func (this *defaultConnection) Reader(_ context.Context) (messaging.Reader, error) {

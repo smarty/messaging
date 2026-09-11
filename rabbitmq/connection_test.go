@@ -32,6 +32,7 @@ type ConnectionFixture struct {
 	commitGate   chan struct{}
 
 	blocking chan amqp.Blocking
+	closing  chan *amqp.Error
 }
 
 func (this *ConnectionFixture) Setup() {
@@ -177,12 +178,26 @@ func (this *ConnectionFixture) TestWhenMonitorCallbackIsSlow_LatestBlockedStateI
 	this.So(receiveLast(monitor.calls), should.Equal, "blocked:final")
 }
 
-func (this *ConnectionFixture) TestWhenNotificationChannelCloses_WatcherStopsWithoutFurtherCallbacks() {
+func (this *ConnectionFixture) TestWhenNotificationChannelClosesWhileBlocked_ReportUnblockedThenStop() {
 	monitor := &blockingMonitor{calls: make(chan string, 4)}
 	this.connection = this.open(configuration{Monitor: monitor, Logger: nop{}})
 
 	this.blocking <- amqp.Blocking{Active: true, Reason: "low memory"}
 	this.So(receive(monitor.calls), should.Equal, "blocked:low memory")
+
+	close(this.blocking) // the amqp library closes it when the connection shuts down
+
+	this.So(receive(monitor.calls), should.Equal, "unblocked") // a blocked gauge must not stick
+	this.So(receive(monitor.calls), should.Equal, "")
+}
+func (this *ConnectionFixture) TestWhenNotificationChannelClosesWhileUnblocked_WatcherStopsWithoutFurtherCallbacks() {
+	monitor := &blockingMonitor{calls: make(chan string, 4)}
+	this.connection = this.open(configuration{Monitor: monitor, Logger: nop{}})
+
+	this.blocking <- amqp.Blocking{Active: true, Reason: "low memory"}
+	this.So(receive(monitor.calls), should.Equal, "blocked:low memory") // wait: the relay keeps only the latest state
+	this.blocking <- amqp.Blocking{Active: false}
+	this.So(receive(monitor.calls), should.Equal, "unblocked")
 
 	close(this.blocking)
 
@@ -197,6 +212,40 @@ func (this *ConnectionFixture) TestWhenConnectionCloses_WatcherStopsEvenWhenNoti
 	this.blocking <- amqp.Blocking{Active: true, Reason: "after close"}
 
 	this.So(receive(monitor.calls), should.Equal, "")
+}
+
+func (this *ConnectionFixture) TestWhenBrokerClosesTheConnection_LogTheReasonNotifyMonitorAndReportClosed() {
+	logs := &capturingLogger{lines: make(chan string, 4)}
+	monitor := &closingMonitor{calls: make(chan string, 4)}
+	this.connection = this.open(configuration{Monitor: monitor, Logger: logs})
+
+	this.closing <- &amqp.Error{Code: amqp.ConnectionForced, Reason: "CONNECTION_FORCED - broker forced connection closure"}
+
+	this.So(receive(monitor.calls), should.Equal, "closed")
+	line := receive(logs.lines)
+	this.So(line, should.ContainSubstring, "[WARN]")
+	this.So(line, should.ContainSubstring, "CONNECTION_FORCED")
+	this.So(this.connection.(*defaultConnection).Closed(), should.BeTrue)
+}
+func (this *ConnectionFixture) TestWhenBrokerClosedTheConnection_ALaterCloseDoesNotNotifyTwice() {
+	monitor := &closingMonitor{calls: make(chan string, 4)}
+	this.connection = this.open(configuration{Monitor: monitor, Logger: nop{}})
+	this.closing <- &amqp.Error{Code: amqp.ConnectionForced, Reason: "CONNECTION_FORCED"}
+	this.So(receive(monitor.calls), should.Equal, "closed")
+
+	_ = this.connection.Close()
+
+	this.So(receive(monitor.calls), should.Equal, "")
+}
+func (this *ConnectionFixture) TestWhenConnectionClosesWhileBlocked_ReportUnblockedSoGaugesDoNotStick() {
+	monitor := &blockingMonitor{calls: make(chan string, 4)}
+	this.connection = this.open(configuration{Monitor: monitor, Logger: nop{}})
+	this.blocking <- amqp.Blocking{Active: true, Reason: "low memory"}
+	this.So(receive(monitor.calls), should.Equal, "blocked:low memory")
+
+	_ = this.connection.Close() // e.g. severed by a commit timeout while the alarm is still on
+
+	this.So(receive(monitor.calls), should.Equal, "unblocked")
 }
 
 func (this *ConnectionFixture) TestWhenCommitWriterTimesOut_CloseConnectionExactlyOnceAndNotifyMonitor() {
@@ -237,6 +286,10 @@ func (this *ConnectionFixture) Close() error {
 		close(this.commitGate) // the pending TxCommit returns once the connection is gone
 	}
 	return this.closeError
+}
+func (this *ConnectionFixture) NotifyClose(receiver chan *amqp.Error) chan *amqp.Error {
+	this.closing = receiver // like the real adapter connection, which promotes amqp.Connection.NotifyClose
+	return receiver
 }
 func (this *ConnectionFixture) BlockedNotifications() <-chan amqp.Blocking {
 	// a fresh channel per connection, like the real adapter; tests send into

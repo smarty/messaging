@@ -483,8 +483,9 @@ stopped reading the socket. A small batch still reaches its commit, and the comm
 batch stalls inside the socket write, before the commit, and no timeout fires. Page on this gauge
 directly, so the alert does not depend on batch size. A restart does not help. The broker needs attention.
 
-**Connection churn.** A commit timeout closes one connection and the writer opens another, so the open
-and close counters rise together about once per commit cycle. On their own they are noisy during a
+**Connection churn.** `ConnectionClosed` fires for every close, including ones the broker or network
+initiated, and the log line carries the broker's reason. A commit timeout closes one connection and the
+writer opens another, so the open and close counters rise together about once per commit cycle. On their own they are noisy during a
 rolling broker restart. Combine them with the timeout counter to tell a sever from a normal reconnect.
 
 **A starved stream.** Per-stream acknowledged rate at zero while other streams in the same process

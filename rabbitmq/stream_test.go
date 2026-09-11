@@ -37,6 +37,8 @@ type StreamFixture struct {
 	severGate             chan struct{}
 	severCalls            int
 	log                   bytes.Buffer
+	closing               chan *amqp.Error
+	cancelling            chan string
 }
 
 func (this *StreamFixture) Setup() {
@@ -60,6 +62,31 @@ func (this *StreamFixture) sever() error {
 	return nil
 }
 
+func (this *StreamFixture) TestWhenBrokerClosesTheChannel_ReadReturnsTheReasonInsteadOfEOF() {
+	reason := &amqp.Error{Code: amqp.PreconditionFailed, Reason: "PRECONDITION_FAILED - delivery acknowledgement on channel 1 timed out"}
+	this.closing <- reason
+	close(this.deliveries)
+
+	err := this.stream.Read(context.Background(), &messaging.Delivery{})
+
+	this.So(err, should.Equal, reason)
+}
+func (this *StreamFixture) TestWhenBrokerCancelsTheConsumer_ReadReturnsAnErrorNamingIt() {
+	this.cancelling <- this.streamID
+	close(this.deliveries)
+
+	err := this.stream.Read(context.Background(), &messaging.Delivery{})
+
+	this.So(err, should.NotBeNil)
+	this.So(err.Error(), should.ContainSubstring, "cancelled by the broker")
+}
+func (this *StreamFixture) TestWhenDeliveriesEndWithoutAReason_ReadReturnsEOF() {
+	close(this.deliveries)
+
+	err := this.stream.Read(context.Background(), &messaging.Delivery{})
+
+	this.So(err, should.Equal, io.EOF)
+}
 func (this *StreamFixture) TestWhenAcknowledgeBlocks_SeverTheConnectionAndReturnAcknowledgeTimeout() {
 	this.acknowledgeBlocks = true
 
@@ -194,6 +221,14 @@ func (this *StreamFixture) TestWhenAcknowledgingFails_ReturnUnderlyingError() {
 func (this *StreamFixture) CancelConsumer(consumerID string) error {
 	this.cancellations = append(this.cancellations, consumerID)
 	return nil
+}
+func (this *StreamFixture) NotifyClose(receiver chan *amqp.Error) chan *amqp.Error {
+	this.closing = receiver
+	return receiver
+}
+func (this *StreamFixture) NotifyCancel(receiver chan string) chan string {
+	this.cancelling = receiver
+	return receiver
 }
 func (this *StreamFixture) Ack(deliveryTag uint64, multiple bool) error {
 	if this.acknowledgeBlocks {
