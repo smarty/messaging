@@ -228,8 +228,8 @@ buffer, gathered into batches opportunistically, handed to `Handler.Handle`, and
 `Handler.Handle` has no return value. **Failure is a panic.** `transactional` and `sqltx` panic when a
 connection, transaction, or commit fails, and re-panic after rolling back. `retry` recovers the panic,
 logs it, sleeps with exponential backoff and jitter, and runs the batch again. `streaming` acknowledges
-only after `Handle` returns, so a batch that panics past `retry`'s `MaxAttempts` crashes the worker and
-the broker redelivers it after reconnect. Design handlers to be idempotent.
+only after `Handle` returns. A panic that escapes the outermost handler is logged at `ERROR` and then
+crashes the process; the broker redelivers the batch after restart. Design handlers to be idempotent.
 
 Subscription options you are most likely to set:
 

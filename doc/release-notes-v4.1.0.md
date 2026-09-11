@@ -178,6 +178,17 @@ each of those points, and at each reconnect and each forced shutdown. Pass a
 logger. The lines and their meanings are in the table below and in the
 README's "Consuming" section.
 
+## `streaming`: an escaped handler panic no longer hangs the worker
+
+When a panic escaped the outermost handler, the worker's `Listen` unwound
+into a deferred wait for its reader goroutine. The reader was parked in
+`Stream.Read` on a context that a graceful shutdown never cancels, so the
+wait never ended, the runtime never printed the panic, and the dead worker
+kept absorbing deliveries into a buffer nobody drained. Each worker now reads
+on its own child context, cancelled before the wait. The panic is logged as
+`[ERROR] Handler on stream [queue] panicked [...]; the worker is exiting.` and
+then propagates, which ends the process. The broker redelivers after restart.
+
 ## `streaming`: connection pool race fixed
 
 `Dispose` on the internal connection pool unlocked its mutex immediately
