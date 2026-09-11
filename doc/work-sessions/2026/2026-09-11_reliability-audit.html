@@ -71,13 +71,14 @@
   <code>github.com/smarty/messaging/v4</code> &middot; branch <code>mikewhat/no-stalls</code> &middot; 2026-09-11 &middot;
   Scope: every package, read-only, before the service migration wave.<br>
   Method: four independent reviewers, one per area, each required to cite file and line and to trace the path.
-  The lead re-verified every High and the schema-level Mediums against the source. Nothing was modified except two
-  documentation corrections noted at the end.
+  The lead re-verified every High and the schema-level Mediums against the source.<br>
+  <strong>Status:</strong> all nine Highs and M9, M10, M11 are fixed, each in its own commit (chips below name the commit).
+  The remaining Mediums and Lows are open.
 </div>
 
 <div class="grid">
-  <div class="tile"><div class="n">9</div><div class="l">High: fix before migrating services</div></div>
-  <div class="tile"><div class="n">19</div><div class="l">Medium: design and schema follow-ups</div></div>
+  <div class="tile"><div class="n">9</div><div class="l">High: all nine fixed on this branch</div></div>
+  <div class="tile"><div class="n">19</div><div class="l">Medium: M9, M10, M11 fixed; 16 remain as follow-ups</div></div>
   <div class="tile"><div class="n">14</div><div class="l">Low: hygiene, docs, footguns</div></div>
   <div class="tile"><div class="n">1</div><div class="l">Doc error in this week's README, now fixed</div></div>
 </div>
@@ -95,19 +96,19 @@
 <div class="tablewrap">
 <table>
   <tr><th>#</th><th>Package</th><th>Finding</th><th>Effort</th></tr>
-  <tr><td>H1</td><td><code>sqlmq</code></td><td>Closing the outbox channel at shutdown panics handlers and deferred goroutines still sending on it</td><td>Small</td></tr>
-  <tr><td>H2</td><td><code>rabbitmq</code></td><td>Message TTL is sent in seconds; the broker reads milliseconds. Messages with an expiration die 1000&times; early</td><td>Small</td></tr>
-  <tr><td>H3</td><td><code>streaming</code></td><td>A panic that escapes a handler hangs the worker forever with no log, holding its prefetch window</td><td>Small</td></tr>
-  <tr><td>H4</td><td><code>streaming</code></td><td>One subscription failing closes the shared connection for every other subscription</td><td>Medium</td></tr>
-  <tr><td>H5</td><td><code>handlers/retry</code></td><td>Backoff overflows int64; with <code>MaxBackoff</code> set, a poison batch becomes a zero-delay hot loop after ~2.5 h</td><td>Small</td></tr>
-  <tr><td>H6</td><td><code>sqlmq</code></td><td>A permanent publish error stalls the whole outbox with no log line and no monitor callback</td><td>Small</td></tr>
-  <tr><td>H7</td><td><code>status</code></td><td>Channel-level 403/404 flap the probe every other call; "denied permission" is never reported</td><td>Medium</td></tr>
-  <tr><td>H8</td><td><code>sqlmq</code></td><td>Deferred handoff is bound to the caller's context; request-scoped callers strand rows until the next restart</td><td>Small</td></tr>
-  <tr><td>H9</td><td><code>rabbitmq</code></td><td><code>Write</code>, <code>Ack</code>, connect handshake, and channel close are still unbounded</td><td>Medium</td></tr>
+  <tr><td>H1</td><td><code>sqlmq</code></td><td>Closing the outbox channel at shutdown panics handlers and deferred goroutines still sending on it</td><td>Small · <span class="chip ok">fixed d1f5354</span></td></tr>
+  <tr><td>H2</td><td><code>rabbitmq</code></td><td>Message TTL is sent in seconds; the broker reads milliseconds. Messages with an expiration die 1000&times; early</td><td>Small · <span class="chip ok">fixed d4a1401</span></td></tr>
+  <tr><td>H3</td><td><code>streaming</code></td><td>A panic that escapes a handler hangs the worker forever with no log, holding its prefetch window</td><td>Small · <span class="chip ok">fixed 89ce69b</span></td></tr>
+  <tr><td>H4</td><td><code>streaming</code></td><td>One subscription failing closes the shared connection for every other subscription</td><td>Medium · <span class="chip ok">fixed bc3e221</span></td></tr>
+  <tr><td>H5</td><td><code>handlers/retry</code></td><td>Backoff overflows int64; with <code>MaxBackoff</code> set, a poison batch becomes a zero-delay hot loop after ~2.5 h</td><td>Small · <span class="chip ok">fixed e876203</span></td></tr>
+  <tr><td>H6</td><td><code>sqlmq</code></td><td>A permanent publish error stalls the whole outbox with no log line and no monitor callback</td><td>Small · <span class="chip ok">fixed 89897e0</span></td></tr>
+  <tr><td>H7</td><td><code>status</code></td><td>Channel-level 403/404 flap the probe every other call; "denied permission" is never reported</td><td>Medium · <span class="chip ok">fixed 422cc74</span></td></tr>
+  <tr><td>H8</td><td><code>sqlmq</code></td><td>Deferred handoff is bound to the caller's context; request-scoped callers strand rows until the next restart</td><td>Small · <span class="chip ok">fixed e38436a</span></td></tr>
+  <tr><td>H9</td><td><code>rabbitmq</code></td><td><code>Write</code>, <code>Ack</code>, connect handshake, and channel close are still unbounded</td><td>Medium · <span class="chip ok">fixed 4ab7ec8</span></td></tr>
 </table>
 </div>
 
-<h3><span class="chip high">High</span> H1. Send on closed outbox channel at shutdown <span class="ref">sqlmq/dispatch_processor.go:160 &middot; dispatch_receiver.go:95 &middot; deferred_handoffs.go:37</span></h3>
+<h3><span class="chip ok">Fixed · d1f5354</span> H1. Send on closed outbox channel at shutdown <span class="ref">sqlmq/dispatch_processor.go:160 &middot; dispatch_receiver.go:95 &middot; deferred_handoffs.go:37</span></h3>
 <div class="finding high">
   <p><code>cleanup</code> closes <code>config.Channel</code> as soon as <code>Listen</code> returns, which is
   milliseconds after <code>Close</code>. Handlers still inside <code>Commit</code> (up to the consumer's 5 s drain)
@@ -124,7 +125,7 @@
   <code>dispatcher.Close()</code>.</p>
 </div>
 
-<h3><span class="chip high">High</span> H2. TTL unit mismatch <span class="ref">rabbitmq/writer.go:85-93</span></h3>
+<h3><span class="chip ok">Fixed · d4a1401</span> H2. TTL unit mismatch <span class="ref">rabbitmq/writer.go:85-93</span></h3>
 <div class="finding high">
   <p><code>computeExpiration</code> formats <code>Dispatch.Expiration</code> as whole seconds. The AMQP
   <code>expiration</code> property is a string the broker interprets as milliseconds, and the amqp091 source says so.
@@ -139,7 +140,7 @@
   messages live 1000&times; longer.</p>
 </div>
 
-<h3><span class="chip high">High</span> H3. An escaped panic hangs the worker silently <span class="ref">streaming/worker.go:53-60</span></h3>
+<h3><span class="chip ok">Fixed · 89ce69b</span> H3. An escaped panic hangs the worker silently <span class="ref">streaming/worker.go:53-60</span></h3>
 <div class="finding high">
   <p><code>Listen</code> defers <code>waiter.Wait()</code> and then runs <code>deliverToHandler</code>. A panic escaping
   <code>Handle</code> (a handler bug, a commit error without a <code>retry</code> wrapper, or
@@ -155,7 +156,7 @@
   <code>[ERROR]</code> and fire a monitor callback before re-panicking, so the crash is attributable.</p>
 </div>
 
-<h3><span class="chip high">High</span> H4. One subscription failing takes down its siblings <span class="ref">streaming/subscriber.go:46 &middot; connection_pool.go:43</span></h3>
+<h3><span class="chip ok">Fixed · bc3e221</span> H4. One subscription failing takes down its siblings <span class="ref">streaming/subscriber.go:46 &middot; connection_pool.go:43</span></h3>
 <div class="finding high">
   <p>The subscriber defers <code>pool.Dispose(connection)</code> on every exit path, including "queue does not exist"
   and a server-side consumer cancel. <code>Dispose</code> closes the AMQP connection unconditionally, which closes every
@@ -169,7 +170,7 @@
   state so <code>Active</code> can detect a dead cached connection instead of relying on this path.</p>
 </div>
 
-<h3><span class="chip high">High</span> H5. Retry backoff overflows <span class="ref">handlers/retry/handler.go:79-80</span></h3>
+<h3><span class="chip ok">Fixed · e876203</span> H5. Retry backoff overflows <span class="ref">handlers/retry/handler.go:79-80</span></h3>
 <div class="finding high">
   <p><code>minBackoff &lt;&lt; min(attempt, 63)</code>. Five seconds is about 2<sup>32</sup> nanoseconds, so the shift
   overflows int64 at attempt 31. Measured with <code>Backoff(5s), MaxBackoff(5m)</code>: attempt 31 yields a negative
@@ -181,7 +182,7 @@
   any negative result to <code>minBackoff</code>.</p>
 </div>
 
-<h3><span class="chip high">High</span> H6. Silent permanent stall in the dispatch processor <span class="ref">sqlmq/dispatch_processor.go:128-130 &middot; dispatch_store.go:112</span></h3>
+<h3><span class="chip ok">Fixed · 89897e0</span> H6. Silent permanent stall in the dispatch processor <span class="ref">sqlmq/dispatch_processor.go:128-130 &middot; dispatch_store.go:112</span></h3>
 <div class="finding high">
   <p><code>writeBufferToSender</code> returns false on a <code>sender.Write</code> error without logging it or reporting it
   to the monitor. The processor then retries the same buffer every <code>RetryTimeout</code> forever and never takes
@@ -197,7 +198,7 @@
   one row at a time and park the failing row.</p>
 </div>
 
-<h3><span class="chip high">High</span> H7. The status probe cannot see channel-level faults <span class="ref">status/status.go:62-68, 86-101 &middot; rabbitmq/adapter/amqp.go:87</span></h3>
+<h3><span class="chip ok">Fixed · 422cc74</span> H7. The status probe cannot see channel-level faults <span class="ref">status/status.go:62-68, 86-101 &middot; rabbitmq/adapter/amqp.go:87</span></h3>
 <div class="finding high">
   <p><code>basic.publish</code> is asynchronous, with no confirms and <code>mandatory=false</code>. A 403 (no write
   permission on the exchange) or 404 (the configured <code>Topic</code> names a missing exchange) arrives as an
@@ -212,7 +213,7 @@
   makes the probe mean something.</p>
 </div>
 
-<h3><span class="chip high">High</span> H8. Deferred handoff uses the caller's context <span class="ref">sqlmq/dispatch_receiver.go:66-70 &middot; deferred_handoffs.go:27-43</span></h3>
+<h3><span class="chip ok">Fixed · e38436a</span> H8. Deferred handoff uses the caller's context <span class="ref">sqlmq/dispatch_receiver.go:66-70 &middot; deferred_handoffs.go:27-43</span></h3>
 <div class="finding high">
   <p><code>TryDefer</code> and the final blocking handoff run on the context passed to <code>CommitWriter(ctx)</code>.
   For streaming handlers that is the hard context, near process lifetime, and the design works. For any
@@ -224,7 +225,7 @@
   <code>config.Context</code> or the processor's context, and keep the caller's context only for the initial bounded wait.</p>
 </div>
 
-<h3><span class="chip high">High</span> H9. The remaining unbounded waits in <code>rabbitmq</code> <span class="ref">writer.go:37-58 &middot; stream.go:72-77 &middot; tls_dialer.go:45 &middot; adapter/amqp.go:21 &middot; stream.go:98 &middot; reader.go:123</span></h3>
+<h3><span class="chip ok">Fixed · 4ab7ec8</span> H9. The remaining unbounded waits in <code>rabbitmq</code> <span class="ref">writer.go:37-58 &middot; stream.go:72-77 &middot; tls_dialer.go:45 &middot; adapter/amqp.go:21 &middot; stream.go:98 &middot; reader.go:123</span></h3>
 <div class="finding high">
   <p><code>CommitTimeout</code> bounds <code>TxCommit</code> and <code>TxRollback</code>. Everything else that can park on the
   broker is still unbounded. <code>Write</code> discards its context and blocks in the kernel socket write once the
@@ -338,7 +339,7 @@ v4.2 or v5 plan rather than fixing piecemeal.</p>
   <p class="remedy"><strong>Remedy</strong> Fail fast in <code>New</code> on nil registries and many-to-one <code>WriteTypes</code>.</p>
 </div>
 
-<h3><span class="chip med">Medium</span> M9. Broker-initiated closes are never logged or reported <span class="ref">rabbitmq/connection.go</span></h3>
+<h3><span class="chip ok">Fixed · 728c616</span> M9. Broker-initiated closes are never logged or reported <span class="ref">rabbitmq/connection.go</span></h3>
 <div class="finding med">
   <p>The connection registers <code>NotifyBlocked</code> but never <code>NotifyClose</code>. <code>ConnectionClosed</code>
   fires only from an explicit <code>Close</code>. Heartbeat timeout, <code>320 CONNECTION_FORCED</code>, the 30-minute
@@ -352,7 +353,7 @@ v4.2 or v5 plan rather than fixing piecemeal.</p>
   <code>Read</code> instead of <code>io.EOF</code>. Emit <code>ConnectionUnblocked</code> when a blocked connection closes.</p>
 </div>
 
-<h3><span class="chip med">Medium</span> M10. Every reconnect leaks a connection object <span class="ref">rabbitmq/connector.go:60-63 &middot; handlers/transactional/handler.go:23</span></h3>
+<h3><span class="chip ok">Fixed · 664b7dc</span> M10. Every reconnect leaks a connection object <span class="ref">rabbitmq/connector.go:60-63 &middot; handlers/transactional/handler.go:23</span></h3>
 <div class="finding med">
   <p><code>defaultConnector.active</code> appends every connection and nothing removes an entry when the caller closes
   it. Streaming retries every 5 s per subscription during an outage, batch and outbox writers reconnect per commit
@@ -363,7 +364,7 @@ v4.2 or v5 plan rather than fixing piecemeal.</p>
   since callers already own their connections.</p>
 </div>
 
-<h3><span class="chip med">Medium</span> M11. One unsupported header value tears down the connection <span class="ref">rabbitmq/writer.go:81</span></h3>
+<h3><span class="chip ok">Fixed · 04c7d6b</span> M11. One unsupported header value tears down the connection <span class="ref">rabbitmq/writer.go:81</span></h3>
 <div class="finding med">
   <p><code>Dispatch.Headers</code> passes straight through. amqp091 rejects <code>uint</code>, <code>uint64</code>,
   <code>time.Duration</code>, <code>[]string</code>, and a nested <code>map[string]any</code> mid-frame, then shuts the whole
@@ -477,11 +478,8 @@ migration work directly.</p>
 
 <h2>5. Recommended sequencing</h2>
 <div class="callout">
-  <p><strong>Before tagging v4.1.0:</strong> H1, H2, H3, H5, H6, H8. Each is a small, contained change with a test, and
-  three of them (H1, H6, H8) are in code paths v4.1.0 makes hotter. H2 is a behavior change that belongs in a
-  release note.</p>
-  <p><strong>In v4.1.x, before the migration wave reaches multi-subscription services:</strong> H4, H7, H9, M9, M10, M11.
-  These are the ones that turn one queue's problem into a process-wide one, or hide the reason when it happens.</p>
+  <p><strong>Shipped on this branch, for v4.1.0:</strong> H1 through H9 and M9, M10, M11, one commit each, all with
+  tests and release notes. H2 (TTL units) is a behavior change and is called out as such.</p>
   <p><strong>A v5 or schema proposal:</strong> M1 through M4 (outbox envelope, paging, ID verification, ownership),
   M5 through M8 (poison-message policy and registry validation), plus the sqlmq error callbacks that H6 needs.</p>
   <p><strong>For the service migration checklist:</strong> pass a deadline-bearing context to <code>Status</code> (M17);
