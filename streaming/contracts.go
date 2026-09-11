@@ -2,6 +2,13 @@ package streaming
 
 import "time"
 
+// closedReporter is implemented by connections that can say whether they are
+// already dead (rabbitmq's connection does). The pool uses it to replace a
+// cached connection instead of handing it to the next subscriber.
+type closedReporter interface {
+	Closed() bool
+}
+
 type logger interface {
 	Printf(format string, args ...any)
 }

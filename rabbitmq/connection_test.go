@@ -211,6 +211,15 @@ func (this *ConnectionFixture) TestWhenCommitWriterTimesOut_CloseConnectionExact
 	this.So(receive(monitor.calls), should.Equal, "closed")
 }
 
+func (this *ConnectionFixture) TestWhenNotYetClosed_ClosedReportsFalse() {
+	this.So(this.connection.(*defaultConnection).Closed(), should.BeFalse)
+}
+func (this *ConnectionFixture) TestWhenClosed_ClosedReportsTrue() {
+	_ = this.connection.Close()
+
+	this.So(this.connection.(*defaultConnection).Closed(), should.BeTrue)
+}
+
 func (this *ConnectionFixture) TestWhenClosing_InvokeUnderlyingConnection() {
 	this.closeError = errors.New("")
 

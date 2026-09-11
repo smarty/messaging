@@ -39,7 +39,8 @@ type SubscriberFixture struct {
 	readerCtx   context.Context
 	readerError error
 
-	closeCount int32
+	closeCount       int32
+	connectionClosed bool
 
 	streamCount   int
 	streamContext context.Context
@@ -109,7 +110,8 @@ func (this *SubscriberFixture) TestWhenOpeningStreamFails_ListenShouldReturn() {
 		StreamName:        this.subscription.streamName,
 		Topics:            this.subscription.subscriptionTopics,
 	})
-	this.So(this.closeCount, should.Equal, 1) // reader
+	this.So(this.closeCount, should.Equal, 1)         // reader
+	this.So(this.releasedConnections, should.BeEmpty) // channel-level failure: the shared connection stays up for siblings
 	this.So(this.log.String(), should.ContainSubstring, "[WARN] Unable to open stream [queue] [NOT_FOUND - no exchange].")
 	this.So(this.monitor.Calls(), should.Equal, []string{"opened:queue:NOT_FOUND - no exchange"})
 }
@@ -143,9 +145,17 @@ func (this *SubscriberFixture) TestWhenListenConcludesOnShutdown_AllResourcesSho
 func (this *SubscriberFixture) TestWhenListeningConcludesWithoutShutdown_AllResourcesShouldBeClosed() {
 	this.subscriber.Listen()
 
-	this.So(this.closeCount, should.Equal, 2) // reader and stream
+	this.So(this.closeCount, should.Equal, 2)         // reader and stream
+	this.So(this.releasedConnections, should.BeEmpty) // the connection outlives one stream session
 	this.So(this.log.String(), should.BeBlank)
 	this.So(this.monitor.Calls(), should.Equal, []string{"opened:queue:<nil>", "closed:queue"})
+}
+func (this *SubscriberFixture) TestWhenConnectionIsClosedWhenTheSessionEnds_DisposeIt() {
+	this.connectionClosed = true
+
+	this.subscriber.Listen()
+
+	this.So(this.releasedConnections, should.Equal, []messaging.Connection{this})
 }
 func (this *SubscriberFixture) TestWhenSoftShutdownIsInvoked_HardDeadlineShouldStart() {
 	this.listenWaitForHardShutdown = true
@@ -218,6 +228,7 @@ func (this *SubscriberFixture) Dispose(connection messaging.Connection) {
 }
 
 // Connection
+func (this *SubscriberFixture) Closed() bool { return this.connectionClosed }
 func (this *SubscriberFixture) Reader(ctx context.Context) (messaging.Reader, error) {
 	this.readerCount++
 	this.readerCtx = ctx

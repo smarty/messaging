@@ -108,6 +108,18 @@ func (this *defaultConnection) writer(transactional bool) (messaging.CommitWrite
 	return newWriter(channel, this.Close, this.config), nil
 }
 
+// Closed reports whether this connection has been closed, by its owner or by
+// a writer that severed it after a commit timeout. Consumers that cache a
+// shared connection use it to avoid handing out a dead one.
+func (this *defaultConnection) Closed() bool {
+	select {
+	case <-this.done:
+		return true
+	default:
+		return false
+	}
+}
+
 func (this *defaultConnection) Close() (err error) {
 	this.closer.Do(func() {
 		close(this.done)

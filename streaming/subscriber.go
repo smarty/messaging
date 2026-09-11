@@ -43,12 +43,16 @@ func (this defaultSubscriber) Listen() {
 		this.monitor.StreamOpened(this.subscription.streamName, err)
 		return
 	}
-	defer this.pool.Dispose(connection)
+	// The connection is shared with sibling subscriptions. Dispose it only when
+	// it is unusable; a channel-level failure on this stream must not tear down
+	// the others.
+	defer this.disposeIfClosed(connection)
 
 	reader, err := connection.Reader(this.softContext)
 	if err != nil {
 		this.logger.Printf("[WARN] Unable to open reader for stream [%s] [%s].", this.subscription.streamName, err)
 		this.monitor.StreamOpened(this.subscription.streamName, err)
+		this.pool.Dispose(connection) // opening a channel failed: the connection itself is unusable
 		return
 	}
 	defer closeResource(reader)
@@ -64,6 +68,11 @@ func (this defaultSubscriber) Listen() {
 
 	go this.listen(stream)
 	this.shutdown(stream)
+}
+func (this defaultSubscriber) disposeIfClosed(connection messaging.Connection) {
+	if isClosed(connection) {
+		this.pool.Dispose(connection)
+	}
 }
 func (this defaultSubscriber) listen(stream messaging.Stream) {
 	defer close(this.workersDone)

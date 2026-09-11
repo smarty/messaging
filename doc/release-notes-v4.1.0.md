@@ -189,6 +189,22 @@ on its own child context, cancelled before the wait. The panic is logged as
 `[ERROR] Handler on stream [queue] panicked [...]; the worker is exiting.` and
 then propagates, which ends the process. The broker redelivers after restart.
 
+## `streaming`: one failing subscription no longer tears down the others
+
+All subscriptions in a consumer share one connection. The subscriber closed
+that connection on every exit, including a missing queue or a refused
+binding on one subscription. Every sibling lost its stream, reconnected after
+`ReconnectDelay`, and abandoned its in-flight batches, so a single bad queue
+became a process-wide reconnect storm with duplicates on the healthy queues.
+
+The subscriber now closes the shared connection only when the connection
+itself is unusable: when opening a channel on it fails, or when the connection
+reports that it is already closed. A failure to open a stream, or a stream
+that ends, leaves the connection up for the other subscriptions. The
+`rabbitmq` connection exposes `Closed()`, and the pool replaces a cached
+connection that reports closed, so a connection severed by a commit timeout
+is not handed to the next subscriber.
+
 ## `streaming`: connection pool race fixed
 
 `Dispose` on the internal connection pool unlocked its mutex immediately
