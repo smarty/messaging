@@ -304,12 +304,16 @@ acknowledged without reaching the handler.
 ## Health checks
 
 `status.New(status.Options.Connector(transport))` returns a `Checker` whose `Status(ctx) error` publishes
-one empty message to a probe topic (`amq.direct` by default). Wire it to your `/status` endpoint.
+one empty message to a probe topic (`amq.direct` by default) inside an AMQP transaction and commits it.
+The commit is synchronous, so a fault on the probe topic surfaces in the same probe, and it is bounded by
+`rabbitmq.Options.CommitTimeout`, so a stalled broker fails the probe within that bound. Wire it to your
+`/status` endpoint, and always pass a context with a deadline.
 
 The checker tolerates failures inside a window (`Options.FailureTolerance`, default 30 seconds). While
 consecutive probes fail inside the window it logs a `WARN` and returns `nil`, so a broker failover does
-not restart your service. Past the window it returns the error. AMQP `ACCESS_REFUSED` (403) and
-`NOT_ALLOWED` (530) bypass the window, because a bad credential or missing vhost does not fix itself.
+not restart your service. Past the window it returns the error. AMQP `ACCESS_REFUSED` (403), `NOT_ALLOWED` (530), and
+`NOT_FOUND` (404) bypass the window, because a bad credential, a missing vhost, or a missing probe
+exchange does not fix itself.
 Size the window just above your longest routine broker event.
 
 A restart is the intended reaction to a `/status` failure. It runs outbox recovery and drains the backlog.

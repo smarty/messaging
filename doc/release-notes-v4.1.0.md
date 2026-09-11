@@ -38,6 +38,29 @@ sqlmq.New(transport,
 )
 ```
 
+## `status`: the probe publishes inside a transaction
+
+The probe used a plain publish. `basic.publish` is asynchronous, so a
+channel-level fault (no write permission on the exchange, or a probe topic
+whose exchange does not exist) arrived as a channel close *after* the probe
+had returned success. The next probe failed with a generic closed-channel
+error inside the tolerance window, the one after that reconnected and
+succeeded, and the window reset every other call. The v4.0.0 promise that a
+denied permission bypasses the window held only for connection-level faults.
+
+The probe now opens a transactional writer, publishes, and commits.
+`tx.commit` is synchronous: the broker either answers or closes the channel
+with the reason, inside the same probe. A 403 or 404 on the probe topic is
+now a definitive error, reported at once. The commit is bounded by
+`rabbitmq.Options.CommitTimeout`, so the probe also detects the stall the
+2026-09-10 incident produced when it lands on the probe topic. The rabbitmq
+writer panics on a 404 at commit when `PanicOnTopologyError` is on; the
+probe converts that panic into the definitive error instead of crashing the
+service.
+
+A successful probe now means the broker accepted the publish and answered
+the commit. It still does not prove the message was routed anywhere.
+
 ## `rabbitmq`: message TTL is now sent in milliseconds (behavior change)
 
 `Dispatch.Expiration` was rendered as whole seconds. The broker interprets the

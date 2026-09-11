@@ -3,6 +3,7 @@ package status
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -17,7 +18,7 @@ type defaultStatusChecker struct {
 	dispatch     messaging.Dispatch
 	connector    messaging.Connector
 	connection   messaging.Connection
-	writer       messaging.Writer
+	writer       messaging.CommitWriter
 	tolerance    time.Duration
 	now          func() time.Time
 	firstFailure time.Time
@@ -57,14 +58,20 @@ func (this *defaultStatusChecker) Status(ctx context.Context) error {
 }
 
 // isDefinitive reports whether the error is a configuration fault that no
-// retry can fix (bad credentials, missing vhost, denied permission). Such
-// errors bypass the tolerance window.
+// retry can fix: bad credentials, a missing vhost, a denied permission, or a
+// probe topic whose exchange does not exist. Such errors bypass the
+// tolerance window.
 func isDefinitive(err error) bool {
 	var amqpError *amqp.Error
 	if !errors.As(err, &amqpError) {
 		return false
 	}
-	return amqpError.Code == amqp.AccessRefused || amqpError.Code == amqp.NotAllowed
+	switch amqpError.Code {
+	case amqp.AccessRefused, amqp.NotAllowed, amqp.NotFound:
+		return true
+	default:
+		return false
+	}
 }
 
 func (this *defaultStatusChecker) tryWrite(ctx context.Context) error {
@@ -86,10 +93,7 @@ func (this *defaultStatusChecker) tryWrite(ctx context.Context) error {
 func (this *defaultStatusChecker) write(ctx context.Context) error {
 	writer := this.writer
 	completed := make(chan error, 1)
-	go func() {
-		_, err := writer.Write(ctx, this.dispatch)
-		completed <- err
-	}()
+	go func() { completed <- this.probe(ctx, writer) }()
 	select {
 	case err := <-completed:
 		return err
@@ -99,6 +103,33 @@ func (this *defaultStatusChecker) write(ctx context.Context) error {
 		return ctx.Err()
 	}
 }
+
+// probe publishes inside an AMQP transaction and commits. basic.publish is
+// asynchronous, so a channel-level fault (403 on the exchange, 404 for a
+// missing exchange) would otherwise arrive after the probe reported success
+// and flap the tolerance window. tx.commit is synchronous: the broker answers
+// commit-ok or closes the channel with the reason, and the writer's commit
+// timeout bounds a stall on the probe topic.
+func (this *defaultStatusChecker) probe(ctx context.Context, writer messaging.CommitWriter) (err error) {
+	defer func() {
+		// The rabbitmq writer panics on a topology error at commit when the
+		// caller enables PanicOnTopologyError. A health probe reports; it must
+		// never take the process down.
+		if recovered := recover(); recovered != nil {
+			err = asError(recovered)
+		}
+	}()
+	if _, err = writer.Write(ctx, this.dispatch); err != nil {
+		return err
+	}
+	return writer.Commit()
+}
+func asError(recovered any) error {
+	if err, ok := recovered.(error); ok {
+		return err
+	}
+	return fmt.Errorf("status probe panicked: %v", recovered)
+}
 func (this *defaultStatusChecker) tryConnect(ctx context.Context) (err error) {
 	if this.connection != nil && this.writer != nil {
 		return nil
@@ -107,7 +138,7 @@ func (this *defaultStatusChecker) tryConnect(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	this.writer, err = this.connection.Writer(ctx)
+	this.writer, err = this.connection.CommitWriter(ctx)
 	if err != nil {
 		_ = this.Close() // do not leak the dialed connection
 		return err

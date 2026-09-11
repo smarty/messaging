@@ -40,7 +40,7 @@ channel, message store, monitor, logger) as its fakes.
 | `handlers/retry`         | Recovers panics from the inner handler and retries with backoff. This is the only thing that turns a `transactional` panic into a retry. |
 | `handlers/sqltx`         | Like `transactional` but for a bare `*sql.DB` with no messaging. |
 | `handlers/multi`         | Fans one batch to several handlers in order. |
-| `status`                 | Health probe: publishes an empty dispatch; tolerates failures inside a window; reports 403/530 at once. |
+| `status`                 | Health probe: publishes an empty dispatch inside a transaction and commits, so channel-level faults and commit stalls surface in the same probe; tolerates failures inside a window; reports 403/530/404 at once. |
 
 ### Composition order (enforced by the types)
 
