@@ -40,7 +40,7 @@ func (this *ConnectionFixture) Setup() {
 	this.connection = this.open(configuration{Monitor: nop{}, Logger: nop{}})
 }
 func (this *ConnectionFixture) open(config configuration) messaging.Connection {
-	connection := newConnection(this, config)
+	connection := newConnection(this, config, nil)
 	this.connections = append(this.connections, connection)
 	return connection
 }

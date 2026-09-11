@@ -40,6 +40,7 @@ type ConnectorFixture struct {
 	connectError   error
 
 	callsToClose int
+	closing      chan *amqp.Error
 }
 
 func (this *ConnectorFixture) Setup() {
@@ -176,6 +177,39 @@ func (this *ConnectorFixture) TestCloseInvokesCloseOnAllTrackedConnections() {
 
 	this.So(this.callsToClose, should.Equal, 1)
 }
+func (this *ConnectorFixture) TestWhenAConnectionIsClosed_ItIsNoLongerTracked() {
+	connection, _ := this.connector.Connect(context.Background())
+	_, _ = this.connector.Connect(context.Background())
+
+	_ = connection.Close()
+
+	this.So(this.tracked(), should.Equal, 1)
+	_ = this.connector.Close()
+	this.So(this.callsToClose, should.Equal, 2) // the closed one is not closed again
+}
+func (this *ConnectorFixture) TestWhenTheBrokerClosesAConnection_ItIsNoLongerTracked() {
+	_, _ = this.connector.Connect(context.Background())
+
+	this.closing <- &amqp.Error{Code: amqp.ConnectionForced, Reason: "CONNECTION_FORCED"}
+
+	this.So(eventually(func() bool { return this.tracked() == 0 }), should.BeTrue)
+}
+func (this *ConnectorFixture) tracked() int {
+	connector := this.connector.(*defaultConnector)
+	connector.mutex.Lock()
+	defer connector.mutex.Unlock()
+	return len(connector.active)
+}
+func eventually(condition func() bool) bool {
+	deadline := time.Now().Add(time.Millisecond * 100)
+	for time.Now().Before(deadline) {
+		if condition() {
+			return true
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return condition()
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -202,7 +236,11 @@ func (this *ConnectorFixture) Connect(ctx context.Context, socket net.Conn, conf
 	return this, this.connectError
 }
 
-func (this *ConnectorFixture) Close() error                               { this.callsToClose++; return nil }
+func (this *ConnectorFixture) Close() error { this.callsToClose++; return nil }
+func (this *ConnectorFixture) NotifyClose(receiver chan *amqp.Error) chan *amqp.Error {
+	this.closing = receiver
+	return receiver
+}
 func (this *ConnectorFixture) Channel() (adapter.Channel, error)          { panic("nop") }
 func (this *ConnectorFixture) BlockedNotifications() <-chan amqp.Blocking { return nil }
 

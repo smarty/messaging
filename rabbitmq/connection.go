@@ -10,12 +10,13 @@ import (
 )
 
 type defaultConnection struct {
-	inner   adapter.Connection
-	config  configuration
-	logger  logger
-	monitor monitor
-	done    chan struct{}
-	closer  sync.Once
+	inner    adapter.Connection
+	config   configuration
+	logger   logger
+	monitor  monitor
+	done     chan struct{}
+	closer   sync.Once
+	onClosed func(*defaultConnection) // lets the connector stop tracking a closed connection
 }
 
 // closeNotifier is satisfied by the real adapter connection, which promotes
@@ -24,10 +25,10 @@ type closeNotifier interface {
 	NotifyClose(receiver chan *amqp.Error) chan *amqp.Error
 }
 
-func newConnection(inner adapter.Connection, config configuration) messaging.Connection {
+func newConnection(inner adapter.Connection, config configuration, onClosed func(*defaultConnection)) messaging.Connection {
 	// NOTE: using pointer type to allow for pointer equality check
 	config.Monitor.ConnectionOpened(nil)
-	this := &defaultConnection{inner: inner, config: config, logger: config.Logger, monitor: config.Monitor, done: make(chan struct{})}
+	this := &defaultConnection{inner: inner, config: config, logger: config.Logger, monitor: config.Monitor, done: make(chan struct{}), onClosed: onClosed}
 	relay := make(chan amqp.Blocking, 1)
 	go relayBlockedState(inner.BlockedNotifications(), relay, this.done)
 	go this.watchBlockedState(relay)
@@ -50,6 +51,7 @@ func (this *defaultConnection) watchClose(closes <-chan *amqp.Error) {
 				close(this.done)
 				this.logger.Printf("[WARN] AMQP connection closed by the broker or network [%s].", reason)
 				this.monitor.ConnectionClosed()
+				this.released()
 			})
 		}
 	}
@@ -158,7 +160,13 @@ func (this *defaultConnection) Close() (err error) {
 		close(this.done)
 		err = this.inner.Close()
 		this.monitor.ConnectionClosed()
+		this.released()
 	})
 
 	return err
+}
+func (this *defaultConnection) released() {
+	if this.onClosed != nil {
+		this.onClosed(this)
+	}
 }

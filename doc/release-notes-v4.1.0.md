@@ -79,6 +79,15 @@ consumer that wraps `io.EOF`. When a connection closes while the broker has
 it blocked, the monitor receives `ConnectionUnblocked`, so a blocked gauge
 does not stick at 1 after a sever.
 
+## `rabbitmq`: closed connections are no longer retained by the connector
+
+The connector kept every connection it ever opened in a list that only its
+own `Close` emptied. Every reconnect during an outage, every commit-timeout
+sever, every failed status probe, and every `transactional` batch (which
+connects fresh) leaked a closed connection and its buffers for the life of
+the process. A connection now removes itself from the list when it closes,
+whether by its owner, by a sever, or by the broker.
+
 ## `rabbitmq`: message TTL is now sent in milliseconds (behavior change)
 
 `Dispatch.Expiration` was rendered as whole seconds. The broker interprets the
