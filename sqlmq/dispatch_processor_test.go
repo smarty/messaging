@@ -83,6 +83,11 @@ func (this *DispatchProcessorFixture) TestWhenClose_CloseSenderAndAllowListenToE
 
 	this.So(this.closeCount, should.Equal, 1)
 }
+func (this *DispatchProcessorFixture) TestWhenClose_StopDeferredHandoffs() {
+	this.listen(time.Millisecond)
+
+	this.So(this.listener.(*dispatchProcessor).deferred.Context().Err(), should.NotBeNil)
+}
 func (this *DispatchProcessorFixture) TestWhenClose_ChannelStaysOpenForHandoffsStillInFlight() {
 	this.listen(time.Millisecond)
 

@@ -144,7 +144,7 @@ func (singleton) apply(options ...option) option {
 			this.Sender = batch.NewWriter(this.Target)
 		}
 
-		this.Deferred = newDeferredHandoffs(this.Channel, this.DeferredHandoffCapacity)
+		this.Deferred = newDeferredHandoffs(this.Context, this.Channel, this.DeferredHandoffCapacity)
 	}
 }
 func (singleton) defaults(options ...option) []option {

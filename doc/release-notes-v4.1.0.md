@@ -126,6 +126,13 @@ into the outbox channel until it finishes or the context ends. `Commit` logs
 processor did not accept [M] of them within [10s]. The handoff continues in
 the background.` and returns `nil`.
 
+The background handoff runs on the process lifetime given to
+`sqlmq.Options.Context`, not on the caller's context. A request-scoped caller
+(an HTTP handler, a job with a timeout) can return and cancel its context
+without stranding its committed rows until the next restart. The caller's
+context bounds only the initial wait. When the dispatch processor stops, it
+ends every background handoff; their rows stay durable for the next startup.
+
 The messages stay in the memory of the same process. No other instance can see
 them, so no instance publishes them twice. This release adds no periodic table
 scan, because many services share one outbox table across instances.

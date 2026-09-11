@@ -339,7 +339,8 @@ What happens at each bound:
   connection with it, so give a transactional writer its own connection if a consumer shares one.
 - **Handoff timeout.** The outbox `Commit` moves the messages the processor has not yet accepted to a
   background goroutine, logs a `WARN`, and returns success. The rows are already durable. Handlers keep
-  acknowledging while the publisher is stalled.
+  acknowledging while the publisher is stalled. The background goroutine runs on the process context
+  from `sqlmq.Options.Context`, so a caller whose own context ends does not strand its rows.
 - **Deferred capacity.** When background handoffs already hold this many messages, `Commit` does not
   defer. It logs a `WARN` and waits for the processor. This is deliberate back-pressure that keeps memory
   bounded. Set the capacity to 1 to apply back-pressure at once.

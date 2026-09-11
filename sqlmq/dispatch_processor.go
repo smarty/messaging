@@ -15,6 +15,7 @@ type dispatchProcessor struct {
 	retryWait time.Duration
 	store     messageStore
 	sender    messaging.Writer
+	deferred  *deferredHandoffs
 	logger    logger
 	monitor   monitor
 
@@ -32,6 +33,7 @@ func newDispatchProcessor(config configuration) messaging.ListenCloser {
 		retryWait: config.Sleep,
 		store:     config.MessageStore,
 		sender:    config.Sender,
+		deferred:  config.Deferred,
 		logger:    config.Logger,
 		monitor:   config.Monitor,
 	}
@@ -166,6 +168,7 @@ func (this *dispatchProcessor) cleanup() {
 	// The channel is deliberately left open. Handlers that committed SQL just
 	// before shutdown and deferred handoff goroutines may still send on it;
 	// a send on a closed channel panics even inside a select.
+	_ = this.deferred.Close() // background handoffs stop; their rows stay durable for the next startup
 	if this.sender != nil {
 		_ = this.sender.Close()
 		this.sender = nil

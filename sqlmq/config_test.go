@@ -1,6 +1,7 @@
 package sqlmq
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 	"time"
@@ -64,12 +65,16 @@ func (this *ConfigFixture) TestWhenDeferredHandoffCapacityPositive_KeepValue() {
 	this.So(this.config.DeferredHandoffCapacity, should.Equal, 42)
 }
 
-func (this *ConfigFixture) TestWhenApplied_CreateOneDeferredHandoffTrackerBoundToTheConfiguredChannel() {
+func (this *ConfigFixture) TestWhenApplied_CreateOneDeferredHandoffTrackerBoundToTheConfiguredChannelAndContext() {
 	channel := make(chan messaging.Dispatch, 2)
+	ctx := context.WithValue(context.Background(), lifetimeMarker{}, true)
 
-	this.apply(Options.Channel(channel), Options.DeferredHandoffCapacity(42))
+	this.apply(Options.Channel(channel), Options.DeferredHandoffCapacity(42), Options.Context(ctx))
 
 	this.So(this.config.Deferred, should.NotBeNil)
 	this.So(this.config.Deferred.output, should.Equal, channel)
 	this.So(this.config.Deferred.capacity, should.Equal, 42)
+	this.So(this.config.Deferred.Context().Value(lifetimeMarker{}), should.Equal, true)
 }
+
+type lifetimeMarker struct{}

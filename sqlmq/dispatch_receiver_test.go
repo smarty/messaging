@@ -22,8 +22,10 @@ func TestDispatchReceiverFixture(t *testing.T) {
 type DispatchReceiverFixture struct {
 	*gunit.Fixture
 
-	ctx              context.Context
+	ctx              context.Context // the caller's (request or handler) context
 	ctxShutdown      context.CancelFunc
+	lifetime         context.Context // the process context given to Options.Context
+	lifetimeShutdown context.CancelFunc
 	channel          chan messaging.Dispatch
 	deferredCapacity int
 	writer           messaging.CommitWriter
@@ -41,13 +43,14 @@ type DispatchReceiverFixture struct {
 
 func (this *DispatchReceiverFixture) Setup() {
 	this.ctx, this.ctxShutdown = context.WithCancel(context.Background())
+	this.lifetime, this.lifetimeShutdown = context.WithCancel(context.Background())
 	this.channel = make(chan messaging.Dispatch, 16)
 	this.initializeDispatchWriter()
 }
 func (this *DispatchReceiverFixture) initializeDispatchWriter() {
 	config := configuration{}
 	Options.apply(
-		Options.Context(this.ctx),
+		Options.Context(this.lifetime),
 		Options.StorageHandle(&sql.DB{}),
 		Options.Channel(this.channel),
 		Options.HandoffTimeout(time.Millisecond*5),
@@ -119,7 +122,7 @@ func (this *DispatchReceiverFixture) TestWhenTransactionContextCancelled_DoNotBl
 	err := this.writer.Commit()
 
 	this.So(err, should.BeNil)
-	this.So(len(this.channel), should.Equal, cap(this.channel))
+	this.So(len(this.channel), should.Equal, cap(this.channel)) // nothing was forced in; the remainder is deferred
 }
 
 func (this *DispatchReceiverFixture) TestWhenHandoffExceedsTimeout_DeferRemainingAndReturnNil() {
@@ -178,12 +181,12 @@ func (this *DispatchReceiverFixture) TestWhenDeferredCapacityReached_BlockUntilP
 		"[WARN] Deferred handoff capacity [1] reached; waiting for the dispatch processor to accept [2] message(s).")
 }
 
-func (this *DispatchReceiverFixture) TestWhenContextEndsDuringHandoff_ReturnNilAndLogRemainingCount() {
+func (this *DispatchReceiverFixture) TestWhenProcessIsShuttingDownDuringHandoff_ReturnNilAndLogRemainingCount() {
 	this.channel = make(chan messaging.Dispatch, 1)
 	this.channel <- messaging.Dispatch{} // full
 	this.initializeDispatchWriter()
 	_, _ = this.writer.Write(nil, messaging.Dispatch{MessageID: 1}, messaging.Dispatch{MessageID: 2})
-	this.ctxShutdown()
+	this.lifetimeShutdown()
 
 	err := this.writer.Commit()
 
@@ -202,6 +205,21 @@ func (this *DispatchReceiverFixture) TestWhenHandoffCompletesInTime_ReturnNilAnd
 	this.So(err, should.BeNil)
 	this.So(len(this.channel), should.Equal, 2)
 	this.So(this.log.String(), should.BeBlank)
+}
+
+func (this *DispatchReceiverFixture) TestWhenCallerContextEndsDuringHandoff_DeferOnTheProcessLifetimeInsteadOfStranding() {
+	this.channel = make(chan messaging.Dispatch, 1)
+	this.channel <- messaging.Dispatch{} // full
+	this.initializeDispatchWriter()
+	_, _ = this.writer.Write(nil, messaging.Dispatch{MessageID: 1})
+	this.ctxShutdown() // a request-scoped caller whose request has finished
+
+	err := this.writer.Commit()
+
+	this.So(err, should.BeNil)
+	this.So(this.log.String(), should.ContainSubstring, "The handoff continues in the background.")
+	this.So(receiveDispatch(this.channel), should.Equal, messaging.Dispatch{}) // drain
+	this.So(receiveDispatch(this.channel), should.Equal, messaging.Dispatch{MessageID: 1})
 }
 
 func (this *DispatchReceiverFixture) TestWhenCommittingWithoutAnyDispatches_CommitShouldStillBeInvoked() {

@@ -26,7 +26,7 @@ type DeferredHandoffsFixture struct {
 func (this *DeferredHandoffsFixture) Setup() {
 	this.ctx, this.shutdown = context.WithCancel(context.Background())
 	this.channel = make(chan messaging.Dispatch, 1)
-	this.deferred = newDeferredHandoffs(this.channel, 4)
+	this.deferred = newDeferredHandoffs(this.ctx, this.channel, 4)
 }
 func (this *DeferredHandoffsFixture) Teardown() {
 	this.shutdown()
@@ -36,7 +36,7 @@ func (this *DeferredHandoffsFixture) TestWhenUnderCapacity_DeferAndDeliverOnceCh
 	this.channel <- messaging.Dispatch{} // full
 	dispatches := []messaging.Dispatch{{MessageID: 1}, {MessageID: 2}}
 
-	accepted := this.deferred.TryDefer(this.ctx, dispatches)
+	accepted := this.deferred.TryDefer(dispatches)
 
 	this.So(accepted, should.BeTrue)
 	this.So(this.deferred.pending.Load(), should.Equal, 2)
@@ -46,24 +46,33 @@ func (this *DeferredHandoffsFixture) TestWhenUnderCapacity_DeferAndDeliverOnceCh
 }
 func (this *DeferredHandoffsFixture) TestWhenDeferralWouldExceedCapacity_RefuseAndLeavePendingUnchanged() {
 	this.channel <- messaging.Dispatch{} // full
-	this.So(this.deferred.TryDefer(this.ctx, []messaging.Dispatch{{}, {}, {}}), should.BeTrue)
+	this.So(this.deferred.TryDefer([]messaging.Dispatch{{}, {}, {}}), should.BeTrue)
 
-	accepted := this.deferred.TryDefer(this.ctx, []messaging.Dispatch{{}, {}})
+	accepted := this.deferred.TryDefer([]messaging.Dispatch{{}, {}})
 
 	this.So(accepted, should.BeFalse)
 	this.So(this.deferred.pending.Load(), should.Equal, 3)
 }
 func (this *DeferredHandoffsFixture) TestWhenContextEnds_GoroutineExitsAndPendingReturnsToZero() {
 	this.channel <- messaging.Dispatch{} // full
-	this.So(this.deferred.TryDefer(this.ctx, []messaging.Dispatch{{}, {}}), should.BeTrue)
+	this.So(this.deferred.TryDefer([]messaging.Dispatch{{}, {}}), should.BeTrue)
 
 	this.shutdown()
 
 	this.So(eventually(func() bool { return this.deferred.pending.Load() == 0 }), should.BeTrue)
 	this.So(len(this.channel), should.Equal, 1) // nothing more was delivered
 }
+func (this *DeferredHandoffsFixture) TestWhenClosed_GoroutinesExitAndContextIsDone() {
+	this.channel <- messaging.Dispatch{} // full
+	this.So(this.deferred.TryDefer([]messaging.Dispatch{{}, {}}), should.BeTrue)
+
+	_ = this.deferred.Close()
+
+	this.So(this.deferred.Context().Err(), should.NotBeNil)
+	this.So(eventually(func() bool { return this.deferred.pending.Load() == 0 }), should.BeTrue)
+}
 func (this *DeferredHandoffsFixture) TestWhenFullyDelivered_PendingReturnsToZero() {
-	this.So(this.deferred.TryDefer(this.ctx, []messaging.Dispatch{{MessageID: 1}, {MessageID: 2}}), should.BeTrue)
+	this.So(this.deferred.TryDefer([]messaging.Dispatch{{MessageID: 1}, {MessageID: 2}}), should.BeTrue)
 
 	this.So(receiveDispatch(this.channel), should.Equal, messaging.Dispatch{MessageID: 1})
 	this.So(receiveDispatch(this.channel), should.Equal, messaging.Dispatch{MessageID: 2})
