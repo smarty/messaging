@@ -1,0 +1,37 @@
+# A three-node RabbitMQ cluster. Node 1 is the one the tests talk to; nodes 2
+# and 3 exist so a quorum queue can be put into minority by stopping them,
+# which reproduces the September 2026 incident (a queue that never confirms).
+x-rabbitmq: &rabbitmq
+  image: rabbitmq:3-management
+  volumes:
+    - ./rabbitmq/cluster.conf:/etc/rabbitmq/conf.d/20-cluster.conf:ro
+  healthcheck:
+    # run as the rabbitmq user: under podman the container's root cannot read the erlang cookie.
+    # check_port_connectivity waits for the AMQP and management listeners, not just the node.
+    test: "gosu rabbitmq rabbitmq-diagnostics -q check_port_connectivity"
+    interval: 2s
+    timeout: 20s
+    retries: 30
+
+services:
+  rabbitmq1:
+    <<: *rabbitmq
+    hostname: rabbitmq1
+    environment:
+      RABBITMQ_ERLANG_COOKIE: messaging-integration
+      RABBITMQ_NODENAME: rabbit@rabbitmq1
+    ports:
+      - 5678:5672
+      - 15678:15672
+  rabbitmq2:
+    <<: *rabbitmq
+    hostname: rabbitmq2
+    environment:
+      RABBITMQ_ERLANG_COOKIE: messaging-integration
+      RABBITMQ_NODENAME: rabbit@rabbitmq2
+  rabbitmq3:
+    <<: *rabbitmq
+    hostname: rabbitmq3
+    environment:
+      RABBITMQ_ERLANG_COOKIE: messaging-integration
+      RABBITMQ_NODENAME: rabbit@rabbitmq3

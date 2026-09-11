@@ -138,7 +138,14 @@ does three things:
    `TransactionRolledBack(err)` monitor callback receives the same error.
 
 The existing `[WARN] Unable to commit channel transaction [...]` line also
-appears, because the timeout is a commit error like any other. The
+appears, because the timeout is a commit error like any other.
+
+A commit timeout means "unknown", not "not published". The integration test
+that puts a quorum queue into minority shows the severed transaction's
+message arriving once quorum returns: the channel had already handed it to
+the queue's log. The outbox and the `transactional` handler retry the batch,
+so consumers can receive it twice. This is the at-least-once contract the
+library has always had; the timeout makes the window visible. The
 `batch.Writer` and the `transactional` handler already reconnect after a
 commit error. No new code is necessary in a service.
 

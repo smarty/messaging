@@ -1,0 +1,27 @@
+name: Integration
+
+# Runs only when a tag is pushed. It boots a three-node RabbitMQ cluster with
+# docker compose (the same file developers use locally) and runs the
+# integration suite, including the test that puts a quorum queue into
+# minority by stopping two nodes.
+on:
+  push:
+    tags:
+    - 'v*'
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-go@v4
+      with:
+        go-version: 'stable'
+    - uses: actions/cache@v4
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - run: make test.integration.local

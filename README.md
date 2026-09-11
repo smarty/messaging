@@ -335,7 +335,9 @@ What happens at each bound:
 
 - **Commit timeout.** The library logs a `WARN`, closes the connection that owns the channel (the only way
   to make a pending AMQP call return), and returns the matching sentinel: `ErrCommitTimeout`,
-  `ErrPublishTimeout`, `ErrAcknowledgeTimeout`, or `ErrCloseTimeout`. The `batch.Writer` and
+  `ErrPublishTimeout`, `ErrAcknowledgeTimeout`, or `ErrCloseTimeout`. A timed-out commit means "unknown", not
+  "not published": a quorum queue that regains quorum later commits what the channel already handed it, and
+  the retry publishes it again. Consumers must be idempotent. The `batch.Writer` and
   the `transactional` handler reconnect on the next call. The close takes every channel on that
   connection with it, so give a transactional writer its own connection if a consumer shares one.
 - **Handoff timeout.** The outbox `Commit` moves the messages the processor has not yet accepted to a
@@ -572,6 +574,36 @@ The suite runs under a one-second global timeout. Tests that wait use single-dig
 against fakes that block until released. Tests use [`gunit`](https://github.com/smarty/gunit) fixtures
 with `should` assertions. Each fixture implements the package's own interfaces as its fakes, so most
 packages need no external services to test.
+
+### Integration tests
+
+The `integration` package runs against a real RabbitMQ cluster and is excluded from `make test` by the
+`integration` build tag. It proves the behaviors a fake cannot: a transactional commit returns the
+broker's 404 for a missing exchange, message TTL is honored in milliseconds, a connection the broker
+forces closed reaches the monitor and the log, a deleted queue ends the stream with a named reason, and
+the status probe passes on a healthy broker and fails definitively on a missing probe exchange.
+
+One test reproduces the September 2026 incident. It declares a quorum queue, stops two of the three
+cluster nodes so the queue is in minority, and proves that a transactional publish times out within
+`BrokerTimeout`, severs, and is reported, that a status probe on that exchange fails within the bound,
+and that publishing resumes without a restart when the nodes return. It also shows the severed
+transaction's message arriving after recovery, which is why consumers must be idempotent.
+
+```sh
+make test.integration.local   # starts the cluster with docker or podman compose, runs the tests, stops it
+make test.integration         # against a cluster you already started with the compose file
+```
+
+`doc/docker-compose.integration.yml` runs three nodes that form a cluster from a static peer list, with
+node one on `5678` and its management API on `15678`, chosen not to collide with sibling repositories'
+compose stacks. The health check verifies the listeners, not just the node, and runs as the `rabbitmq`
+user because under podman the container's root cannot read the Erlang cookie. Point the tests elsewhere
+with `INTEGRATION_RABBITMQ_ADDR` and `INTEGRATION_RABBITMQ_MANAGEMENT`. The cluster test stops and starts
+nodes through `docker compose` using `INTEGRATION_COMPOSE_FILE` and skips when that file is absent, so
+the other tests still run against a single broker you started by hand.
+
+CI runs the integration suite when a tag is pushed, not on every branch push, from
+`.github/workflows/integration.yml`.
 
 Design work for larger changes lives in `doc/work-sessions/`. Each is a self-contained HTML proposal
 with an implementation checklist. `CLAUDE.md` describes the architecture and conventions for automated

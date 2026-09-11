@@ -11,7 +11,16 @@ make build                     # test + compile (this is what CI runs)
 go test -timeout=1s -short -race ./sqlmq/                                   # one package
 go test -timeout=1s -short -race -run 'TestDispatchReceiverFixture' ./sqlmq/ # one gunit fixture
 go test -timeout=1s -short -race -run 'TestDispatchReceiverFixture/TestWhenHandoffExceedsTimeout' ./sqlmq/  # one test
+make test.integration.local    # real RabbitMQ via docker/podman compose (doc/docker-compose.integration.yml), then down
+make test.integration          # same tests against a broker the user already started (they will usually do this for you)
 ```
+
+Integration tests live in `integration/` behind the `integration` build tag, use only the public API, and
+create uniquely named exchanges and queues per test so runs never collide. They drive broker-side events
+(forced close, queue deletion) through the management HTTP API on port 15678, and the ghosted-queue test
+stops and starts cluster nodes with `docker compose` (skipped when `INTEGRATION_COMPOSE_FILE` is absent).
+Assert by consuming from queues, not by the management API's message counts, which lag by a stats interval.
+CI runs this suite only on tag pushes (`.github/workflows/integration.yml`).
 
 The suite runs under a **1-second global timeout**. Any test that sleeps or waits must use single-digit
 millisecond durations against fakes that block until released. A test that hangs kills the whole package
