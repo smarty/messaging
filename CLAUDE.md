@@ -45,12 +45,13 @@ channel, message store, monitor, logger) as its fakes.
 ### Composition order (enforced by the types)
 
 ```
-rabbitmq.New(...)                                -> transport Connector
-serialization.New(transport, ...)                -> encoded Connector (must wrap BEFORE sqlmq so outbox rows are stored serialized)
-sqlmq.New(encoded, ...)                          -> (outbox Connector, dispatcher ListenCloser)
-transactional.New(outbox, factory)               -> Handler (panics on failure)
+rabbitmq.New(...)                                -> transport Connector (raw)
+sqlmq.New(transport, ...)                        -> (outbox Connector, dispatcher ListenCloser); publishes stored rows over the RAW transport
+serialization.New(transport, ...)                -> encodedTransport, for consuming (decode in Stream.Read)
+serialization.New(outbox, ...)                   -> encodedOutbox, for handlers (encode BEFORE the row is stored; wrapping only the transport stores empty payloads)
+transactional.New(encodedOutbox, factory)        -> Handler (panics on failure)
 retry.New(thatHandler, ...)                      -> Handler (recovers, backs off)  -- retry wraps transactional, never the reverse
-streaming.New(encoded, Options.Subscriptions(NewSubscription(queue, SubscriptionOptions.AddWorkers(handler...))))
+streaming.New(encodedTransport, Options.Subscriptions(NewSubscription(queue, SubscriptionOptions.AddWorkers(handler...))))
 ```
 
 Run `dispatcher.Listen()` and the streaming `Listen()` in their own goroutines; `Close()` each to stop.

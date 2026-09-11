@@ -98,27 +98,30 @@ func main() {
 		rabbitmq.Options.Monitor(myRabbitMonitor{}),
 	)
 
-	// 2. Serialization wraps the transport, so the outbox stores serialized rows.
-	encoded := serialization.New(transport,
-		serialization.Options.ReadTypes(map[string]reflect.Type{
-			"order-placed": reflect.TypeOf(OrderPlaced{}),
-		}),
-		serialization.Options.WriteTypes(map[reflect.Type]string{
-			reflect.TypeOf(OrderShipped{}): "order-shipped",
-		}),
-	)
-
-	// 3. The outbox wraps the encoded transport. It returns a Connector for
-	//    handlers to write through and a processor that publishes in the background.
-	outbox, dispatcher := sqlmq.New(encoded,
+	// 2. The outbox wraps the raw transport. It returns a Connector for handlers
+	//    to write through and a processor that publishes in the background.
+	outbox, dispatcher := sqlmq.New(transport,
 		sqlmq.Options.StorageHandle(db),
 		sqlmq.Options.Monitor(myOutboxMonitor{}),
+	)
+
+	// 3. Serialization wraps each side separately: the transport for consuming
+	//    (decode), and the outbox for handlers (encode before the row is stored).
+	readTypes := map[string]reflect.Type{"order-placed": reflect.TypeOf(OrderPlaced{})}
+	writeTypes := map[reflect.Type]string{reflect.TypeOf(OrderShipped{}): "order-shipped"}
+	encodedTransport := serialization.New(transport,
+		serialization.Options.ReadTypes(readTypes),
+		serialization.Options.WriteTypes(writeTypes),
+	)
+	encodedOutbox := serialization.New(outbox,
+		serialization.Options.ReadTypes(readTypes),
+		serialization.Options.WriteTypes(writeTypes),
 	)
 
 	// 4. A handler runs inside one SQL transaction. Its own writes and its
 	//    outgoing messages commit together, or not at all.
 	handler := retry.New(
-		transactional.New(outbox, func(state transactional.State) messaging.Handler {
+		transactional.New(encodedOutbox, func(state transactional.State) messaging.Handler {
 			return &shipOrders{tx: state.Tx, writer: state.Writer}
 		}),
 		retry.Options.Backoff(time.Second),
@@ -126,7 +129,7 @@ func main() {
 	)
 
 	// 5. The consumer reads decoded deliveries and feeds the handler.
-	consumer := streaming.New(encoded,
+	consumer := streaming.New(encodedTransport,
 		streaming.Options.Subscriptions(
 			streaming.NewSubscription("orders",
 				streaming.SubscriptionOptions.Topics("order-placed"),
@@ -161,12 +164,15 @@ func (this *shipOrders) Handle(ctx context.Context, messages ...any) {
 
 Why this order:
 
-- `serialization.New` must wrap the transport **before** `sqlmq.New` sees it, so the outbox stores rows
-  that are already encoded and the processor can publish them without a type registry.
-- `transactional.New` takes the **outbox** connector. That is what puts the `*sql.Tx` into the handler's hands.
+- `sqlmq.New` takes the **raw** transport. The rows it stores already carry an encoded payload, so
+  the processor republishes them as-is with no type registry.
+- `serialization.New` wraps the **outbox** connector for handlers, so a `Dispatch` with only a
+  `Message` is encoded before the row is stored. Wrapping only the transport would store empty payloads.
+- `transactional.New` takes the **encoded outbox** connector. That is what puts the `*sql.Tx` into
+  the handler's hands and encodes what the handler writes.
 - `retry.New` wraps `transactional.New`, never the reverse. `transactional` reports failure by panicking,
   and only an outer `retry` can recover it.
-- `streaming.New` takes the **encoded** connector, because decoding happens inside `Stream.Read`.
+- `streaming.New` takes the **encoded transport**, because decoding happens inside `Stream.Read`.
 
 ## The outbox
 
