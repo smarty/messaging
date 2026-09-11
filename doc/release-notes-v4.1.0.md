@@ -1,8 +1,9 @@
 # Release notes: v4.1.0
 
-This release puts a time limit on every wait in the outbox publish path. It is
-a minor version. It adds three options and changes no exported interface. A
-service can upgrade without code changes. See the proposal in
+This release puts a time limit on every wait in the outbox publish path, makes
+the consumer runtime observable, and fixes a race. It is a minor version. It
+adds four options and changes no existing exported interface. A service can
+upgrade without code changes. See the proposal in
 `doc/work-sessions/2026/` for the full background.
 
 ## Why
@@ -121,6 +122,31 @@ The startup read also reports what it found: `[INFO] Startup recovery found
 [N] undispatched message(s) in durable storage.` The line does not appear when
 the table holds no undispatched rows.
 
+## `streaming`: new monitor
+
+`streaming.Options.Monitor` is new. The consumer runtime had no monitor at
+all, so there was no way to graph consumer throughput, batch latency, or
+reconnect churn per queue. The interface has five methods:
+
+```go
+StreamOpened(streamName string, err error)
+StreamClosed(streamName string)
+BatchHandled(streamName string, count int, duration time.Duration)
+BatchAcknowledged(streamName string, count int, err error)
+ShutdownForced(streamName string)
+```
+
+Every callback carries the queue name from `NewSubscription`, so one
+implementation serves every subscription in a process and labels its metrics
+per stream. The default is a no-op. Because the interface is new, adding it
+breaks nothing. `BatchHandled` and `BatchAcknowledged` fire once per batch on
+the hot path; keep implementations cheap. `BatchHandled` measures the whole
+`Handle` call, so it includes the attempts an inner `retry` handler makes. A
+service that wraps its handler to time each attempt can keep that wrapper; the
+two measure different things. The README's "Consuming" and "Monitoring and
+alerting" sections describe each callback and show a per-stream
+implementation for a metrics library with fixed labels.
+
 ## `streaming`: the logger is now used
 
 `streaming.Options.Logger` existed before this release but nothing read it.
@@ -157,7 +183,8 @@ A test runs both concurrently under the race detector.
 No monitor interface changed. The `rabbitmq` monitor receives
 `ErrCommitTimeout` through the existing `TransactionCommitted` and
 `TransactionRolledBack` callbacks. Count timeouts with `errors.Is`. The `sqlmq`
-handoff and recovery events are log-only in this release.
+handoff and recovery events are log-only in this release. The `streaming`
+package gains a monitor (below), which is additive because none existed.
 
 ## What a stall looks like now
 

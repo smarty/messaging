@@ -28,6 +28,8 @@ type WorkerFixture struct {
 	channelBuffer chan messaging.Delivery
 	worker        messaging.Listener
 	log           capturingLog
+	monitor       capturingMonitor
+	now           time.Time
 
 	readCount      int
 	maxReadCount   int
@@ -64,6 +66,8 @@ func (this *WorkerFixture) initializeWorker() {
 		SoftContext:  this.softContext,
 		HardContext:  this.hardContext,
 		Logger:       &this.log,
+		Monitor:      &this.monitor,
+		Now:          func() time.Time { this.now = this.now.Add(time.Millisecond); return this.now },
 	}).(*defaultWorker)
 	this.worker = worker
 	this.channelBuffer = worker.channelBuffer
@@ -226,6 +230,26 @@ func (this *WorkerFixture) TestWhenAcknowledgementFails_ListeningConcludesWithou
 	this.So(len(this.channelBuffer), should.Equal, 1)
 	this.So(this.log.String(), should.ContainSubstring,
 		"[WARN] Unable to acknowledge [1] delivery(ies) from stream [queue] [channel closed]; the broker will redeliver them.")
+	this.So(this.monitor.Calls(), should.Contain, "acknowledged:queue:1:channel closed")
+}
+func (this *WorkerFixture) TestWhenBatchDelivered_ReportHandledAndAcknowledgedToMonitor() {
+	this.readError = io.EOF
+	this.channelBuffer <- messaging.Delivery{Message: 1}
+	this.channelBuffer <- messaging.Delivery{Message: 2}
+	this.channelBuffer <- messaging.Delivery{} // acknowledged but not handed to the handler
+
+	this.worker.Listen()
+
+	this.So(this.monitor.Calls(), should.Equal, []string{"handled:queue:2:1ms", "acknowledged:queue:3:<nil>"})
+}
+func (this *WorkerFixture) TestWhenHandlerPanics_StillReportHandledToMonitor() {
+	this.handler = panickingHandler{}
+	this.readError = io.EOF
+	this.initializeWorker()
+	this.channelBuffer <- messaging.Delivery{Message: 1}
+
+	this.So(func() { this.worker.Listen() }, should.Panic)
+	this.So(this.monitor.Calls(), should.Equal, []string{"handled:queue:1:1ms"})
 }
 func (this *WorkerFixture) TestWhenStreamReadEnds_LogTheReason() {
 	this.handler = nil
@@ -332,3 +356,7 @@ func (this *WorkerFixture) Handle(ctx context.Context, messages ...any) {
 	this.handleCtx = ctx
 	this.handleMessages = append(this.handleMessages, messages...)
 }
+
+type panickingHandler struct{}
+
+func (panickingHandler) Handle(context.Context, ...any) { panic("handler failed") }

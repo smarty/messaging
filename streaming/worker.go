@@ -15,6 +15,8 @@ type defaultWorker struct {
 	hardContext context.Context
 	handler     messaging.Handler
 	logger      logger
+	monitor     monitor
+	now         func() time.Time
 	streamName  string
 
 	channelBuffer   chan messaging.Delivery
@@ -34,6 +36,8 @@ func newWorker(config workerConfig) messaging.Listener {
 		hardContext: config.HardContext,
 		handler:     config.Handler,
 		logger:      config.Logger,
+		monitor:     config.Monitor,
+		now:         config.Now,
 		streamName:  config.Subscription.streamName,
 
 		channelBuffer:   make(chan messaging.Delivery, config.Subscription.bufferCapacity),
@@ -126,15 +130,24 @@ func (this *defaultWorker) measureBufferLength() int {
 }
 func (this *defaultWorker) deliverBatch() bool {
 	if len(this.currentBatch) > 0 {
-		this.handler.Handle(this.deliveryContext(), this.currentBatch...)
+		this.handleBatch()
 	}
 
-	if err := this.stream.Acknowledge(this.hardContext, this.unacknowledged...); err != nil {
+	err := this.stream.Acknowledge(this.hardContext, this.unacknowledged...)
+	this.monitor.BatchAcknowledged(this.streamName, len(this.unacknowledged), err)
+	if err != nil {
 		this.logger.Printf("[WARN] Unable to acknowledge [%d] delivery(ies) from stream [%s] [%s]; the broker will redeliver them.",
 			len(this.unacknowledged), this.streamName, err)
 		return false
 	}
 	return true
+}
+func (this *defaultWorker) handleBatch() {
+	started := this.now()
+	defer func() { // deferred so a batch that panics is still measured
+		this.monitor.BatchHandled(this.streamName, len(this.currentBatch), this.now().Sub(started))
+	}()
+	this.handler.Handle(this.deliveryContext(), this.currentBatch...)
 }
 func (this *defaultWorker) deliveryContext() context.Context {
 	if this.contextDelivery {

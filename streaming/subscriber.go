@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/smarty/messaging/v4"
 )
@@ -17,9 +18,10 @@ type defaultSubscriber struct {
 	factory      workerFactory
 	workersDone  chan struct{}
 	logger       logger
+	monitor      monitor
 }
 
-func newSubscriber(pool connectionPool, subscription Subscription, softContext context.Context, factory workerFactory, logger logger) messaging.Listener {
+func newSubscriber(pool connectionPool, subscription Subscription, softContext context.Context, factory workerFactory, logger logger, monitor monitor) messaging.Listener {
 	hardContext, hardShutdown := subscription.hardShutdown(softContext)
 	return defaultSubscriber{
 		pool:         pool,
@@ -30,6 +32,7 @@ func newSubscriber(pool connectionPool, subscription Subscription, softContext c
 		factory:      factory,
 		workersDone:  make(chan struct{}),
 		logger:       logger,
+		monitor:      monitor,
 	}
 }
 
@@ -37,6 +40,7 @@ func (this defaultSubscriber) Listen() {
 	connection, err := this.pool.Active(this.softContext)
 	if err != nil {
 		this.logger.Printf("[WARN] Unable to open connection for stream [%s] [%s].", this.subscription.streamName, err)
+		this.monitor.StreamOpened(this.subscription.streamName, err)
 		return
 	}
 	defer this.pool.Dispose(connection)
@@ -44,6 +48,7 @@ func (this defaultSubscriber) Listen() {
 	reader, err := connection.Reader(this.softContext)
 	if err != nil {
 		this.logger.Printf("[WARN] Unable to open reader for stream [%s] [%s].", this.subscription.streamName, err)
+		this.monitor.StreamOpened(this.subscription.streamName, err)
 		return
 	}
 	defer closeResource(reader)
@@ -51,8 +56,11 @@ func (this defaultSubscriber) Listen() {
 	stream, err := reader.Stream(this.softContext, this.subscription.streamConfig())
 	if err != nil {
 		this.logger.Printf("[WARN] Unable to open stream [%s] [%s].", this.subscription.streamName, err)
+		this.monitor.StreamOpened(this.subscription.streamName, err)
 		return
 	}
+	this.monitor.StreamOpened(this.subscription.streamName, nil)
+	defer this.monitor.StreamClosed(this.subscription.streamName)
 
 	go this.listen(stream)
 	this.shutdown(stream)
@@ -79,6 +87,8 @@ func (this defaultSubscriber) consume(index int, stream messaging.Stream) {
 		SoftContext:  this.softContext,
 		HardContext:  this.hardContext,
 		Logger:       this.logger,
+		Monitor:      this.monitor,
+		Now:          time.Now,
 	})
 	worker.Listen()
 }
@@ -96,6 +106,7 @@ func (this defaultSubscriber) shutdown(stream io.Closer) {
 		case <-deadline.Done():
 			this.logger.Printf("[WARN] Workers on stream [%s] did not conclude within [%s] of shutdown; abandoning in-flight deliveries.",
 				this.subscription.streamName, this.subscription.shutdownTimeout)
+			this.monitor.ShutdownForced(this.subscription.streamName)
 			this.hardShutdown() // tell workers to stop, they're taking too long
 			<-this.workersDone
 		}

@@ -35,7 +35,7 @@ channel, message store, monitor, logger) as its fakes.
 | `serialization`          | Decorator. Encodes `Dispatch.Message` to `Payload` on write and decodes `Delivery.Payload` to `Message` on read, using `WriteTypes`/`ReadTypes` registries. JSON by default. |
 | `sqlmq`                  | Decorator + outbox. Its `CommitWriter` stores dispatches in a SQL `Messages` table inside the caller's transaction; a background `dispatchProcessor` publishes them through the wrapped transport and marks them dispatched. |
 | `batch`                  | `Writer` that does connect / CommitWriter / Write / Commit as one publish and redials after any error. `sqlmq` uses it as the outbox sender. |
-| `streaming`              | Consumer runtime. Opens a `Stream` per subscription, fans deliveries to one goroutine per handler, batches, calls `Handler.Handle`, acknowledges. Owns reconnect and the soft/hard shutdown contexts. |
+| `streaming`              | Consumer runtime. Opens a `Stream` per subscription, fans deliveries to one goroutine per handler, batches, calls `Handler.Handle`, acknowledges. Owns reconnect and the soft/hard shutdown contexts. Has its own per-stream `monitor`. |
 | `handlers/transactional` | Wraps a `Handler` in a `CommitWriter` from the given connector. When that connector is `sqlmq`, the SQL `*sql.Tx` is deposited into the context via `Store(*sql.Tx)` and handed to the handler factory as `State{Tx, Writer}`. Fails by **panicking**. |
 | `handlers/retry`         | Recovers panics from the inner handler and retries with backoff. This is the only thing that turns a `transactional` panic into a retry. |
 | `handlers/sqltx`         | Like `transactional` but for a bare `*sql.DB` with no messaging. |
@@ -87,8 +87,10 @@ disabled by accident. Keep that property when adding options. See `doc/release-n
   `Options.apply(options...)` which prepends `Options.defaults(...)` so caller values win, a `nop` type that
   satisfies the package's `logger` and `monitor`. `handlers/*` inline the defaults loop in `New` instead of
   `apply`; `streaming` has a second family, `SubscriptionOptions`, whose `apply` panics on invalid input.
-- **`streaming` has a logger but no monitor.** Its failure paths (connect, reader, stream, acknowledge,
-  forced shutdown, reconnect) each log once; there is nothing else to observe, so keep those lines intact.
+- **`streaming` observability**: a `monitor` whose callbacks all carry the stream (queue) name so callers
+  can label per subscription, plus log lines at each failure path (connect, reader, stream, acknowledge,
+  forced shutdown, reconnect). `BatchHandled`/`BatchAcknowledged` fire per batch; keep that path cheap.
+  `workerConfig.Now` exists so tests can control measured durations.
 - **Per-package `monitor` and `logger` interfaces** are unexported and defined in each package's
   `contracts.go`. Adding a method to a `monitor` interface breaks every implementer and is a major-version
   change. Prefer a new sentinel error through an existing callback (as `ErrCommitTimeout` does), or log-only.

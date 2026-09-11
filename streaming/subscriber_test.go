@@ -24,6 +24,7 @@ type SubscriberFixture struct {
 	softShutdown context.CancelFunc
 	subscriber   messaging.Listener
 	log          capturingLog
+	monitor      capturingMonitor
 
 	workerFactoryCount  int
 	workerFactoryConfig workerConfig
@@ -65,7 +66,7 @@ func (this *SubscriberFixture) Setup() {
 	this.initializeSubscriber()
 }
 func (this *SubscriberFixture) initializeSubscriber() {
-	this.subscriber = newSubscriber(this, this.subscription, this.softContext, this.workerFactory, &this.log)
+	this.subscriber = newSubscriber(this, this.subscription, this.softContext, this.workerFactory, &this.log, &this.monitor)
 }
 func (this *SubscriberFixture) workerFactory(config workerConfig) messaging.Listener {
 	this.workerFactoryCount++
@@ -81,6 +82,7 @@ func (this *SubscriberFixture) TestWhenOpeningAConnectionFails_ListenShouldRetur
 	this.So(this.currentContext, should.Equal, this.softContext)
 	this.So(this.currentCount, should.Equal, 1)
 	this.So(this.log.String(), should.ContainSubstring, "[WARN] Unable to open connection for stream [queue] [dial refused].")
+	this.So(this.monitor.Calls(), should.Equal, []string{"opened:queue:dial refused"})
 }
 func (this *SubscriberFixture) TestWhenOpeningReaderFails_ListenShouldReturn() {
 	this.readerError = errors.New("channel refused")
@@ -91,6 +93,7 @@ func (this *SubscriberFixture) TestWhenOpeningReaderFails_ListenShouldReturn() {
 	this.So(this.readerCount, should.Equal, 1)
 	this.So(this.releasedConnections, should.Equal, []messaging.Connection{this})
 	this.So(this.log.String(), should.ContainSubstring, "[WARN] Unable to open reader for stream [queue] [channel refused].")
+	this.So(this.monitor.Calls(), should.Equal, []string{"opened:queue:channel refused"})
 }
 func (this *SubscriberFixture) TestWhenOpeningStreamFails_ListenShouldReturn() {
 	this.streamError = errors.New("NOT_FOUND - no exchange")
@@ -108,6 +111,7 @@ func (this *SubscriberFixture) TestWhenOpeningStreamFails_ListenShouldReturn() {
 	})
 	this.So(this.closeCount, should.Equal, 1) // reader
 	this.So(this.log.String(), should.ContainSubstring, "[WARN] Unable to open stream [queue] [NOT_FOUND - no exchange].")
+	this.So(this.monitor.Calls(), should.Equal, []string{"opened:queue:NOT_FOUND - no exchange"})
 }
 
 func (this *SubscriberFixture) TestWhenListening_EstablishWorkersAndListen() {
@@ -116,6 +120,8 @@ func (this *SubscriberFixture) TestWhenListening_EstablishWorkersAndListen() {
 	this.subscriber.Listen()
 
 	this.So(this.workerFactoryCount, should.Equal, len(this.subscription.handlers))
+	this.So(this.workerFactoryConfig.Now, should.NotBeNil)
+	this.workerFactoryConfig.Now = nil // funcs never compare equal
 	this.So(this.workerFactoryConfig, should.Equal, workerConfig{
 		Stream:       this,
 		Subscription: this.subscription,
@@ -123,6 +129,7 @@ func (this *SubscriberFixture) TestWhenListening_EstablishWorkersAndListen() {
 		SoftContext:  this.softContext,
 		HardContext:  this.subscriber.(defaultSubscriber).hardContext,
 		Logger:       &this.log,
+		Monitor:      &this.monitor,
 	})
 	this.So(this.listenCount, should.Equal, len(this.subscription.handlers))
 }
@@ -138,6 +145,7 @@ func (this *SubscriberFixture) TestWhenListeningConcludesWithoutShutdown_AllReso
 
 	this.So(this.closeCount, should.Equal, 2) // reader and stream
 	this.So(this.log.String(), should.BeBlank)
+	this.So(this.monitor.Calls(), should.Equal, []string{"opened:queue:<nil>", "closed:queue"})
 }
 func (this *SubscriberFixture) TestWhenSoftShutdownIsInvoked_HardDeadlineShouldStart() {
 	this.listenWaitForHardShutdown = true
@@ -154,6 +162,7 @@ func (this *SubscriberFixture) TestWhenSoftShutdownIsInvoked_HardDeadlineShouldS
 	this.So(hardDeadlineAlive, should.BeFalse)
 	this.So(this.log.String(), should.ContainSubstring,
 		"[WARN] Workers on stream [queue] did not conclude within [5ms] of shutdown; abandoning in-flight deliveries.")
+	this.So(this.monitor.Calls(), should.Equal, []string{"opened:queue:<nil>", "forced:queue", "closed:queue"})
 }
 func (this *SubscriberFixture) SkipTestWhenSoftShutdownIsInvoked_ListenCanConcludeBeforeHardShutdownDeadline() {
 	this.listenSleepForHardShutdown = true

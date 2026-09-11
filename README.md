@@ -245,8 +245,20 @@ Subscription options you are most likely to set:
 `MaxAttempts` (effectively unlimited), `ImmediateRetry(values...)` for panic values that should not
 sleep, `LogStackTrace` (on).
 
-Pass `streaming.Options.Logger` so the consumer can tell you when it cannot connect, cannot open a
-stream, or cannot acknowledge. Without it the runtime retries forever in silence. The lines it emits:
+Pass `streaming.Options.Monitor` and `streaming.Options.Logger`. Without them the runtime retries
+forever in silence. The monitor carries rates and durations; the logger carries the error text.
+
+| Callback                                        | When                                                                                          |
+|-------------------------------------------------|-----------------------------------------------------------------------------------------------|
+| `StreamOpened(stream, err)`                     | Once per attempt to open a subscription. `err == nil` means live; otherwise it names the failing step. |
+| `StreamClosed(stream)`                          | Once when a live session ends, for any reason. A reconnect follows unless shutting down.      |
+| `BatchHandled(stream, count, duration)`         | After `Handle` returns or panics. `count` is messages handed to the handler. `duration` includes inner retries. |
+| `BatchAcknowledged(stream, count, err)`         | After each acknowledgement attempt. A non-nil error ends the worker; the broker redelivers.    |
+| `ShutdownForced(stream)`                        | When workers miss the shutdown timeout and in-flight deliveries are abandoned.                |
+
+Every callback carries the queue name from `NewSubscription`, so one monitor serves every
+subscription in a process and labels its metrics per stream. `BatchHandled` and `BatchAcknowledged`
+fire once per batch on the hot path, so keep implementations cheap. The log lines:
 
 | Level  | Line                                                                                                  | When                                                      |
 |--------|-------------------------------------------------------------------------------------------------------|-----------------------------------------------------------|
@@ -355,9 +367,85 @@ Count a commit as a success when `err == nil`, as a timeout when
 `errors.Is(err, rabbitmq.ErrCommitTimeout)`, and as a failure otherwise. Keep the timeout counter
 separate, because a single callback cannot tell a timeout from a broker refusal.
 
+| Callback                                        | Metric                                      | Type      |
+|-------------------------------------------------|---------------------------------------------|-----------|
+| `streaming` `StreamOpened(stream, err)`         | `consumer_stream_opened_total{stream,result}` | counter |
+| `streaming` `StreamClosed(stream)`              | `consumer_stream_closed_total{stream}`      | counter   |
+| `streaming` `BatchHandled(stream, count, d)`    | `consumer_batch_seconds{stream}`            | histogram |
+| `streaming` `BatchAcknowledged(stream, n, err)` | `consumer_acknowledged_total{stream,result}` | counter  |
+| `streaming` `ShutdownForced(stream)`            | `consumer_shutdown_forced_total{stream}`    | counter   |
+
 The `retry`, `transactional`, `sqltx`, and `serialization` packages have their own small monitors
 (`HandleAttempted`, `TransactionStarted/Committed/RolledBack`, `MessageEncoded/Decoded`). Count
 `HandleAttempted` with a non-nil result: a rising rate means handlers are failing and retrying.
+
+### Per-stream metrics without dynamic labels
+
+The `streaming` callbacks name the stream so you can label metrics per subscription. With a metrics
+library that fixes labels at construction, such as `github.com/smarty/metrics`, build one set of
+instruments per queue up front and look them up by name. Keep a catch-all for names you did not
+expect. The queue names are already literals where you call `NewSubscription`, so pass the same list
+to the monitor's constructor.
+
+```go
+type streamingMonitor struct {
+	catchall streamMetrics
+	streams  map[string]streamMetrics
+}
+type streamMetrics struct {
+	opened, openFailures, closed, acknowledged, ackFailures, forced metrics.Counter
+	batchDuration                                                    metrics.Histogram
+}
+
+func newStreamingMonitor(queues ...string) streamingMonitor {
+	this := streamingMonitor{catchall: newStreamMetrics("unknown"), streams: map[string]streamMetrics{}}
+	for _, queue := range queues {
+		this.streams[queue] = newStreamMetrics(queue)
+	}
+	return this
+}
+func newStreamMetrics(stream string) streamMetrics {
+	label := metrics.Options.Label("stream", stream)
+	return streamMetrics{
+		opened:       metrics.NewCounter("consumer_streams_opened", label),
+		openFailures: metrics.NewCounter("consumer_stream_open_failures", label),
+		closed:       metrics.NewCounter("consumer_streams_closed", label),
+		acknowledged: metrics.NewCounter("consumer_deliveries_acknowledged", label),
+		ackFailures:  metrics.NewCounter("consumer_acknowledge_failures", label),
+		forced:       metrics.NewCounter("consumer_shutdowns_forced", label),
+		batchDuration: metrics.NewHistogram("consumer_batch_duration_milliseconds", label,
+			metrics.Options.Bucket(1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000)),
+	}
+}
+func (this streamingMonitor) metrics(stream string) streamMetrics {
+	if found, ok := this.streams[stream]; ok {
+		return found
+	}
+	return this.catchall
+}
+func (this streamingMonitor) StreamOpened(stream string, err error) {
+	if err != nil {
+		this.metrics(stream).openFailures.Increment()
+		return
+	}
+	this.metrics(stream).opened.Increment()
+}
+func (this streamingMonitor) StreamClosed(stream string) { this.metrics(stream).closed.Increment() }
+func (this streamingMonitor) BatchHandled(stream string, _ int, duration time.Duration) {
+	this.metrics(stream).batchDuration.Measure(uint64(duration.Milliseconds()))
+}
+func (this streamingMonitor) BatchAcknowledged(stream string, count int, err error) {
+	if err != nil {
+		this.metrics(stream).ackFailures.Increment()
+		return
+	}
+	this.metrics(stream).acknowledged.IncrementN(uint64(count))
+}
+func (this streamingMonitor) ShutdownForced(stream string) { this.metrics(stream).forced.Increment() }
+```
+
+A service that does not need the per-stream breakdown can ignore the name and use one set of
+instruments. The parameter costs nothing.
 
 ### The patterns an alerting system must respond to
 
@@ -387,11 +475,18 @@ directly, so the alert does not depend on batch size. A restart does not help. T
 and close counters rise together about once per commit cycle. On their own they are noisy during a
 rolling broker restart. Combine them with the timeout counter to tell a sever from a normal reconnect.
 
-**Consumer reconnect loops.** The streaming runtime has no monitor, only a logger. A repeating
-`Unable to open stream [queue]` line every `ReconnectDelay` means the queue or one of its exchanges is
-missing or was refused, and the consumer will never receive anything until someone fixes the topology.
-Match it and page on a sustained rate. A repeating `Unable to acknowledge` line means every batch is
-being handled and then redelivered, which is the duplicate-side-effects case; page on it too.
+**A starved stream.** Per-stream acknowledged rate at zero while other streams in the same process
+are non-zero means one queue is not being consumed. The usual cause is a missing or refused exchange
+binding, visible as a sustained `StreamOpened` failure rate for that stream and a repeating
+`Unable to open stream [queue]` log line. Page on it. The consumer will never receive anything until
+someone fixes the topology. Aggregate rates hide this case, which is why the callbacks carry the name.
+
+**Batch latency.** `BatchHandled` duration is the consumer-side equivalent of stored minus confirmed.
+A rising p99 is the earliest sign that a handler's downstream is slowing, long before queue depth
+shows it. Alert on the p99 crossing your handler's expected budget.
+
+**Acknowledgement failures.** Every `BatchAcknowledged` error means a batch was handled and will be
+redelivered, which is the duplicate-side-effects case. Page on any sustained rate.
 
 **Startup recovery.** The line `Startup recovery found [N] undispatched message(s)` appears once per
 start. A small `N` after a deploy is normal. A large or rising `N` across restarts means the service is
@@ -426,8 +521,8 @@ the publisher is behind. The rows are durable and the next start publishes them.
 3. Build the stored-minus-confirmed gap panel and alert on it.
 4. Match and count the two outbox handoff `WARN` lines in your log pipeline.
 5. Page on the blocked-connection gauge and on the deferred-capacity line.
-6. Pass `streaming.Options.Logger` and page on a sustained rate of `Unable to open stream` or
-   `Unable to acknowledge`.
+6. Implement the `streaming` monitor with a `stream` label per queue. Alert on a starved stream, on
+   batch p99 latency, and on acknowledgement failures. Pass `streaming.Options.Logger` too.
 7. Confirm `/status` fails for a stalled publisher in your platform, and that the platform's reaction
    (a restart) is what you want.
 
