@@ -157,7 +157,9 @@ func (this *dispatchProcessor) sleep() {
 	<-ctx.Done()
 }
 func (this *dispatchProcessor) cleanup() {
-	close(this.channel)
+	// The channel is deliberately left open. Handlers that committed SQL just
+	// before shutdown and deferred handoff goroutines may still send on it;
+	// a send on a closed channel panics even inside a select.
 	if this.sender != nil {
 		_ = this.sender.Close()
 		this.sender = nil

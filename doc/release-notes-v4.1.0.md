@@ -111,6 +111,15 @@ A crash loses deferred messages from memory only. The startup read publishes
 them from the table. This is the same guarantee the outbox gives every message
 between its SQL commit and its broker confirm.
 
+## `sqlmq`: the outbox channel is no longer closed at shutdown
+
+The dispatch processor used to close the outbox channel when `Listen`
+returned. Handlers that had just committed SQL, and the new deferred handoff
+goroutines, could still be sending on it. A send on a closed channel panics
+even inside a `select`. A handler panicking after its SQL commit was retried
+by the `retry` handler, and its side effects ran twice. The channel now stays
+open. Nothing but the processor ever receives from it, so nothing is lost.
+
 ## `sqlmq`: shutdown no longer hangs on a full channel
 
 The startup read sends every undispatched row into the outbox channel. Before

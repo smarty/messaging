@@ -77,13 +77,18 @@ func (this *DispatchProcessorFixture) listen(sleep time.Duration) {
 	this.listener.Listen() // blocks
 }
 
-func (this *DispatchProcessorFixture) TestWhenClose_ShutDownChannelAndAllowListenToExit() {
+func (this *DispatchProcessorFixture) TestWhenClose_CloseSenderAndAllowListenToExit() {
 	this.listen(time.Millisecond)
 
-	_, open := <-this.channel
-
 	this.So(this.closeCount, should.Equal, 1)
-	this.So(open, should.BeFalse)
+}
+func (this *DispatchProcessorFixture) TestWhenClose_ChannelStaysOpenForHandoffsStillInFlight() {
+	this.listen(time.Millisecond)
+
+	// A handler that committed SQL just before shutdown, or a deferred handoff
+	// goroutine, may still be sending. A closed channel would panic them.
+	this.So(func() { this.channel <- messaging.Dispatch{} }, should.NotPanic)
+	this.So(len(this.channel), should.Equal, 1)
 }
 func (this *DispatchProcessorFixture) TestWhenDispatchesArePending_ItShouldPublishThemAndConfirmDispatch() {
 	expected := []messaging.Dispatch{{MessageID: 1}, {MessageID: 2}, {MessageID: 3}}
