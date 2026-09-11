@@ -27,7 +27,10 @@ type logger interface {
 }
 
 var (
-	ErrAlreadyExclusive = errors.New("unable to open additional stream, an exclusive stream already exists")
-	ErrMultipleStreams  = errors.New("unable to open exclusive stream, another stream already exists")
-	ErrCommitTimeout    = errors.New("the broker did not acknowledge the transaction within the commit timeout")
+	ErrAlreadyExclusive   = errors.New("unable to open additional stream, an exclusive stream already exists")
+	ErrMultipleStreams    = errors.New("unable to open exclusive stream, another stream already exists")
+	ErrCommitTimeout      = errors.New("the broker did not acknowledge the transaction within the commit timeout")
+	ErrPublishTimeout     = errors.New("the broker did not accept the publish within the commit timeout")
+	ErrAcknowledgeTimeout = errors.New("the broker did not accept the acknowledgement within the commit timeout")
+	ErrCloseTimeout       = errors.New("the broker did not answer the channel close within the commit timeout")
 )

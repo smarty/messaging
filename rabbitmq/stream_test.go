@@ -1,8 +1,10 @@
 package rabbitmq
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -31,18 +33,41 @@ type StreamFixture struct {
 	acknowledgedTags      []uint64
 	acknowledgedMultiples []bool
 	acknowledgeError      error
+	acknowledgeBlocks     bool
+	severGate             chan struct{}
+	severCalls            int
+	log                   bytes.Buffer
 }
 
 func (this *StreamFixture) Setup() {
 	this.now = time.Now().UTC()
 	this.deliveries = make(chan amqp.Delivery, 16)
+	this.severGate = make(chan struct{})
 	this.initializeStream()
 }
 func (this *StreamFixture) initializeStream() {
 	this.streamID = "streamID"
 	this.streamName = "streamName"
-	this.stream = newStream(this, this.deliveries, this.streamID, this.streamName, this.exclusiveStream,
-		configuration{Logger: nop{}, Monitor: nop{}})
+	this.stream = newStream(this, this.deliveries, this.streamID, this.streamName, this.exclusiveStream, this.sever,
+		configuration{Logger: this, Monitor: nop{}, CommitTimeout: time.Millisecond * 5})
+}
+func (this *StreamFixture) Printf(format string, args ...any) {
+	_, _ = fmt.Fprintf(&this.log, format+"\n", args...)
+}
+func (this *StreamFixture) sever() error {
+	this.severCalls++
+	close(this.severGate)
+	return nil
+}
+
+func (this *StreamFixture) TestWhenAcknowledgeBlocks_SeverTheConnectionAndReturnAcknowledgeTimeout() {
+	this.acknowledgeBlocks = true
+
+	err := this.stream.Acknowledge(context.Background(), messaging.Delivery{DeliveryID: 1})
+
+	this.So(err, should.Equal, ErrAcknowledgeTimeout)
+	this.So(this.severCalls, should.Equal, 1)
+	this.So(this.log.String(), should.ContainSubstring, "[WARN] AMQP acknowledge did not complete within [5ms]; severing the connection.")
 }
 
 func (this *StreamFixture) TestWhenCloseInvokedMultipleTimes_OnlyCancelConsumerOnce() {
@@ -171,6 +196,10 @@ func (this *StreamFixture) CancelConsumer(consumerID string) error {
 	return nil
 }
 func (this *StreamFixture) Ack(deliveryTag uint64, multiple bool) error {
+	if this.acknowledgeBlocks {
+		<-this.severGate // parked in the socket write, like a broker that stopped reading
+		return amqp.ErrClosed
+	}
 	this.acknowledgedTags = append(this.acknowledgedTags, deliveryTag)
 	this.acknowledgedMultiples = append(this.acknowledgedMultiples, multiple)
 	return this.acknowledgeError

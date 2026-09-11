@@ -5,6 +5,7 @@ import (
 	"io"
 	"strconv"
 	"sync"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/smarty/messaging/v4"
@@ -18,17 +19,21 @@ type defaultStream struct {
 	streamName string
 	batchAck   bool
 	closer     sync.Once
+	sever      func() error
+	timeout    time.Duration
 	logger     logger
 	monitor    monitor
 }
 
-func newStream(channel adapter.Channel, deliveries <-chan amqp.Delivery, id, name string, exclusive bool, config configuration) messaging.Stream {
+func newStream(channel adapter.Channel, deliveries <-chan amqp.Delivery, id, name string, exclusive bool, sever func() error, config configuration) messaging.Stream {
 	return &defaultStream{
 		channel:    channel,
 		deliveries: deliveries,
 		streamID:   id,
 		streamName: name,
 		batchAck:   exclusive,
+		sever:      sever,
+		timeout:    config.CommitTimeout,
 		logger:     config.Logger,
 		monitor:    config.Monitor,
 	}
@@ -82,7 +87,11 @@ func (this *defaultStream) Acknowledge(ctx context.Context, deliveries ...messag
 	}
 
 	for _, delivery := range deliveries {
-		if err := this.channel.Ack(delivery.DeliveryID, this.batchAck); err != nil {
+		tag := delivery.DeliveryID
+		err := awaitBroker(this.logger, "acknowledge", this.timeout, this.sever, ErrAcknowledgeTimeout, func() error {
+			return this.channel.Ack(tag, this.batchAck) // a socket write; blocks with no deadline if the broker stopped reading
+		})
+		if err != nil {
 			this.logger.Printf("[WARN] Unable to acknowledge delivery against underlying channel [%s].", err)
 			this.monitor.DeliveryAcknowledged(uint16(length), err)
 			return err

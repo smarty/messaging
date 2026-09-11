@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/smarty/gunit"
@@ -36,17 +37,38 @@ type ReaderFixture struct {
 	consumeChannel         chan amqp.Delivery
 	consumeError           error
 	callsToClose           int
+	closeBlocks            bool
+	severGate              chan struct{}
+	severCalls             int
 	cancelledConsumers     []string
 }
 
 func (this *ReaderFixture) Setup() {
 	this.consumeChannel = make(chan amqp.Delivery, 4)
+	this.severGate = make(chan struct{})
 	this.initializeReader()
 }
 func (this *ReaderFixture) initializeReader() {
 	config := configuration{}
-	Options.apply(Options.PanicOnTopologyError(this.configPanicOnTopologyFailure))(&config)
-	this.reader = newReader(this, config)
+	Options.apply(
+		Options.PanicOnTopologyError(this.configPanicOnTopologyFailure),
+		Options.CommitTimeout(time.Millisecond*5),
+	)(&config)
+	this.reader = newReader(this, this.sever, config)
+}
+func (this *ReaderFixture) sever() error {
+	this.severCalls++
+	close(this.severGate)
+	return nil
+}
+
+func (this *ReaderFixture) TestWhenChannelCloseBlocks_CloseSeversTheConnectionAndReturnsCloseTimeout() {
+	this.closeBlocks = true
+
+	err := this.reader.Close()
+
+	this.So(err, should.Equal, ErrCloseTimeout)
+	this.So(this.severCalls, should.Equal, 1)
 }
 
 func (this *ReaderFixture) TestWhenEstablishingAStream_StartConsumerOnFromUnderlyingChannel() {
@@ -218,7 +240,14 @@ func (this *ReaderFixture) Consume(consumerID, queue string) (<-chan amqp.Delive
 	this.consumeQueue = queue
 	return this.consumeChannel, this.consumeError
 }
-func (this *ReaderFixture) Close() error { this.callsToClose++; return nil }
+func (this *ReaderFixture) Close() error {
+	this.callsToClose++
+	if this.closeBlocks {
+		<-this.severGate
+		return amqp.ErrClosed
+	}
+	return nil
+}
 
 func (this *ReaderFixture) Ack(deliveryTag uint64, multiple bool) error {
 	panic("nop")

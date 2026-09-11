@@ -33,6 +33,7 @@ type DialerFixture struct {
 	dialedTLSConn    net.Conn
 	dialedTLSConfig  *tls.Config
 	handshakeError   error
+	handshakeBlocks  bool
 	callsToHandshake int
 	callsToClose     int
 }
@@ -50,6 +51,7 @@ func (this *DialerFixture) initializeTLSDialer() {
 		Options.Address(this.brokerAddress),
 		Options.TLSConfig(this.tlsConfig),
 		Options.TLSClient(this.tlsClient),
+		Options.CommitTimeout(time.Millisecond*5),
 	)(&config)
 	this.dialer = newTLSDialer(this, config)
 }
@@ -62,7 +64,8 @@ func (this *DialerFixture) TestWhenDialingFails_ReturnUnderlyingError() {
 
 	this.So(conn, should.BeNil)
 	this.So(err, should.Equal, this.dialError)
-	this.So(this.dialedContext, should.Equal, this.backgroundContext)
+	_, bounded := this.dialedContext.Deadline()
+	this.So(bounded, should.BeTrue) // the dial and handshake are bounded when the caller sets no deadline
 	this.So(this.dialedNetwork, should.Equal, "network")
 	this.So(this.dialedAddress, should.Equal, "address")
 	this.So(this.callsToHandshake, should.Equal, 0)
@@ -106,6 +109,26 @@ func (this *DialerFixture) TestWhenEstablishingTLSConnection_ReturnTLSConnection
 	this.So(this.dialedTLSConfig, should.Equal, this.tlsConfig)
 }
 
+func (this *DialerFixture) TestWhenHandshakeBlocks_HonorTheCallerDeadlineAndCloseTheConnection() {
+	this.handshakeBlocks = true
+	ctx, cancel := context.WithTimeout(this.backgroundContext, time.Millisecond*5)
+	defer cancel()
+
+	conn, err := this.dialer.DialContext(ctx, "network", "address")
+
+	this.So(conn, should.BeNil)
+	this.So(err, should.Equal, context.DeadlineExceeded)
+	this.So(this.callsToClose, should.Equal, 1)
+}
+func (this *DialerFixture) TestWhenHandshakeBlocksWithoutACallerDeadline_BoundItWithTheConfiguredTimeout() {
+	this.handshakeBlocks = true
+
+	conn, err := this.dialer.DialContext(this.backgroundContext, "network", "address")
+
+	this.So(conn, should.BeNil)
+	this.So(err, should.Equal, context.DeadlineExceeded)
+	this.So(this.callsToClose, should.Equal, 1)
+}
 func (this *DialerFixture) TestWhenHandshakeFails_CloseConnectionAndReturnError() {
 	this.handshakeError = errors.New("")
 	conn, err := this.dialer.DialContext(this.backgroundContext, "network", "address")
@@ -132,7 +155,14 @@ func (this *DialerFixture) tlsClient(conn net.Conn, config *tls.Config) tlsConn 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func (this *DialerFixture) Handshake() error                   { this.callsToHandshake++; return this.handshakeError }
+func (this *DialerFixture) HandshakeContext(ctx context.Context) error {
+	this.callsToHandshake++
+	if this.handshakeBlocks {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	return this.handshakeError
+}
 func (this *DialerFixture) Read(b []byte) (n int, err error)   { panic("nop") }
 func (this *DialerFixture) Close() error                       { this.callsToClose++; return nil }
 func (this *DialerFixture) LocalAddr() net.Addr                { panic("nop") }

@@ -35,8 +35,10 @@ type WriterFixture struct {
 	publishKeys      []string
 	publishMessages  []amqp.Publishing
 
-	commitGate     chan struct{}
+	commitGate     chan struct{} // released by sever(); every blocking fake parks on it
 	commitBlocks   bool
+	publishBlocks  bool
+	closeBlocks    bool
 	commitReturned bool
 	severCalls     int
 
@@ -157,6 +159,25 @@ func (this *WriterFixture) TestWhenCommitExceedsTimeout_DoNotPanicEvenWhenTopolo
 	this.commitBlocks = true
 
 	this.So(func() { _ = this.writer.Commit() }, should.NotPanic)
+}
+
+func (this *WriterFixture) TestWhenPublishBlocks_WriteSeversTheConnectionAndReturnsPublishTimeout() {
+	this.publishBlocks = true
+
+	count, err := this.writer.Write(context.Background(), messaging.Dispatch{Topic: "a"})
+
+	this.So(err, should.Equal, ErrPublishTimeout)
+	this.So(count, should.Equal, 0)
+	this.So(this.severCalls, should.Equal, 1)
+	this.So(this.log.String(), should.ContainSubstring, "[WARN] AMQP publish did not complete within [5ms]; severing the connection.")
+}
+func (this *WriterFixture) TestWhenChannelCloseBlocks_CloseSeversTheConnectionAndReturnsCloseTimeout() {
+	this.closeBlocks = true
+
+	err := this.writer.Close()
+
+	this.So(err, should.Equal, ErrCloseTimeout)
+	this.So(this.severCalls, should.Equal, 1)
 }
 
 func (this *WriterFixture) TestWhenWrite_TopicMissing() {
@@ -283,7 +304,13 @@ func (this *WriterFixture) TestWhenWriterFailsMidwayThrough_ReturnNumberOfWrites
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func (this *WriterFixture) Close() error { return this.closeError }
+func (this *WriterFixture) Close() error {
+	if this.closeBlocks {
+		<-this.commitGate
+		return amqp.ErrClosed
+	}
+	return this.closeError
+}
 func (this *WriterFixture) TxCommit() error {
 	if this.commitBlocks {
 		<-this.commitGate
@@ -322,6 +349,10 @@ func (this *WriterFixture) TransactionRolledBack(err error) {
 	this.rolledBackErrors = append(this.rolledBackErrors, err)
 }
 func (this *WriterFixture) Publish(exchange, key string, envelope amqp.Publishing) error {
+	if this.publishBlocks {
+		<-this.commitGate // parked in the socket write, like a broker that stopped reading
+		return amqp.ErrClosed
+	}
 	this.publishExchanges = append(this.publishExchanges, exchange)
 	this.publishKeys = append(this.publishKeys, key)
 	this.publishMessages = append(this.publishMessages, envelope)

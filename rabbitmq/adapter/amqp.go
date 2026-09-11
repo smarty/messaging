@@ -10,12 +10,22 @@ import (
 
 type amqpConnector struct{}
 
-func (this amqpConnector) Connect(_ context.Context, socket net.Conn, config Config) (Connection, error) {
+// Connect completes the AMQP handshake on an already-dialed socket. amqp.Open
+// sets no deadline of its own, so the caller's context deadline is applied to
+// the socket for the duration of the handshake; a peer that accepts TCP and
+// then hangs (an auth backend that never answers) fails instead of parking
+// the caller forever. amqp091 clears the deadline itself once the handshake
+// completes.
+func (this amqpConnector) Connect(ctx context.Context, socket net.Conn, config Config) (Connection, error) {
 	plainAuth := &amqp.PlainAuth{Username: config.Username, Password: config.Password}
 	amqpConfig := amqp.Config{
 		SASL:      []amqp.Authentication{plainAuth},
 		Vhost:     config.VirtualHost,
 		Heartbeat: config.Heartbeat,
+	}
+
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = socket.SetDeadline(deadline)
 	}
 
 	if connection, err := amqp.Open(socket, amqpConfig); err != nil {
@@ -80,7 +90,7 @@ func (this amqpChannel) Consume(consumerID, queue string) (<-chan amqp.Delivery,
 	return this.Channel.Consume(queue, consumerID, false, false, false, false, amqp.Table{})
 }
 func (this amqpChannel) CancelConsumer(consumerID string) error {
-	return this.Channel.Cancel(consumerID, false)
+	return this.Channel.Cancel(consumerID, true) // noWait: a stuck channel must not hang shutdown; the connection close that follows is bounded
 }
 
 func (this amqpChannel) Publish(exchange, key string, envelope amqp.Publishing) error {

@@ -34,7 +34,22 @@ func newWriter(inner adapter.Channel, sever func() error, config configuration) 
 	}
 }
 
+// Write publishes each dispatch. Publishes are asynchronous, but the socket
+// write behind them blocks with no deadline once a broker under a resource
+// alarm stops reading, so the whole batch is bounded by CommitTimeout. On
+// timeout the connection is severed and the batch reports zero written so
+// the caller retries all of it.
 func (this defaultWriter) Write(_ context.Context, messages ...messaging.Dispatch) (count int, err error) {
+	err = this.await("publish", ErrPublishTimeout, func() (err error) {
+		count, err = this.publish(messages)
+		return err
+	})
+	if err == ErrPublishTimeout {
+		return 0, err
+	}
+	return count, err
+}
+func (this defaultWriter) publish(messages []messaging.Dispatch) (count int, err error) {
 	now := this.now().UTC()
 
 	for _, message := range messages {
@@ -103,7 +118,7 @@ func computePersistence(durable bool) uint8 {
 }
 
 func (this defaultWriter) Commit() error {
-	if err := this.await("commit", this.inner.TxCommit); err == nil {
+	if err := this.await("transaction commit", ErrCommitTimeout, this.inner.TxCommit); err == nil {
 		this.monitor.TransactionCommitted(nil)
 		return nil
 	} else {
@@ -113,7 +128,7 @@ func (this defaultWriter) Commit() error {
 	}
 }
 func (this defaultWriter) Rollback() error {
-	if err := this.await("rollback", this.inner.TxRollback); err == nil {
+	if err := this.await("transaction rollback", ErrCommitTimeout, this.inner.TxRollback); err == nil {
 		this.monitor.TransactionRolledBack(nil)
 		return nil
 	} else {
@@ -123,25 +138,8 @@ func (this defaultWriter) Rollback() error {
 	}
 }
 
-// await runs a synchronous AMQP call with a deadline. The amqp091 client parks
-// the caller until the broker answers or the channel dies, so on timeout the
-// only way to make the call return is to sever the parent connection.
-func (this defaultWriter) await(operation string, call func() error) error {
-	completed := make(chan error, 1)
-	go func() { completed <- call() }()
-
-	timer := time.NewTimer(this.commitTimeout)
-	defer timer.Stop()
-
-	select {
-	case err := <-completed:
-		return err
-	case <-timer.C:
-		this.logger.Printf("[WARN] AMQP transaction %s did not complete within [%s]; severing the connection.", operation, this.commitTimeout)
-		_ = this.sever()
-		<-completed // bounded: the severed connection errors the pending call within the close deadline
-		return ErrCommitTimeout
-	}
+func (this defaultWriter) await(operation string, timeoutErr error, call func() error) error {
+	return awaitBroker(this.logger, operation, this.commitTimeout, this.sever, timeoutErr, call)
 }
 func (this defaultWriter) tryPanic(err error) error {
 	if !this.topologyPanic {
@@ -156,5 +154,5 @@ func (this defaultWriter) tryPanic(err error) error {
 }
 
 func (this defaultWriter) Close() error {
-	return this.inner.Close()
+	return this.await("channel close", ErrCloseTimeout, this.inner.Close)
 }

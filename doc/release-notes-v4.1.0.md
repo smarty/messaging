@@ -92,6 +92,26 @@ appears, because the timeout is a commit error like any other. The
 `batch.Writer` and the `transactional` handler already reconnect after a
 commit error. No new code is necessary in a service.
 
+### Every broker wait is now bounded
+
+`CommitTimeout` bounds more than the commit. The same timer-and-sever pattern
+now covers:
+
+- **Publish.** `Write` blocked in the socket write once a broker under a
+  resource alarm stopped reading. It now times out, severs, and returns
+  `ErrPublishTimeout` with zero written, so the caller retries the batch.
+- **Acknowledge.** `Stream.Acknowledge` blocked the same way and ignored its
+  context. It now returns `ErrAcknowledgeTimeout` after severing.
+- **Channel close.** `Reader.Close` and `Writer.Close` are synchronous RPCs
+  that ran before the bounded connection close and could hang a shutdown on a
+  stuck channel. They now return `ErrCloseTimeout` after severing. Consumer
+  cancel uses `noWait`, so `Stream.Close` never waits on the broker.
+- **Connect.** The TLS handshake and the AMQP handshake set no deadline, so a
+  peer that accepted TCP and then hung (an auth backend that never answers)
+  parked every reconnect loop and the status probe forever. Both now run
+  under the caller's deadline, or under `CommitTimeout` when the caller set
+  none, and a failed AMQP handshake closes the socket instead of leaking it.
+
 ### Effect on shared connections
 
 The sever closes every channel on the connection. In this library each

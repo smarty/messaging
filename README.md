@@ -326,15 +326,16 @@ default, so a bound cannot be disabled by accident.
 
 | Package    | Option                            | Default       | Bounds                                                                 |
 |------------|-----------------------------------|---------------|------------------------------------------------------------------------|
-| `rabbitmq` | `Options.CommitTimeout`           | 30 seconds    | The wait for the broker to answer a transaction commit or rollback.    |
+| `rabbitmq` | `Options.CommitTimeout`           | 30 seconds    | Every wait on the broker: commit, rollback, publish, acknowledge, channel close, and the connect handshake. |
 | `rabbitmq` | `Options.Heartbeat`               | 10 seconds    | How long a dead socket goes unnoticed (about 1.5 times this value).   |
 | `sqlmq`    | `Options.HandoffTimeout`          | 10 seconds    | The wait, after the SQL commit, to hand messages to the dispatcher.    |
 | `sqlmq`    | `Options.DeferredHandoffCapacity` | 8192 messages | The messages that background handoffs may hold in memory at one time.  |
 
 What happens at each bound:
 
-- **Commit timeout.** The writer logs a `WARN`, closes the connection that owns the channel (the only way
-  to make a pending AMQP call return), and returns `rabbitmq.ErrCommitTimeout`. The `batch.Writer` and
+- **Commit timeout.** The library logs a `WARN`, closes the connection that owns the channel (the only way
+  to make a pending AMQP call return), and returns the matching sentinel: `ErrCommitTimeout`,
+  `ErrPublishTimeout`, `ErrAcknowledgeTimeout`, or `ErrCloseTimeout`. The `batch.Writer` and
   the `transactional` handler reconnect on the next call. The close takes every channel on that
   connection with it, so give a transactional writer its own connection if a consumer shares one.
 - **Handoff timeout.** The outbox `Commit` moves the messages the processor has not yet accepted to a

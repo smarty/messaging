@@ -35,6 +35,11 @@ func newConnector(config configuration) messaging.Connector {
 
 func (this *defaultConnector) Connect(ctx context.Context) (messaging.Connection, error) {
 	hostAddress, config := this.configuration()
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline { // bound the whole dial and AMQP handshake
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, this.config.CommitTimeout)
+		defer cancel()
+	}
 
 	var encryption = "plaintext"
 	if this.broker.Address.Scheme == "amqps" {
@@ -51,6 +56,7 @@ func (this *defaultConnector) Connect(ctx context.Context) (messaging.Connection
 
 	amqpConnection, err := this.inner.Connect(ctx, socket, config)
 	if err != nil {
+		_ = socket.Close() // the AMQP handshake failed; do not leak the socket
 		this.logger.Printf("[WARN] Unable to connect [%s].", err)
 		this.config.Monitor.ConnectionOpened(err)
 		return nil, err

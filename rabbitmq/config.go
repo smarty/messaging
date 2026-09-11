@@ -90,14 +90,17 @@ func sanitizeHeartbeat(value time.Duration) time.Duration {
 	return value
 }
 
-// CommitTimeout bounds how long a CommitWriter waits for the broker to
-// acknowledge a transaction commit or rollback. When the bound elapses, the
-// writer logs a warning, closes the connection it belongs to (which is what
-// makes the pending call return), and returns ErrCommitTimeout. Every channel
-// on that connection is lost, so share a connection between a consumer and a
-// transactional writer only if the consumer can tolerate a reconnect. A zero
-// or negative value is replaced with the default, so the bound cannot be
-// disabled by accident.
+// CommitTimeout bounds every wait on the broker: a transaction commit or
+// rollback, a publish, an acknowledgement, a channel close, and the connect
+// handshake when the caller's context has no deadline. When the bound
+// elapses, the library logs a warning, closes the connection the operation
+// belongs to (which is what makes the pending call return), and returns the
+// matching sentinel (ErrCommitTimeout, ErrPublishTimeout,
+// ErrAcknowledgeTimeout, ErrCloseTimeout). Every channel on that connection
+// is lost, so share a connection between a consumer and a transactional
+// writer only if the consumer can tolerate a reconnect. A zero or negative
+// value is replaced with the default, so the bound cannot be disabled by
+// accident.
 func (singleton) CommitTimeout(value time.Duration) option {
 	return func(this *configuration) { this.CommitTimeout = sanitizeCommitTimeout(value) }
 }

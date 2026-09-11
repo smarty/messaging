@@ -79,7 +79,7 @@ func (this *defaultConnection) Reader(_ context.Context) (messaging.Reader, erro
 		this.logger.Printf("[WARN] Unable able open read channel [%s].", err)
 		return nil, err
 	} else {
-		return newReader(channel, this.config), nil
+		return newReader(channel, this.Close, this.config), nil
 	}
 }
 
