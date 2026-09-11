@@ -26,13 +26,13 @@ type tlsDialer struct {
 }
 
 func newTLSDialer(dialer netDialer, config configuration) netDialer {
-	return tlsDialer{netDialer: dialer, endpoint: config.Endpoint, client: config.TLSClient, timeout: config.CommitTimeout}
+	return tlsDialer{netDialer: dialer, endpoint: config.Endpoint, client: config.TLSClient, timeout: config.BrokerTimeout}
 }
 
 // DialContext dials and, for amqps, completes the TLS handshake. A peer that
 // accepts TCP and then never answers the handshake would otherwise hang the
 // caller forever, so the handshake runs under the caller's deadline, or under
-// CommitTimeout when the caller set none.
+// BrokerTimeout when the caller set none.
 func (this tlsDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc

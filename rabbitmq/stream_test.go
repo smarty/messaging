@@ -51,7 +51,7 @@ func (this *StreamFixture) initializeStream() {
 	this.streamID = "streamID"
 	this.streamName = "streamName"
 	this.stream = newStream(this, this.deliveries, this.streamID, this.streamName, this.exclusiveStream, this.sever,
-		configuration{Logger: this, Monitor: nop{}, CommitTimeout: time.Millisecond * 5})
+		configuration{Logger: this, Monitor: nop{}, BrokerTimeout: time.Millisecond * 5})
 }
 func (this *StreamFixture) Printf(format string, args ...any) {
 	_, _ = fmt.Fprintf(&this.log, format+"\n", args...)

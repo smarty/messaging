@@ -51,7 +51,7 @@ func (this *DialerFixture) initializeTLSDialer() {
 		Options.Address(this.brokerAddress),
 		Options.TLSConfig(this.tlsConfig),
 		Options.TLSClient(this.tlsClient),
-		Options.CommitTimeout(time.Millisecond*5),
+		Options.BrokerTimeout(time.Millisecond*5),
 	)(&config)
 	this.dialer = newTLSDialer(this, config)
 }

@@ -61,7 +61,7 @@ func newStream(channel adapter.Channel, deliveries <-chan amqp.Delivery, id, nam
 		streamName: name,
 		batchAck:   exclusive,
 		sever:      sever,
-		timeout:    config.CommitTimeout,
+		timeout:    config.BrokerTimeout,
 		logger:     config.Logger,
 		monitor:    config.Monitor,
 	}

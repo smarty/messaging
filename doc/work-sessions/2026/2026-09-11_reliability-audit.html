@@ -227,7 +227,7 @@
 
 <h3><span class="chip ok">Fixed · 4ab7ec8</span> H9. The remaining unbounded waits in <code>rabbitmq</code> <span class="ref">writer.go:37-58 &middot; stream.go:72-77 &middot; tls_dialer.go:45 &middot; adapter/amqp.go:21 &middot; stream.go:98 &middot; reader.go:123</span></h3>
 <div class="finding high">
-  <p><code>CommitTimeout</code> bounds <code>TxCommit</code> and <code>TxRollback</code>. Everything else that can park on the
+  <p><code>BrokerTimeout</code> bounds <code>TxCommit</code> and <code>TxRollback</code>. Everything else that can park on the
   broker is still unbounded. <code>Write</code> discards its context and blocks in the kernel socket write once the
   send buffer fills; under a broker resource alarm a writer with a backlog stalls with no <code>WARN</code> cycle and no
   <code>ErrCommitTimeout</code>, because the stall never reaches the commit. <code>Acknowledge</code> checks the context
@@ -238,7 +238,7 @@
   <code>Reader.Close</code>/<code>Writer.Close</code> (<code>channel.close</code>) are synchronous RPCs that callers run
   <em>before</em> the bounded connection close, so a graceful shutdown on a stuck channel hangs until SIGKILL.</p>
   <p class="remedy"><strong>Remedy</strong> Apply the same timer-plus-sever pattern to <code>Publish</code> and <code>Ack</code>,
-  defaulting to <code>CommitTimeout</code>. Set a socket deadline before the TLS handshake and <code>amqp.Open</code>,
+  defaulting to <code>BrokerTimeout</code>. Set a socket deadline before the TLS handshake and <code>amqp.Open</code>,
   and use <code>HandshakeContext</code>. Use <code>noWait=true</code> for cancel, and skip or bound channel close when the
   connection is about to close anyway.</p>
 </div>

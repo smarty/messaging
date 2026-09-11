@@ -56,7 +56,7 @@ func (this *WriterFixture) initializeWriter() {
 	Options.apply(
 		Options.Now(func() time.Time { return this.now }),
 		Options.PanicOnTopologyError(this.panicOnTopologyFailure),
-		Options.CommitTimeout(5*time.Millisecond),
+		Options.BrokerTimeout(5*time.Millisecond),
 		Options.Logger(this),
 		Options.Monitor(this),
 	)(&config)

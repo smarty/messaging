@@ -22,7 +22,7 @@ This release bounds each of those waits.
 
 | Package    | Option                            | Default        |
 |------------|-----------------------------------|----------------|
-| `rabbitmq` | `Options.CommitTimeout`           | 30 seconds     |
+| `rabbitmq` | `Options.BrokerTimeout`           | 30 seconds     |
 | `sqlmq`    | `Options.HandoffTimeout`          | 10 seconds     |
 | `sqlmq`    | `Options.DeferredHandoffCapacity` | 8192 messages  |
 
@@ -30,7 +30,7 @@ Each option replaces a zero or negative value with its default. A computed or
 misparsed value cannot disable a bound.
 
 ```go
-rabbitmq.New(rabbitmq.Options.CommitTimeout(30 * time.Second))
+rabbitmq.New(rabbitmq.Options.BrokerTimeout(30 * time.Second))
 
 sqlmq.New(transport,
     sqlmq.Options.HandoffTimeout(10*time.Second),
@@ -52,7 +52,7 @@ The probe now opens a transactional writer, publishes, and commits.
 `tx.commit` is synchronous: the broker either answers or closes the channel
 with the reason, inside the same probe. A 403 or 404 on the probe topic is
 now a definitive error, reported at once. The commit is bounded by
-`rabbitmq.Options.CommitTimeout`, so the probe also detects the stall the
+`rabbitmq.Options.BrokerTimeout`, so the probe also detects the stall the
 2026-09-10 incident produced when it lands on the probe topic. The rabbitmq
 writer panics on a 404 at commit when `PanicOnTopologyError` is on; the
 probe converts that panic into the definitive error instead of crashing the
@@ -114,7 +114,7 @@ you upgrade. A service that never sets `Expiration` is unaffected.
 ## `rabbitmq`: bounded transaction commit and rollback
 
 `CommitWriter.Commit` and `CommitWriter.Rollback` now wait at most
-`CommitTimeout` for the broker to answer. When the limit passes, the writer
+`BrokerTimeout` for the broker to answer. When the limit passes, the writer
 does three things:
 
 1. It logs `[WARN] AMQP transaction commit did not complete within [30s];
@@ -132,7 +132,7 @@ commit error. No new code is necessary in a service.
 
 ### Every broker wait is now bounded
 
-`CommitTimeout` bounds more than the commit. The same timer-and-sever pattern
+`BrokerTimeout` bounds more than the commit. The same timer-and-sever pattern
 now covers:
 
 - **Publish.** `Write` blocked in the socket write once a broker under a
@@ -147,7 +147,7 @@ now covers:
 - **Connect.** The TLS handshake and the AMQP handshake set no deadline, so a
   peer that accepted TCP and then hung (an auth backend that never answers)
   parked every reconnect loop and the status probe forever. Both now run
-  under the caller's deadline, or under `CommitTimeout` when the caller set
+  under the caller's deadline, or under `BrokerTimeout` when the caller set
   none, and a failed AMQP handshake closes the socket instead of leaking it.
 
 ### Effect on shared connections

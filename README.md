@@ -306,7 +306,7 @@ acknowledged without reaching the handler.
 `status.New(status.Options.Connector(transport))` returns a `Checker` whose `Status(ctx) error` publishes
 one empty message to a probe topic (`amq.direct` by default) inside an AMQP transaction and commits it.
 The commit is synchronous, so a fault on the probe topic surfaces in the same probe, and it is bounded by
-`rabbitmq.Options.CommitTimeout`, so a stalled broker fails the probe within that bound. Wire it to your
+`rabbitmq.Options.BrokerTimeout`, so a stalled broker fails the probe within that bound. Wire it to your
 `/status` endpoint, and always pass a context with a deadline.
 
 The checker tolerates failures inside a window (`Options.FailureTolerance`, default 30 seconds). While
@@ -326,7 +326,7 @@ default, so a bound cannot be disabled by accident.
 
 | Package    | Option                            | Default       | Bounds                                                                 |
 |------------|-----------------------------------|---------------|------------------------------------------------------------------------|
-| `rabbitmq` | `Options.CommitTimeout`           | 30 seconds    | Every wait on the broker: commit, rollback, publish, acknowledge, channel close, and the connect handshake. |
+| `rabbitmq` | `Options.BrokerTimeout`           | 30 seconds    | Every wait on the broker: commit, rollback, publish, acknowledge, channel close, and the connect handshake. |
 | `rabbitmq` | `Options.Heartbeat`               | 10 seconds    | How long a dead socket goes unnoticed (about 1.5 times this value).   |
 | `sqlmq`    | `Options.HandoffTimeout`          | 10 seconds    | The wait, after the SQL commit, to hand messages to the dispatcher.    |
 | `sqlmq`    | `Options.DeferredHandoffCapacity` | 8192 messages | The messages that background handoffs may hold in memory at one time.  |

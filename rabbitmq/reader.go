@@ -121,5 +121,5 @@ func (this *defaultReader) Close() error {
 	}
 
 	this.streams = this.streams[0:0]
-	return awaitBroker(this.logger, "channel close", this.config.CommitTimeout, this.sever, ErrCloseTimeout, this.inner.Close)
+	return awaitBroker(this.logger, "channel close", this.config.BrokerTimeout, this.sever, ErrCloseTimeout, this.inner.Close)
 }

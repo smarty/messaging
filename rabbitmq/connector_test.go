@@ -67,7 +67,7 @@ func (this *ConnectorFixture) TestWhenConnectingToBroker_UseDialedNetworkConnect
 
 	this.So(this.dialContext.Value(connectMarker{}), should.Equal, true)
 	_, bounded := this.dialContext.Deadline()
-	this.So(bounded, should.BeTrue) // no caller deadline: the handshake is bounded by CommitTimeout
+	this.So(bounded, should.BeTrue) // no caller deadline: the handshake is bounded by BrokerTimeout
 	this.So(this.dialNetwork, should.Equal, "tcp")
 	this.So(this.dialAddress, should.Equal, "localhost:5672")
 
@@ -139,7 +139,7 @@ func (this *ConnectorFixture) TestWhenNoCredentialsFound_ConnectUsingDefaultCred
 
 	this.So(this.dialContext.Value(connectMarker{}), should.Equal, true)
 	_, bounded := this.dialContext.Deadline()
-	this.So(bounded, should.BeTrue) // no caller deadline: the handshake is bounded by CommitTimeout
+	this.So(bounded, should.BeTrue) // no caller deadline: the handshake is bounded by BrokerTimeout
 	this.So(this.dialNetwork, should.Equal, "tcp")
 	this.So(this.dialAddress, should.Equal, "localhost:5672")
 

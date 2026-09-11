@@ -250,7 +250,7 @@ func (this *ConnectionFixture) TestWhenConnectionClosesWhileBlocked_ReportUnbloc
 
 func (this *ConnectionFixture) TestWhenCommitWriterTimesOut_CloseConnectionExactlyOnceAndNotifyMonitor() {
 	monitor := &closingMonitor{calls: make(chan string, 4)}
-	this.connection = this.open(configuration{Monitor: monitor, Logger: nop{}, CommitTimeout: time.Millisecond * 5})
+	this.connection = this.open(configuration{Monitor: monitor, Logger: nop{}, BrokerTimeout: time.Millisecond * 5})
 	writer, _ := this.connection.CommitWriter(context.Background())
 
 	err := writer.Commit()

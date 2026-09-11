@@ -15,7 +15,7 @@ import (
 type defaultWriter struct {
 	inner         adapter.Channel
 	sever         func() error // closes the parent connection, which makes a pending synchronous call return
-	commitTimeout time.Duration
+	brokerTimeout time.Duration
 	topologyPanic bool
 	now           func() time.Time
 	logger        logger
@@ -27,7 +27,7 @@ func newWriter(inner adapter.Channel, sever func() error, config configuration) 
 	return defaultWriter{
 		inner:         inner,
 		sever:         sever,
-		commitTimeout: config.CommitTimeout,
+		brokerTimeout: config.BrokerTimeout,
 		topologyPanic: config.TopologyFailurePanic,
 		now:           config.Now,
 		logger:        config.Logger,
@@ -37,7 +37,7 @@ func newWriter(inner adapter.Channel, sever func() error, config configuration) 
 
 // Write publishes each dispatch. Publishes are asynchronous, but the socket
 // write behind them blocks with no deadline once a broker under a resource
-// alarm stops reading, so the whole batch is bounded by CommitTimeout. On
+// alarm stops reading, so the whole batch is bounded by BrokerTimeout. On
 // timeout the connection is severed and the batch reports zero written so
 // the caller retries all of it.
 func (this defaultWriter) Write(_ context.Context, messages ...messaging.Dispatch) (count int, err error) {
@@ -158,7 +158,7 @@ func (this defaultWriter) Rollback() error {
 }
 
 func (this defaultWriter) await(operation string, timeoutErr error, call func() error) error {
-	return awaitBroker(this.logger, operation, this.commitTimeout, this.sever, timeoutErr, call)
+	return awaitBroker(this.logger, operation, this.brokerTimeout, this.sever, timeoutErr, call)
 }
 func (this defaultWriter) tryPanic(err error) error {
 	if !this.topologyPanic {

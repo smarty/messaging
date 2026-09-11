@@ -24,19 +24,19 @@ func (this *ConfigFixture) TestWhenCallingDefaultTLSConnector_UseStandardLibrary
 	this.So(conn, should.HaveSameTypeAs, &tls.Conn{})
 }
 
-func (this *ConfigFixture) TestWhenCommitTimeoutNotSpecified_UseDefault() {
+func (this *ConfigFixture) TestWhenBrokerTimeoutNotSpecified_UseDefault() {
 	Options.apply()(&this.config)
-	this.So(this.config.CommitTimeout, should.Equal, 30*time.Second)
+	this.So(this.config.BrokerTimeout, should.Equal, 30*time.Second)
 }
-func (this *ConfigFixture) TestWhenCommitTimeoutZero_UseDefault() {
-	Options.apply(Options.CommitTimeout(0))(&this.config)
-	this.So(this.config.CommitTimeout, should.Equal, defaultCommitTimeout)
+func (this *ConfigFixture) TestWhenBrokerTimeoutZero_UseDefault() {
+	Options.apply(Options.BrokerTimeout(0))(&this.config)
+	this.So(this.config.BrokerTimeout, should.Equal, defaultBrokerTimeout)
 }
-func (this *ConfigFixture) TestWhenCommitTimeoutNegative_UseDefault() {
-	Options.apply(Options.CommitTimeout(-time.Second))(&this.config)
-	this.So(this.config.CommitTimeout, should.Equal, defaultCommitTimeout)
+func (this *ConfigFixture) TestWhenBrokerTimeoutNegative_UseDefault() {
+	Options.apply(Options.BrokerTimeout(-time.Second))(&this.config)
+	this.So(this.config.BrokerTimeout, should.Equal, defaultBrokerTimeout)
 }
-func (this *ConfigFixture) TestWhenCommitTimeoutPositive_KeepValue() {
-	Options.apply(Options.CommitTimeout(time.Minute))(&this.config)
-	this.So(this.config.CommitTimeout, should.Equal, time.Minute)
+func (this *ConfigFixture) TestWhenBrokerTimeoutPositive_KeepValue() {
+	Options.apply(Options.BrokerTimeout(time.Minute))(&this.config)
+	this.So(this.config.BrokerTimeout, should.Equal, time.Minute)
 }

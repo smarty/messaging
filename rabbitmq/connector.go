@@ -37,7 +37,7 @@ func (this *defaultConnector) Connect(ctx context.Context) (messaging.Connection
 	hostAddress, config := this.configuration()
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline { // bound the whole dial and AMQP handshake
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, this.config.CommitTimeout)
+		ctx, cancel = context.WithTimeout(ctx, this.config.BrokerTimeout)
 		defer cancel()
 	}
 

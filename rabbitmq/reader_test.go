@@ -52,7 +52,7 @@ func (this *ReaderFixture) initializeReader() {
 	config := configuration{}
 	Options.apply(
 		Options.PanicOnTopologyError(this.configPanicOnTopologyFailure),
-		Options.CommitTimeout(time.Millisecond*5),
+		Options.BrokerTimeout(time.Millisecond*5),
 	)(&config)
 	this.reader = newReader(this, this.sever, config)
 }
