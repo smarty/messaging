@@ -28,12 +28,16 @@ func (this *defaultConnectionPool) Active(ctx context.Context) (_ messaging.Conn
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
-	if this.connection != nil {
+	if this.connection != nil && !isClosed(this.connection) {
 		return this.connection, nil
 	}
 
 	this.connection, err = this.connector.Connect(ctx)
 	return this.connection, err
+}
+func isClosed(connection messaging.Connection) bool {
+	reporter, ok := connection.(closedReporter)
+	return ok && reporter.Closed()
 }
 func (this *defaultConnectionPool) Dispose(connection messaging.Connection) {
 	if connection == nil {
@@ -43,7 +47,7 @@ func (this *defaultConnectionPool) Dispose(connection messaging.Connection) {
 	_ = connection.Close()
 
 	this.mutex.Lock()
-	this.mutex.Unlock()
+	defer this.mutex.Unlock()
 
 	if this.connection == connection {
 		this.connection = nil

@@ -29,6 +29,9 @@ type StatusFixture struct {
 	writerError  error
 	writeCalls   int
 	writeError   error
+	commitCalls  int
+	commitError  error
+	commitPanic  any
 	closeCalls   int
 	writeGate    chan struct{} // when non-nil, Write parks here until Close severs it
 	gateClosed   bool
@@ -101,6 +104,44 @@ func (this *StatusFixture) TestWhenWriteFailsWithPasswordError_ReturnUnderlyingE
 	err := this.checker.Status(this.ctx)
 
 	this.So(err, should.Equal, this.writeError)
+}
+
+func (this *StatusFixture) TestWhenProbing_PublishInsideATransactionAndCommit() {
+	err := this.checker.Status(this.ctx)
+
+	this.So(err, should.BeNil)
+	this.So(this.writeCalls, should.Equal, 1)
+	this.So(this.commitCalls, should.Equal, 1)
+}
+func (this *StatusFixture) TestWhenCommitFailsWithMissingExchange_ReportItAtOnceAndDiscardTheConnection() {
+	this.checker = this.newChecker(Options.FailureTolerance(time.Second * 30))
+	this.commitError = &amqp.Error{Code: amqp.NotFound, Reason: "NOT_FOUND - no exchange 'status-topic'"}
+
+	err := this.checker.Status(this.ctx)
+
+	this.So(err, should.Equal, this.commitError) // a configuration fault: no retry can fix it
+	this.So(this.closeCalls, should.Equal, 2)
+}
+func (this *StatusFixture) TestWhenCommitPanicsOnATopologyError_ReturnTheErrorInsteadOfCrashing() {
+	this.checker = this.newChecker(Options.FailureTolerance(time.Second * 30))
+	this.commitPanic = &amqp.Error{Code: amqp.NotFound, Reason: "NOT_FOUND - no exchange 'status-topic'"}
+
+	var err error
+	this.So(func() { err = this.checker.Status(this.ctx) }, should.NotPanic)
+
+	this.So(err, should.Equal, this.commitPanic)
+	this.So(this.closeCalls, should.Equal, 2)
+}
+func (this *StatusFixture) TestWhenCommitFailsTransiently_ToleratedWithinTheWindow() {
+	this.checker = this.newChecker(Options.FailureTolerance(time.Second * 30))
+	this.commitError = errors.New("commit timed out")
+
+	first := this.checker.Status(this.ctx)
+	this.advance(time.Second * 30)
+	second := this.checker.Status(this.ctx)
+
+	this.So(first, should.BeNil)
+	this.So(second, should.Equal, this.commitError)
 }
 
 func (this *StatusFixture) TestWhenWriteSucceeds_ReturnNilAndReuseCachedConnection() {
@@ -216,11 +257,22 @@ func (this *StatusFixture) Connect(_ context.Context) (messaging.Connection, err
 	return this, nil
 }
 func (this *StatusFixture) Writer(_ context.Context) (messaging.Writer, error) {
+	panic("the probe must use a transactional writer so channel-level faults surface at commit")
+}
+func (this *StatusFixture) CommitWriter(_ context.Context) (messaging.CommitWriter, error) {
 	if this.writerError != nil {
 		return nil, this.writerError
 	}
 	return this, nil
 }
+func (this *StatusFixture) Commit() error {
+	this.commitCalls++
+	if this.commitPanic != nil {
+		panic(this.commitPanic)
+	}
+	return this.commitError
+}
+func (this *StatusFixture) Rollback() error { return nil }
 func (this *StatusFixture) Write(_ context.Context, dispatches ...messaging.Dispatch) (int, error) {
 	this.writeCalls++
 	if this.writeGate != nil {
@@ -242,6 +294,3 @@ func (this *StatusFixture) Close() error {
 }
 
 func (this *StatusFixture) Reader(_ context.Context) (messaging.Reader, error) { panic("nop") }
-func (this *StatusFixture) CommitWriter(_ context.Context) (messaging.CommitWriter, error) {
-	panic("nop")
-}

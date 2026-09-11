@@ -40,10 +40,11 @@ type ConnectorFixture struct {
 	connectError   error
 
 	callsToClose int
+	closing      chan *amqp.Error
 }
 
 func (this *ConnectorFixture) Setup() {
-	this.ctx = context.Background()
+	this.ctx = context.WithValue(context.Background(), connectMarker{}, true)
 	this.brokerAddress = "amqp://my-username:my-password@localhost:5672/my-vhost"
 	this.initializeConnector()
 }
@@ -64,11 +65,13 @@ func (this *ConnectorFixture) TestWhenConnectingToBroker_UseDialedNetworkConnect
 	this.So(connection, should.HaveSameTypeAs, &defaultConnection{})
 	this.So(err, should.BeNil)
 
-	this.So(this.dialContext, should.Equal, this.ctx)
+	this.So(this.dialContext.Value(connectMarker{}), should.Equal, true)
+	_, bounded := this.dialContext.Deadline()
+	this.So(bounded, should.BeTrue) // no caller deadline: the handshake is bounded by BrokerTimeout
 	this.So(this.dialNetwork, should.Equal, "tcp")
 	this.So(this.dialAddress, should.Equal, "localhost:5672")
 
-	this.So(this.connectContext, should.Equal, this.ctx)
+	this.So(this.connectContext.Value(connectMarker{}), should.Equal, true)
 	this.So(this.connectSocket, should.Equal, this)
 	this.So(this.connectConfig, should.Equal, adapter.Config{
 		Username:    "my-username",
@@ -134,11 +137,13 @@ func (this *ConnectorFixture) TestWhenNoCredentialsFound_ConnectUsingDefaultCred
 	this.So(connection, should.NotBeNil)
 	this.So(err, should.BeNil)
 
-	this.So(this.dialContext, should.Equal, this.ctx)
+	this.So(this.dialContext.Value(connectMarker{}), should.Equal, true)
+	_, bounded := this.dialContext.Deadline()
+	this.So(bounded, should.BeTrue) // no caller deadline: the handshake is bounded by BrokerTimeout
 	this.So(this.dialNetwork, should.Equal, "tcp")
 	this.So(this.dialAddress, should.Equal, "localhost:5672")
 
-	this.So(this.connectContext, should.Equal, this.ctx)
+	this.So(this.connectContext.Value(connectMarker{}), should.Equal, true)
 	this.So(this.connectSocket, should.Equal, this)
 	this.So(this.connectConfig, should.Equal, adapter.Config{
 		Username:    "guest",
@@ -172,8 +177,51 @@ func (this *ConnectorFixture) TestCloseInvokesCloseOnAllTrackedConnections() {
 
 	this.So(this.callsToClose, should.Equal, 1)
 }
+func (this *ConnectorFixture) TestWhenAConnectionIsClosed_ItIsNoLongerTracked() {
+	connection, _ := this.connector.Connect(context.Background())
+	_, _ = this.connector.Connect(context.Background())
+
+	_ = connection.Close()
+
+	this.So(this.tracked(), should.Equal, 1)
+	_ = this.connector.Close()
+	this.So(this.callsToClose, should.Equal, 2) // the closed one is not closed again
+}
+func (this *ConnectorFixture) TestWhenTheBrokerClosesAConnection_ItIsNoLongerTracked() {
+	_, _ = this.connector.Connect(context.Background())
+
+	this.closing <- &amqp.Error{Code: amqp.ConnectionForced, Reason: "CONNECTION_FORCED"}
+
+	this.So(eventually(func() bool { return this.tracked() == 0 }), should.BeTrue)
+}
+func (this *ConnectorFixture) tracked() int {
+	connector := this.connector.(*defaultConnector)
+	connector.mutex.Lock()
+	defer connector.mutex.Unlock()
+	return len(connector.active)
+}
+func eventually(condition func() bool) bool {
+	deadline := time.Now().Add(time.Millisecond * 100)
+	for time.Now().Before(deadline) {
+		if condition() {
+			return true
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return condition()
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+func (this *ConnectorFixture) TestWhenCallerContextHasADeadline_UseItForTheHandshake() {
+	ctx, cancel := context.WithTimeout(this.ctx, time.Minute)
+	defer cancel()
+
+	_, _ = this.connector.Connect(ctx)
+
+	this.So(this.dialContext, should.Equal, ctx)
+	this.So(this.connectContext, should.Equal, ctx)
+}
 
 func (this *ConnectorFixture) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	this.dialContext = ctx
@@ -188,7 +236,11 @@ func (this *ConnectorFixture) Connect(ctx context.Context, socket net.Conn, conf
 	return this, this.connectError
 }
 
-func (this *ConnectorFixture) Close() error                               { this.callsToClose++; return nil }
+func (this *ConnectorFixture) Close() error { this.callsToClose++; return nil }
+func (this *ConnectorFixture) CloseNotifications() <-chan *amqp.Error {
+	this.closing = make(chan *amqp.Error, 1)
+	return this.closing
+}
 func (this *ConnectorFixture) Channel() (adapter.Channel, error)          { panic("nop") }
 func (this *ConnectorFixture) BlockedNotifications() <-chan amqp.Blocking { return nil }
 
@@ -200,3 +252,5 @@ func (this *ConnectorFixture) RemoteAddr() net.Addr               { panic("nop")
 func (this *ConnectorFixture) SetDeadline(t time.Time) error      { panic("nop") }
 func (this *ConnectorFixture) SetReadDeadline(t time.Time) error  { panic("nop") }
 func (this *ConnectorFixture) SetWriteDeadline(t time.Time) error { panic("nop") }
+
+type connectMarker struct{}

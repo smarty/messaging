@@ -15,6 +15,7 @@ import (
 type defaultReader struct {
 	streams []io.Closer
 	inner   adapter.Channel
+	sever   func() error // closes the parent connection; the only way to unblock a channel RPC that the broker never answers
 	config  configuration
 	mutex   sync.Mutex
 	counter uint64
@@ -23,8 +24,8 @@ type defaultReader struct {
 	hasExclusiveStream bool
 }
 
-func newReader(inner adapter.Channel, config configuration) messaging.Reader {
-	return &defaultReader{inner: inner, config: config, logger: config.Logger}
+func newReader(inner adapter.Channel, sever func() error, config configuration) messaging.Reader {
+	return &defaultReader{inner: inner, sever: sever, config: config, logger: config.Logger}
 }
 func (this *defaultReader) Stream(_ context.Context, settings messaging.StreamConfig) (messaging.Stream, error) {
 	this.mutex.Lock()
@@ -57,7 +58,7 @@ func (this *defaultReader) Stream(_ context.Context, settings messaging.StreamCo
 	}
 
 	this.logger.Printf("[INFO] Consumer opened for queue [%s], awaiting messages...", settings.StreamName)
-	stream := newStream(this.inner, deliveries, streamID, settings.StreamName, settings.ExclusiveStream, this.config)
+	stream := newStream(this.inner, deliveries, streamID, settings.StreamName, settings.ExclusiveStream, this.sever, this.config)
 	this.counter++
 	this.streams = append(this.streams, stream)
 	this.hasExclusiveStream = this.hasExclusiveStream || settings.ExclusiveStream
@@ -120,5 +121,5 @@ func (this *defaultReader) Close() error {
 	}
 
 	this.streams = this.streams[0:0]
-	return this.inner.Close()
+	return awaitBroker(this.logger, "channel close", this.config.BrokerTimeout, this.sever, ErrCloseTimeout, this.inner.Close)
 }

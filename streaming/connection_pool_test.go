@@ -3,6 +3,7 @@ package streaming
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/smarty/gunit"
@@ -90,6 +91,41 @@ func (this *ConnectionPoolFixture) TestWhenReleasingPriorConnection_ItShouldStil
 	this.So(this.connectCount, should.Equal, 2)
 }
 
+func (this *ConnectionPoolFixture) TestWhenDisposingAndActivatingConcurrently_NoDataRace() {
+	first, _ := this.pool.Active(this.ctx)
+	var waiter sync.WaitGroup
+	waiter.Add(2)
+
+	go func() {
+		defer waiter.Done()
+		for i := 0; i < 100; i++ {
+			this.pool.Dispose(first)
+		}
+	}()
+	go func() {
+		defer waiter.Done()
+		for i := 0; i < 100; i++ {
+			_, _ = this.pool.Active(this.ctx)
+		}
+	}()
+	waiter.Wait()
+
+	current, _ := this.pool.Active(this.ctx)
+	this.So(current, should.NotBeNil)
+	this.So(current, should.NotEqual, first)
+}
+
+func (this *ConnectionPoolFixture) TestWhenCachedConnectionReportsClosed_ActiveReplacesIt() {
+	first, _ := this.pool.Active(this.ctx)
+	this.opened[0].closed = true
+
+	second, err := this.pool.Active(this.ctx)
+
+	this.So(err, should.BeNil)
+	this.So(second, should.NotEqual, first)
+	this.So(this.connectCount, should.Equal, 2)
+}
+
 func (this *ConnectionPoolFixture) TestWhenClosing_ReleaseCurrentConnectionIfAny() {
 	_, _ = this.pool.Active(this.ctx)
 
@@ -117,7 +153,10 @@ func (this *ConnectionPoolFixture) Close() error {
 
 type fakeConnection struct {
 	closeCount int
+	closed     bool
 }
+
+func (this *fakeConnection) Closed() bool { return this.closed }
 
 func (this *fakeConnection) Close() error {
 	this.closeCount++

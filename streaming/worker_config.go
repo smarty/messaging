@@ -2,6 +2,7 @@ package streaming
 
 import (
 	"context"
+	"time"
 
 	"github.com/smarty/messaging/v4"
 )
@@ -14,4 +15,7 @@ type workerConfig struct {
 	Handler      messaging.Handler
 	SoftContext  context.Context
 	HardContext  context.Context
+	Logger       logger
+	Monitor      monitor
+	Now          func() time.Time
 }

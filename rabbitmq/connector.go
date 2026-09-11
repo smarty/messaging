@@ -35,6 +35,11 @@ func newConnector(config configuration) messaging.Connector {
 
 func (this *defaultConnector) Connect(ctx context.Context) (messaging.Connection, error) {
 	hostAddress, config := this.configuration()
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline { // bound the whole dial and AMQP handshake
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, this.config.BrokerTimeout)
+		defer cancel()
+	}
 
 	var encryption = "plaintext"
 	if this.broker.Address.Scheme == "amqps" {
@@ -51,16 +56,32 @@ func (this *defaultConnector) Connect(ctx context.Context) (messaging.Connection
 
 	amqpConnection, err := this.inner.Connect(ctx, socket, config)
 	if err != nil {
+		_ = socket.Close() // the AMQP handshake failed; do not leak the socket
 		this.logger.Printf("[WARN] Unable to connect [%s].", err)
 		this.config.Monitor.ConnectionOpened(err)
 		return nil, err
 	}
 
 	this.logger.Printf("[INFO] Established [%s] AMQP connection with user [%s] to [%s://%s] using virtual host [%s].", encryption, config.Username, this.broker.Address.Scheme, hostAddress, config.VirtualHost)
+	connection := newConnection(amqpConnection, this.config, this.release)
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
-	this.active = append(this.active, newConnection(amqpConnection, this.config))
-	return this.active[len(this.active)-1], nil
+	this.active = append(this.active, connection)
+	return connection, nil
+}
+
+// release forgets a connection once it has closed, however it closed. Without
+// this every reconnect during an outage leaked a closed connection for the
+// life of the process.
+func (this *defaultConnector) release(closed *defaultConnection) {
+	this.mutex.Lock()
+	defer this.mutex.Unlock()
+	for i, connection := range this.active {
+		if connection == closed {
+			this.active = append(this.active[:i], this.active[i+1:]...)
+			return
+		}
+	}
 }
 func (this *defaultConnector) configuration() (string, adapter.Config) {
 	query := this.broker.Address.Query()
@@ -103,13 +124,13 @@ func coalesce(values ...string) string {
 
 func (this *defaultConnector) Close() error {
 	this.mutex.Lock()
-	defer this.mutex.Unlock()
+	active := this.active
+	this.active = nil
+	this.mutex.Unlock() // each Close calls back into release, which takes the lock
 
-	for i := range this.active {
-		_ = this.active[i].Close()
-		this.active[i] = nil
+	for _, connection := range active {
+		_ = connection.Close()
 	}
-	this.active = this.active[0:0]
 
 	return nil
 }

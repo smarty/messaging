@@ -1,0 +1,499 @@
+<title>Messaging v4 Reliability Audit</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #1a1f27; --muted: #5b6572; --paper: #ffffff; --panel: #f6f8fa; --border: #d8dee5;
+    --accent: #0b5fa5; --code-bg: #f0f2f5;
+    --high-bg: #fdecea; --high-fg: #9c2f24; --med-bg: #fff4dc; --med-fg: #8a5a00;
+    --low-bg: #eef2f7; --low-fg: #3c4a5c; --good-bg: #eefaf0; --good-fg: #2c7a3d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ink: #e6e9ee; --muted: #9aa5b3; --paper: #12161c; --panel: #1a2029; --border: #2b3542;
+      --accent: #6fb1ea; --code-bg: #1f2731;
+      --high-bg: #3a1e1c; --high-fg: #f0a59c; --med-bg: #3a2e12; --med-fg: #f0c86a;
+      --low-bg: #232c38; --low-fg: #b9c4d2; --good-bg: #1b2f22; --good-fg: #8fd39e;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ink: #e6e9ee; --muted: #9aa5b3; --paper: #12161c; --panel: #1a2029; --border: #2b3542;
+    --accent: #6fb1ea; --code-bg: #1f2731;
+    --high-bg: #3a1e1c; --high-fg: #f0a59c; --med-bg: #3a2e12; --med-fg: #f0c86a;
+    --low-bg: #232c38; --low-fg: #b9c4d2; --good-bg: #1b2f22; --good-fg: #8fd39e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto; max-width: 62rem; padding-block: 2.5rem 5rem; padding-inline: 1.5rem;
+    background: var(--paper); color: var(--ink);
+    font-family: "Charter", "Georgia", "Times New Roman", serif; font-size: 17px; line-height: 1.55;
+  }
+  h1, h2, h3, h4, .sans { font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; line-height: 1.2; text-wrap: balance; }
+  h1 { font-size: 1.9rem; margin: 0 0 0.3rem; }
+  h2 { font-size: 1.4rem; margin-top: 2.8rem; border-bottom: 2px solid var(--border); padding-bottom: 0.35rem; }
+  h3 { font-size: 1.05rem; margin: 1.8rem 0 0.4rem; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  h3 .ref { font-weight: 400; color: var(--muted); font-size: 0.8rem; }
+  .meta { color: var(--muted); font-size: 0.95rem; margin-bottom: 2rem; font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; }
+  p { max-width: 68ch; }
+  code, pre { font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace; font-size: 0.86em; }
+  code { background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
+  pre { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem 1.1rem; overflow-x: auto; line-height: 1.5; }
+  pre code { background: none; padding: 0; }
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.93rem; font-variant-numeric: tabular-nums; }
+  th, td { border: 1px solid var(--border); padding: 0.45rem 0.7rem; text-align: left; vertical-align: top; }
+  th { background: var(--panel); font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; font-size: 0.85rem; letter-spacing: 0.02em; text-transform: uppercase; }
+  .chip { display: inline-block; font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.1rem 0.45rem; border-radius: 3px; white-space: nowrap; }
+  .high { background: var(--high-bg); color: var(--high-fg); }
+  .med  { background: var(--med-bg);  color: var(--med-fg); }
+  .low  { background: var(--low-bg);  color: var(--low-fg); }
+  .ok   { background: var(--good-bg); color: var(--good-fg); }
+  .finding { border-left: 3px solid var(--border); padding-left: 1rem; margin: 0 0 1.4rem; }
+  .finding.high { border-left-color: var(--high-fg); background: none; color: var(--ink); }
+  .finding.med  { border-left-color: var(--med-fg);  background: none; color: var(--ink); }
+  .finding.low  { border-left-color: var(--low-fg);  background: none; color: var(--ink); }
+  .finding p { margin: 0.35rem 0; }
+  .remedy { font-size: 0.95rem; }
+  .remedy strong { font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; font-size: 0.78rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent); margin-right: 0.3rem; }
+  .callout { border-left: 4px solid var(--accent); background: var(--panel); padding: 0.8rem 1.1rem; border-radius: 0 8px 8px 0; margin: 1.2rem 0; }
+  .callout p { margin: 0.3rem 0; }
+  ul { padding-left: 1.2rem; } li { margin: 0.25rem 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.8rem; margin: 1rem 0; }
+  .tile { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 0.7rem 0.9rem; }
+  .tile .n { font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile .l { color: var(--muted); font-size: 0.85rem; }
+  a { color: var(--accent); }
+</style>
+
+<h1>Messaging v4 Reliability Audit</h1>
+<div class="meta">
+  <code>github.com/smarty/messaging/v4</code> &middot; branch <code>mikewhat/no-stalls</code> &middot; 2026-09-11 &middot;
+  Scope: every package, read-only, before the service migration wave.<br>
+  Method: four independent reviewers, one per area, each required to cite file and line and to trace the path.
+  The lead re-verified every High and the schema-level Mediums against the source.<br>
+  <strong>Status:</strong> all nine Highs and M9, M10, M11 are fixed, each in its own commit (chips below name the commit).
+  The remaining Mediums and Lows are open.
+</div>
+
+<div class="grid">
+  <div class="tile"><div class="n">9</div><div class="l">High: all nine fixed on this branch</div></div>
+  <div class="tile"><div class="n">19</div><div class="l">Medium: M9, M10, M11 fixed; 16 remain as follow-ups</div></div>
+  <div class="tile"><div class="n">14</div><div class="l">Low: hygiene, docs, footguns</div></div>
+  <div class="tile"><div class="n">1</div><div class="l">Doc error in this week's README, now fixed</div></div>
+</div>
+
+<div class="callout">
+  <p><strong>The shape of what was found.</strong> The v4.0 and v4.1 work bounded the waits that caused the September
+  incident. This sweep found the <em>next</em> ring of the same problem: places where a failure is swallowed, where
+  a bound still does not exist, and where the recovery path is less faithful than the hot path. Three findings
+  are shutdown or restart hazards that the v4.1.0 deferred handoff makes more likely, so they should ship in the
+  same release. One is a years-old data-loss bug unrelated to stalls: message TTL is sent in the wrong unit.</p>
+</div>
+
+<h2>1. Read this first: the nine Highs</h2>
+
+<div class="tablewrap">
+<table>
+  <tr><th>#</th><th>Package</th><th>Finding</th><th>Effort</th></tr>
+  <tr><td>H1</td><td><code>sqlmq</code></td><td>Closing the outbox channel at shutdown panics handlers and deferred goroutines still sending on it</td><td>Small · <span class="chip ok">fixed d1f5354</span></td></tr>
+  <tr><td>H2</td><td><code>rabbitmq</code></td><td>Message TTL is sent in seconds; the broker reads milliseconds. Messages with an expiration die 1000&times; early</td><td>Small · <span class="chip ok">fixed d4a1401</span></td></tr>
+  <tr><td>H3</td><td><code>streaming</code></td><td>A panic that escapes a handler hangs the worker forever with no log, holding its prefetch window</td><td>Small · <span class="chip ok">fixed 89ce69b</span></td></tr>
+  <tr><td>H4</td><td><code>streaming</code></td><td>One subscription failing closes the shared connection for every other subscription</td><td>Medium · <span class="chip ok">fixed bc3e221</span></td></tr>
+  <tr><td>H5</td><td><code>handlers/retry</code></td><td>Backoff overflows int64; with <code>MaxBackoff</code> set, a poison batch becomes a zero-delay hot loop after ~2.5 h</td><td>Small · <span class="chip ok">fixed e876203</span></td></tr>
+  <tr><td>H6</td><td><code>sqlmq</code></td><td>A permanent publish error stalls the whole outbox with no log line and no monitor callback</td><td>Small · <span class="chip ok">fixed 89897e0</span></td></tr>
+  <tr><td>H7</td><td><code>status</code></td><td>Channel-level 403/404 flap the probe every other call; "denied permission" is never reported</td><td>Medium · <span class="chip ok">fixed 422cc74</span></td></tr>
+  <tr><td>H8</td><td><code>sqlmq</code></td><td>Deferred handoff is bound to the caller's context; request-scoped callers strand rows until the next restart</td><td>Small · <span class="chip ok">fixed e38436a</span></td></tr>
+  <tr><td>H9</td><td><code>rabbitmq</code></td><td><code>Write</code>, <code>Ack</code>, connect handshake, and channel close are still unbounded</td><td>Medium · <span class="chip ok">fixed 4ab7ec8</span></td></tr>
+</table>
+</div>
+
+<h3><span class="chip ok">Fixed · d1f5354</span> H1. Send on closed outbox channel at shutdown <span class="ref">sqlmq/dispatch_processor.go:160 &middot; dispatch_receiver.go:95 &middot; deferred_handoffs.go:37</span></h3>
+<div class="finding high">
+  <p><code>cleanup</code> closes <code>config.Channel</code> as soon as <code>Listen</code> returns, which is
+  milliseconds after <code>Close</code>. Handlers still inside <code>Commit</code> (up to the consumer's 5 s drain)
+  and every deferred-handoff goroutine are sending on that channel. A send on a closed channel panics even inside
+  a <code>select</code>; the <code>ctx.Done()</code> case cannot rescue it, and for streaming handlers that context
+  is the hard context, which a graceful shutdown never cancels.</p>
+  <p>Two outcomes. A deferred goroutine panics in a bare goroutine and crashes the process mid-shutdown. A handler
+  panics inside <code>Commit</code> <em>after</em> the SQL commit, <code>transactional</code> re-panics, <code>retry</code>
+  re-runs the batch, and the side effects happen twice. That defeats the v4.1.0 guarantee that <code>Commit</code>
+  returns success after the SQL commit. The README quick start calls <code>consumer.Close()</code> then
+  <code>dispatcher.Close()</code> back to back, which is the triggering order.</p>
+  <p class="remedy"><strong>Remedy</strong> Stop closing the channel. Nothing but the processor receives from it, so the close
+  serves only one test assertion. Document that the consumer's <code>Listen</code> should return before
+  <code>dispatcher.Close()</code>.</p>
+</div>
+
+<h3><span class="chip ok">Fixed · d4a1401</span> H2. TTL unit mismatch <span class="ref">rabbitmq/writer.go:85-93</span></h3>
+<div class="finding high">
+  <p><code>computeExpiration</code> formats <code>Dispatch.Expiration</code> as whole seconds. The AMQP
+  <code>expiration</code> property is a string the broker interprets as milliseconds, and the amqp091 source says so.
+  A one-hour TTL goes on the wire as <code>"3600"</code> and the message is dropped after 3.6 seconds. Any value under
+  one second becomes <code>"1"</code>: one millisecond. Expired messages vanish with no error anywhere. The existing
+  tests lock the wrong scale in. Present since the original writer commit.</p>
+  <p>Exposure depends on which services set <code>Expiration</code>. The one service inspected during this sweep does
+  not, so this may be latent rather than active, but any consumer that is briefly behind a producer using TTLs is
+  silently losing messages today.</p>
+  <p class="remedy"><strong>Remedy</strong> Emit <code>Milliseconds()</code> with a floor of 1. Update the two tests. Call it out
+  as a behavior change in the release notes, because a service that tuned its TTL against the wrong scale will see
+  messages live 1000&times; longer.</p>
+</div>
+
+<h3><span class="chip ok">Fixed · 89ce69b</span> H3. An escaped panic hangs the worker silently <span class="ref">streaming/worker.go:53-60</span></h3>
+<div class="finding high">
+  <p><code>Listen</code> defers <code>waiter.Wait()</code> and then runs <code>deliverToHandler</code>. A panic escaping
+  <code>Handle</code> (a handler bug, a commit error without a <code>retry</code> wrapper, or
+  <code>retry.ErrMaxRetriesExceeded</code>) unwinds into that deferred wait, which waits for the reader goroutine.
+  The reader is parked in <code>stream.Read</code> on the hard context, which nothing cancels under the Drain or
+  CurrentBatch strategies. The Go runtime prints a panic only after deferred calls return, so nothing is logged.
+  Meanwhile the dead worker's reader keeps pulling deliveries from the shared stream into its own buffer, up to the
+  prefetch window, starving the healthy workers.</p>
+  <p>The README written this week says the worker "crashes and the broker redelivers." That is true only for a
+  stream that returns an error on read, which the test fake does and the real stream does not.</p>
+  <p class="remedy"><strong>Remedy</strong> Give <code>readFromStream</code> a worker-local context derived from the hard context and
+  cancel it in a defer registered <em>after</em> the wait, so it runs first. Recover in <code>Listen</code> to log an
+  <code>[ERROR]</code> and fire a monitor callback before re-panicking, so the crash is attributable.</p>
+</div>
+
+<h3><span class="chip ok">Fixed · bc3e221</span> H4. One subscription failing takes down its siblings <span class="ref">streaming/subscriber.go:46 &middot; connection_pool.go:43</span></h3>
+<div class="finding high">
+  <p>The subscriber defers <code>pool.Dispose(connection)</code> on every exit path, including "queue does not exist"
+  and a server-side consumer cancel. <code>Dispose</code> closes the AMQP connection unconditionally, which closes every
+  channel on it. Every other subscriber's delivery channel closes, their workers exit, they dispose and reconnect
+  after <code>ReconnectDelay</code>. A single 404 on one queue becomes a process-wide reconnect storm every 5 seconds
+  (continuous with <code>ReconnectDelay(0)</code>), forever. Each cycle abandons every handled-but-unacknowledged
+  batch on the healthy subscriptions, so the healthy queues see a steady stream of duplicates. The per-subscription
+  log lines never say the cause was a sibling.</p>
+  <p class="remedy"><strong>Remedy</strong> Dispose only on connection-level failures, or reference-count the pooled connection and
+  close it only when the last user leaves <em>and</em> it is unhealthy. Have the rabbitmq connection expose closed
+  state so <code>Active</code> can detect a dead cached connection instead of relying on this path.</p>
+</div>
+
+<h3><span class="chip ok">Fixed · e876203</span> H5. Retry backoff overflows <span class="ref">handlers/retry/handler.go:79-80</span></h3>
+<div class="finding high">
+  <p><code>minBackoff &lt;&lt; min(attempt, 63)</code>. Five seconds is about 2<sup>32</sup> nanoseconds, so the shift
+  overflows int64 at attempt 31. Measured with <code>Backoff(5s), MaxBackoff(5m)</code>: attempt 31 yields a negative
+  delay, which <code>WithTimeout</code> treats as expired; attempts 62 and up yield zero. Combined with the effectively
+  unlimited default <code>MaxAttempts</code>, a poison batch that has been retrying at the 5-minute cap for about
+  two and a half hours flips into a hot loop that opens a database and AMQP transaction per iteration and logs a
+  stack trace each time. Only triggers when <code>MaxBackoff</code> is set; with the default 0 the delay is constant.</p>
+  <p class="remedy"><strong>Remedy</strong> Return <code>maxBackoff</code> once the exponent would exceed the available bits, and clamp
+  any negative result to <code>minBackoff</code>.</p>
+</div>
+
+<h3><span class="chip ok">Fixed · 89897e0</span> H6. Silent permanent stall in the dispatch processor <span class="ref">sqlmq/dispatch_processor.go:128-130 &middot; dispatch_store.go:112</span></h3>
+<div class="finding high">
+  <p><code>writeBufferToSender</code> returns false on a <code>sender.Write</code> error without logging it or reporting it
+  to the monitor. The processor then retries the same buffer every <code>RetryTimeout</code> forever and never takes
+  new work. A fully silent example: a dispatch with an empty <code>Topic</code> makes the rabbitmq writer return
+  <code>ErrEmptyDispatchTopic</code> without logging. Because the startup read sets <code>Topic = MessageType</code>,
+  the same row publishes fine after a restart, so the stall "fixes itself" on redeploy and is never diagnosed.
+  Handlers keep acknowledging via deferral until the 8192 cap, then block with a message that blames the processor
+  generically. Separately, <code>Confirm</code> discards <code>RowsAffected</code>, so a mismatch between rows updated
+  and rows published is never seen.</p>
+  <p class="remedy"><strong>Remedy</strong> Log the write error at <code>WARN</code> with the batch size. Compare
+  <code>RowsAffected</code> to <code>len(dispatches)</code> in <code>Confirm</code> and log a mismatch. Add error callbacks
+  to the sqlmq monitor in the next major version. Consider a poison-row policy: after N failures publish the batch
+  one row at a time and park the failing row.</p>
+</div>
+
+<h3><span class="chip ok">Fixed · 422cc74</span> H7. The status probe cannot see channel-level faults <span class="ref">status/status.go:62-68, 86-101 &middot; rabbitmq/adapter/amqp.go:87</span></h3>
+<div class="finding high">
+  <p><code>basic.publish</code> is asynchronous, with no confirms and <code>mandatory=false</code>. A 403 (no write
+  permission on the exchange) or 404 (the configured <code>Topic</code> names a missing exchange) arrives as an
+  asynchronous channel close that nothing observes. Probe N returns success and resets the window. Probe N+1's
+  publish fails with a generic closed-channel error (504, tolerated) and the checker closes the connection. Probe N+2
+  reconnects and succeeds again. The window resets every other probe, so <code>Status</code> never reports the fault.
+  The v4.0.0 notes promise that a denied permission bypasses the window; only connection-level 403 and 530 (bad
+  credentials, no vhost access) actually do. The same mechanism means a successful probe proves only that frames
+  reached the socket, not that the broker accepted or routed anything.</p>
+  <p class="remedy"><strong>Remedy</strong> Register <code>NotifyClose</code> on the probe channel and surface the stored close reason on
+  the next probe, or make the probe synchronous with publisher confirms bounded by the context. Either change also
+  makes the probe mean something.</p>
+</div>
+
+<h3><span class="chip ok">Fixed · e38436a</span> H8. Deferred handoff uses the caller's context <span class="ref">sqlmq/dispatch_receiver.go:66-70 &middot; deferred_handoffs.go:27-43</span></h3>
+<div class="finding high">
+  <p><code>TryDefer</code> and the final blocking handoff run on the context passed to <code>CommitWriter(ctx)</code>.
+  For streaming handlers that is the hard context, near process lifetime, and the design works. For any
+  request-scoped caller (an HTTP handler using <code>r.Context()</code>, a job with a timeout) the sequence is:
+  <code>Commit</code> defers, returns nil, the handler returns, the context ends, the deferred goroutine exits, and the
+  rows sit undispatched until some instance restarts. The only trace is an <code>INFO</code> line, or nothing at all
+  on the deferred path. A long-running service may go weeks without a restart.</p>
+  <p class="remedy"><strong>Remedy</strong> Hand the deferral and the final blocking handoff a lifetime context,
+  <code>config.Context</code> or the processor's context, and keep the caller's context only for the initial bounded wait.</p>
+</div>
+
+<h3><span class="chip ok">Fixed · 4ab7ec8</span> H9. The remaining unbounded waits in <code>rabbitmq</code> <span class="ref">writer.go:37-58 &middot; stream.go:72-77 &middot; tls_dialer.go:45 &middot; adapter/amqp.go:21 &middot; stream.go:98 &middot; reader.go:123</span></h3>
+<div class="finding high">
+  <p><code>BrokerTimeout</code> bounds <code>TxCommit</code> and <code>TxRollback</code>. Everything else that can park on the
+  broker is still unbounded. <code>Write</code> discards its context and blocks in the kernel socket write once the
+  send buffer fills; under a broker resource alarm a writer with a backlog stalls with no <code>WARN</code> cycle and no
+  <code>ErrCommitTimeout</code>, because the stall never reaches the commit. <code>Acknowledge</code> checks the context
+  once and then blocks the same way, ignoring the hard context. <code>Connect</code> honors the context for TCP only:
+  the TLS handshake uses <code>Handshake()</code> not <code>HandshakeContext</code>, and <code>amqp.Open</code> sets no
+  deadline, so a peer that accepts TCP and then hangs during auth wedges the status probe and every reconnect
+  loop forever. <code>Stream.Close</code> (<code>basic.cancel</code> with <code>noWait=false</code>) and
+  <code>Reader.Close</code>/<code>Writer.Close</code> (<code>channel.close</code>) are synchronous RPCs that callers run
+  <em>before</em> the bounded connection close, so a graceful shutdown on a stuck channel hangs until SIGKILL.</p>
+  <p class="remedy"><strong>Remedy</strong> Apply the same timer-plus-sever pattern to <code>Publish</code> and <code>Ack</code>,
+  defaulting to <code>BrokerTimeout</code>. Set a socket deadline before the TLS handshake and <code>amqp.Open</code>,
+  and use <code>HandshakeContext</code>. Use <code>noWait=true</code> for cancel, and skip or bound channel close when the
+  connection is about to close anyway.</p>
+</div>
+
+<h2>2. Medium: design and schema follow-ups</h2>
+<p>These are real, but most need a schema change, an interface change, or a design decision. Group them into a
+v4.2 or v5 plan rather than fixing piecemeal.</p>
+
+<h3><span class="chip med">Medium</span> M1. Outbox recovery rebuilds a different message than was committed <span class="ref">sqlmq/dispatch_store.go:58-66, 79-89</span></h3>
+<div class="finding med">
+  <p>The table stores only <code>type</code> and <code>payload</code>. <code>Load</code> reconstructs with
+  <code>Topic = MessageType</code>, <code>ContentType = "application/json"</code>, <code>Durable = true</code>, a fresh
+  timestamp, and no partition, correlation ID, source ID, headers, expiration, or content encoding. In the common
+  configuration, where <code>TopicFromMessageType</code> makes topic and type equal and the serializer is JSON, the
+  recovered message matches. Anyone who sets an explicit topic, uses a non-JSON serializer, relies on partition
+  keys for ordering, or traces by correlation ID gets a different message after a crash than on the hot path.
+  Only the restart path exercises this, which is exactly when tracing matters most.</p>
+  <p class="remedy"><strong>Remedy</strong> Persist the envelope: topic, partition, correlation and source IDs, content type and
+  encoding, expiration, and headers as JSON. Treat it as a versioned migration.</p>
+</div>
+
+<h3><span class="chip med">Medium</span> M2. Startup read has no <code>ORDER BY</code> and no <code>LIMIT</code> <span class="ref">sqlmq/dispatch_store.go:72</span></h3>
+<div class="finding med">
+  <p>After a multi-hour outage on a busy service, millions of <code>mediumblob</code> rows are loaded into one slice
+  before the first send. The result is OOM, restart, OOM: a crash loop no instance can escape, because nothing is
+  confirmed until the load finishes. The skipped test <code>ReadFromLastSuccess</code> shows paging was intended and
+  never finished; the <code>latestID</code> plumbing already exists.</p>
+  <p class="remedy"><strong>Remedy</strong> <code>ORDER BY id LIMIT n</code> and loop <code>readPending</code> until a short page.</p>
+</div>
+
+<h3><span class="chip med">Medium</span> M3. MessageID arithmetic can be wrong and nothing detects it <span class="ref">sqlmq/dispatch_store.go:43-50</span></h3>
+<div class="finding med">
+  <p>MessageIDs are <code>LastInsertId + i &times; stride</code>. Contiguity holds for a multi-row simple insert under
+  every InnoDB lock mode, so the hot path is sound when only this library writes the table. It breaks when
+  <code>auto_increment_increment</code> differs from the configured stride (Group Replication multi-primary sets 7;
+  Galera adjusts it per cluster size) and can break under interleaved bulk inserts by other writers. When wrong,
+  <code>Confirm</code> marks other rows as dispatched: another instance's unpublished row can be confirmed and lost,
+  and the real row is republished by every instance at every startup, forever. The AMQP message ID header is also
+  wrong, which defeats consumer-side deduplication.</p>
+  <p class="remedy"><strong>Remedy</strong> Check <code>RowsAffected</code> in <code>Confirm</code> (H6). Read
+  <code>@@auto_increment_increment</code> at startup and warn when it differs from the stride. Or select the IDs back
+  inside the transaction instead of computing them.</p>
+</div>
+
+<h3><span class="chip med">Medium</span> M4. Cross-instance duplicates have no schema guard <span class="ref">sqlmq/dispatch_store.go:72 &middot; deferred_handoffs.go</span></h3>
+<div class="finding med">
+  <p>Every instance's startup read publishes every other instance's pending rows, including rows another instance
+  is holding in a deferred handoff. During a broker stall with a rolling deploy or liveness-driven restarts,
+  duplicates scale with instances times restarts. Documented as at-least-once, but the incident scenario makes it
+  N-fold rather than occasional.</p>
+  <p class="remedy"><strong>Remedy</strong> An <code>owner</code> and <code>claimed_at</code> column pair, claimed on insert and
+  reclaimed by the startup read only when stale. This is the schema change the v4.1.0 proposal deferred.</p>
+</div>
+
+<h3><span class="chip med">Medium</span> M5. Undecodable message: block forever, or drop silently <span class="ref">serialization/delivery_decoder.go:64-96 &middot; connector.go:82-92 &middot; streaming/worker.go:108-118</span></h3>
+<div class="finding med">
+  <p>With the default <code>Ignore*=false</code>, one unknown type, unknown content type, or malformed body ends the
+  stream read; the subscriber reconnects after 5 s; the broker redelivers the same message first; repeat forever.
+  Everything behind it is head-of-line blocked, the stream-ended line is <code>INFO</code>, the decoder's
+  <code>WARN</code> goes to a logger that defaults to no-op, and the status probe checks publishing only, so
+  <code>/status</code> stays green. With <code>Ignore*=true</code>, the message is acknowledged with a nil
+  <code>Message</code> and discarded; the worker never sees it. A consumer rolled out with a stale type registry loses
+  every new event for hours with no error. Neither default is safe alone. The missing third outcome is "park with
+  an alert."</p>
+  <p class="remedy"><strong>Remedy</strong> A per-message poison policy: reject to a dead-letter queue (requires a reject method on
+  <code>Stream</code>), or bounded redelivery then skip with an <code>ERROR</code> and a monitor count. At minimum raise the
+  stream-ended line to <code>WARN</code> when the error is a serialization failure, and count skipped deliveries per batch
+  in the streaming monitor.</p>
+</div>
+
+<h3><span class="chip med">Medium</span> M6. Deliveries with a nil <code>Message</code> are acknowledged in silence <span class="ref">streaming/worker.go:108-119</span></h3>
+<div class="finding med">
+  <p>Four paths produce a nil <code>Message</code>: an empty payload, an <code>Ignore*</code> switch, a type filtered by
+  <code>AllowedTypes</code> (swallowed to a successful read with no monitor signal), and a connector that is not
+  wrapped in <code>serialization</code> at all. In the last case every message on the queue is acknowledged and
+  discarded, the handler never runs, and the only symptom is <code>BatchAcknowledged</code> counts with no
+  <code>BatchHandled</code>. It looks like a healthy, fast consumer.</p>
+  <p class="remedy"><strong>Remedy</strong> Count skipped deliveries per batch and expose them: a <code>WARN</code> when a batch has
+  acknowledgements but no handled messages, and a monitor callback in the next revision.</p>
+</div>
+
+<h3><span class="chip med">Medium</span> M7. <code>AllowedTypes</code> cannot filter without also registering the type <span class="ref">serialization/delivery_decoder.go:39-47</span></h3>
+<div class="finding med">
+  <p>The <code>ReadTypes</code> lookup runs before the allow-list check, so a type you do not care about, which by
+  definition is not in <code>ReadTypes</code>, hits the unknown-type path (M5) instead of being filtered. To use the
+  option you must register every uninteresting type, which defeats it. A typo in the allow-list silently drops that
+  type with no monitor signal.</p>
+  <p class="remedy"><strong>Remedy</strong> Check <code>AllowedTypes</code> first; validate at <code>New</code> that every allowed name
+  exists in <code>ReadTypes</code>; report filtered messages to the monitor.</p>
+</div>
+
+<h3><span class="chip med">Medium</span> M8. No startup validation of the type registries <span class="ref">serialization/config.go:9-16</span></h3>
+<div class="finding med">
+  <p>Nil <code>ReadTypes</code> produces M5 on the first delivery of every queue. Two Go types mapped to one wire name
+  in <code>WriteTypes</code> while <code>ReadTypes</code> maps it to one of them decodes half the messages into the wrong
+  struct with zero-valued fields and no error. A service can publish a type it cannot consume. Nothing says so
+  until production traffic arrives.</p>
+  <p class="remedy"><strong>Remedy</strong> Fail fast in <code>New</code> on nil registries and many-to-one <code>WriteTypes</code>.</p>
+</div>
+
+<h3><span class="chip ok">Fixed · 728c616</span> M9. Broker-initiated closes are never logged or reported <span class="ref">rabbitmq/connection.go</span></h3>
+<div class="finding med">
+  <p>The connection registers <code>NotifyBlocked</code> but never <code>NotifyClose</code>. <code>ConnectionClosed</code>
+  fires only from an explicit <code>Close</code>. Heartbeat timeout, <code>320 CONNECTION_FORCED</code>, the 30-minute
+  consumer acknowledgement timeout (<code>406</code>), and a deleted queue all surface as a bare <code>io.EOF</code> from
+  <code>Stream.Read</code> or <code>ErrClosed</code> from the next call. The reason is lost, and an open-minus-closed
+  connection gauge drifts upward forever. Related: when a connection is severed while blocked, no
+  <code>ConnectionUnblocked</code> ever arrives, so the blocked gauge the README tells services to page on sticks at 1
+  until a restart.</p>
+  <p class="remedy"><strong>Remedy</strong> Register <code>NotifyClose</code> on connections and reader channels; log the
+  <code>*amqp.Error</code> at <code>WARN</code>, fire <code>ConnectionClosed</code>, and return the stored error from
+  <code>Read</code> instead of <code>io.EOF</code>. Emit <code>ConnectionUnblocked</code> when a blocked connection closes.</p>
+</div>
+
+<h3><span class="chip ok">Fixed · 664b7dc</span> M10. Every reconnect leaks a connection object <span class="ref">rabbitmq/connector.go:60-63 &middot; handlers/transactional/handler.go:23</span></h3>
+<div class="finding med">
+  <p><code>defaultConnector.active</code> appends every connection and nothing removes an entry when the caller closes
+  it. Streaming retries every 5 s per subscription during an outage, batch and outbox writers reconnect per commit
+  error, the status checker reconnects per failed probe, and <code>transactional</code> connects fresh per batch. Each
+  leaks a closed connection with its buffers. Memory climbs slowly and only during the incidents when people are
+  looking elsewhere.</p>
+  <p class="remedy"><strong>Remedy</strong> Remove the entry in <code>defaultConnection.Close</code>, or drop the tracking entirely
+  since callers already own their connections.</p>
+</div>
+
+<h3><span class="chip ok">Fixed · 04c7d6b</span> M11. One unsupported header value tears down the connection <span class="ref">rabbitmq/writer.go:81</span></h3>
+<div class="finding med">
+  <p><code>Dispatch.Headers</code> passes straight through. amqp091 rejects <code>uint</code>, <code>uint64</code>,
+  <code>time.Duration</code>, <code>[]string</code>, and a nested <code>map[string]any</code> mid-frame, then shuts the whole
+  connection down. The caller reconnects and retries the same message: a poison-message loop that churns
+  connections (and leaks per M10). For an outbox it wedges publishing behind one row (H6).</p>
+  <p class="remedy"><strong>Remedy</strong> Call <code>amqp.Table(headers).Validate()</code> before touching the wire and return a clear,
+  non-retriable error.</p>
+</div>
+
+<h3><span class="chip med">Medium</span> M12. Poison batch is a permanent head-of-line block with <code>INFO</code>-level evidence <span class="ref">handlers/retry/config.go:64 &middot; handler.go:53-58, 66</span></h3>
+<div class="finding med">
+  <p>Default <code>MaxAttempts</code> is about four billion. Each failure logs at <code>INFO</code>. With one worker the whole
+  queue stops. There is no dead-letter, no severity escalation, and <code>HandleAttempted</code> is the only signal.
+  Also, <code>ImmediateRetry</code> matches by map key, so a wrapped error never matches and gets full backoff, and an
+  uncomparable panic value (a struct with a slice) panics inside the recovery defer, landing in H3.</p>
+  <p class="remedy"><strong>Remedy</strong> Escalate to <code>WARN</code> after a threshold. Add an on-exhausted hook for parking.
+  Match <code>ImmediateRetry</code> with <code>errors.Is</code> and guard the map lookup with a comparability check.</p>
+</div>
+
+<h3><span class="chip med">Medium</span> M13. Acknowledge-without-handle safety rests on the stream implementation <span class="ref">handlers/retry/handler.go:25 &middot; streaming/worker.go:136</span></h3>
+<div class="finding med">
+  <p>When the context is cancelled, <code>retry.Handle</code> returns normally without invoking the inner handler.
+  The worker then calls <code>Acknowledge</code>. Today the rabbitmq stream refuses on a done context, so the batch is
+  redelivered. Any stream that acknowledges regardless of context (a future adapter, a wrapper passing
+  <code>Background</code>) acknowledges an unhandled batch, which is message loss. <code>retry</code> logs nothing when it
+  abandons a batch this way.</p>
+  <p class="remedy"><strong>Remedy</strong> In <code>deliverBatch</code>, skip the acknowledgement when the hard context is done after
+  <code>Handle</code> returns, and report it through <code>BatchAcknowledged</code> with the context error.</p>
+</div>
+
+<h3><span class="chip med">Medium</span> M14. <code>ReconnectDelay(0)</code> and zero shutdown timeouts are honored literally <span class="ref">streaming/manager.go:68-71 &middot; subscription_config.go:71-90</span></h3>
+<div class="finding med">
+  <p>A zero reconnect delay is a hot loop on any permanent error. A zero shutdown timeout on Drain or CurrentBatch
+  fires <code>ShutdownForced</code> on every shutdown with a <code>WARN</code> that blames slow workers. Neither is
+  defaulted the way the v4.1.0 options are. Separately, CurrentBatch always burns the full timeout under load,
+  because the reader goroutine is blocked on the full buffer and only the forced path frees it (same root cause
+  as H3).</p>
+  <p class="remedy"><strong>Remedy</strong> Default non-positive values. Fix the reader cancellation with H3.</p>
+</div>
+
+<h3><span class="chip med">Medium</span> M15. Outbox batch size is bounded only by channel capacity <span class="ref">sqlmq/dispatch_processor.go:113-116</span></h3>
+<div class="finding med">
+  <p>A service that raises <code>ChannelBufferCapacity</code> to 200 000 as a reaction to the stall incident will publish
+  a 200 000-message AMQP transaction and issue a 4 MB <code>UPDATE ... IN (...)</code>. Broker memory alarms and
+  <code>max_allowed_packet</code> failures follow, and a failing <code>Confirm</code> then loops forever without draining.</p>
+  <p class="remedy"><strong>Remedy</strong> A separate per-batch cap (default 1024) in <code>fillEmptyBuffer</code>, and chunked confirms.</p>
+</div>
+
+<h3><span class="chip med">Medium</span> M16. Outbox receiver never rolls back on <code>Close</code> <span class="ref">sqlmq/dispatch_receiver.go:46-57, 113-114</span></h3>
+<div class="finding med">
+  <p>When <code>Store</code> or the SQL commit fails, the receiver returns the error without rolling back, and
+  <code>Close</code> is a no-op. <code>transactional</code> covers this, but any direct user following the usual
+  <code>defer writer.Close()</code> idiom leaks a pooled connection until its context ends, which for
+  <code>Background</code> is forever.</p>
+  <p class="remedy"><strong>Remedy</strong> Make <code>Close</code> call <code>Rollback</code> and ignore <code>sql.ErrTxDone</code>.</p>
+</div>
+
+<h3><span class="chip med">Medium</span> M17. Status probe with no deadline can wedge every later <code>/status</code> call <span class="ref">status/status.go:36-38, 86-101</span></h3>
+<div class="finding med">
+  <p>The mutex is held across connect and write. If a caller passes <code>context.Background()</code>, a stalled write
+  never fires <code>ctx.Done()</code>, the lock is held indefinitely, and every later call parks behind it. Whether the
+  HTTP status wrapper supplies a deadline is not verified here. Also, a pre-cancelled context counts as a probe
+  failure and severs a healthy connection.</p>
+  <p class="remedy"><strong>Remedy</strong> Apply an internal default timeout when the context has none. Treat
+  <code>context.Canceled</code> as "no result."</p>
+</div>
+
+<h3><span class="chip med">Medium</span> M18. Non-zero <code>Partition</code> becomes the AMQP routing key <span class="ref">rabbitmq/writer.go:48-49, 59-65</span></h3>
+<div class="finding med">
+  <p>The field comment says "partition key for a hashing algorithm." On RabbitMQ it is the literal routing key.
+  Fanout exchanges ignore it, so the common path is safe. On any direct or topic exchange declared elsewhere, a
+  non-zero partition makes the message unroutable to every queue this library binds (with key <code>""</code>) and it
+  is dropped silently because <code>mandatory</code> is false.</p>
+  <p class="remedy"><strong>Remedy</strong> Document the mapping on the field, or set <code>mandatory=true</code> and log returns.</p>
+</div>
+
+<h3><span class="chip med">Medium</span> M19. <code>multi</code> outside a transaction re-executes committed handlers <span class="ref">handlers/multi/handler.go:15-19</span></h3>
+<div class="finding med">
+  <p><code>retry.New(multi.New(a, b))</code> with each of <code>a</code> and <code>b</code> owning its own transaction: <code>a</code>
+  commits, <code>b</code> panics, both run again. Correct only when <code>multi</code> sits inside the transaction wrapper.
+  Not stated anywhere.</p>
+  <p class="remedy"><strong>Remedy</strong> Document the composition rule.</p>
+</div>
+
+<h2>3. Low: hygiene, docs, and footguns</h2>
+<ul>
+  <li><span class="chip low">Low</span> <code>rabbitmq/reader.go:54</code>: the consume-failure log has one verb for two arguments, so the 404 for a missing queue prints as <code>%!(EXTRA ...)</code>. Two lines in <code>connection.go</code> say "Unable able open."</li>
+  <li><span class="chip low">Low</span> <code>rabbitmq/config.go:40</code>: <code>url.Parse</code> error is discarded; an unescaped character in a password leaves <code>Address</code> nil and <code>Connect</code> panics on a nil dereference. <code>tls_dialer.go:40-42</code> mutates the shared <code>tls.Config.ServerName</code> on every dial, a data race when several components connect at startup. An <code>amqps://</code> URL with a nil TLS config sends plaintext to the TLS port while the log says "encrypted."</li>
+  <li><span class="chip low">Low</span> <code>DispatchPublished</code> and <code>DeliveryAcknowledged(nil)</code> count local buffer success, not broker acceptance. Under a blocked connection thousands are counted for frames the broker never read. Worth a note beside the README metrics table.</li>
+  <li><span class="chip low">Low</span> <code>sqlmq</code>: <code>Confirm</code> runs on the processor context, so a graceful shutdown between publish and confirm yields duplicates; run it on a short detached timeout. Startup read and live handoff can overlap within one instance if handlers commit before <code>Listen</code> runs; document "start <code>Listen</code> first."</li>
+  <li><span class="chip low">Low</span> <code>handlers/sqltx</code> never calls <code>TransactionRolledBack</code> though the monitor declares it. <code>transactional</code> rolls back after a failed commit, so every commit failure counts as two failures in monitors.</li>
+  <li><span class="chip low">Low</span> <code>serialization</code>: the encoder is a no-op when <code>Payload</code> is already set, so a retried slice with a mutated <code>Message</code> ships stale bytes. <code>ContentEncoding</code> is pass-through only and the decoder ignores it. The decorator's <code>Writer()</code> exposes <code>Commit</code> on a non-transactional channel via an unchecked type assertion. JSON numbers decode to <code>float64</code> in <code>any</code>-typed targets, which loses precision on uint64 IDs.</li>
+  <li><span class="chip low">Low</span> <code>StreamConfig.MaxMessageBytes</code> promises truncation and is referenced nowhere. <code>Delivery.Topic</code> is the queue name, not the exchange, so a multi-topic consumer cannot tell sources apart.</li>
+  <li><span class="chip low">Low</span> <code>streaming</code>: <code>FullThrottle</code> allows a single <code>Handle</code> call, and one transaction, of up to 65 535 messages with no warning.</li>
+  <li><span class="chip low">Low</span> No vulnerability scanner runs in CI. Dependencies are current, but <code>govulncheck</code> is not installed locally and <code>build.yml</code> does not run it.</li>
+</ul>
+
+<h2>4. Corrections made during this sweep</h2>
+<p>Two documentation errors introduced this week were fixed in place, because they would have misled the
+migration work directly.</p>
+<ul>
+  <li><span class="chip ok">Fixed</span> The README quick start and CLAUDE.md placed <code>serialization</code> <em>under</em> the outbox.
+  That stores empty payloads, because the handler writes a bare <code>Message</code> to a receiver with no encoder.
+  The correct layering, confirmed against a production service, is: outbox over the raw transport, then
+  <code>serialization</code> applied separately to the transport for consuming and to the outbox connector for
+  handlers. Both documents now say so, and the example compiles.</li>
+  <li><span class="chip ok">Noted</span> The README claim that an escaped handler panic "crashes the worker and the broker redelivers"
+  is wrong against the real stream (H3). It stays as written until H3 is fixed, and should be corrected in the
+  same change.</li>
+</ul>
+
+<h2>5. Recommended sequencing</h2>
+<div class="callout">
+  <p><strong>Shipped on this branch, for v4.1.0:</strong> H1 through H9 and M9, M10, M11, one commit each, all with
+  tests and release notes. H2 (TTL units) is a behavior change and is called out as such.</p>
+  <p><strong>A v5 or schema proposal:</strong> M1 through M4 (outbox envelope, paging, ID verification, ownership),
+  M5 through M8 (poison-message policy and registry validation), plus the sqlmq error callbacks that H6 needs.</p>
+  <p><strong>For the service migration checklist:</strong> pass a deadline-bearing context to <code>Status</code> (M17);
+  never set <code>ReconnectDelay(0)</code> (M14); do not set <code>Dispatch.Expiration</code> until H2 ships; wrap
+  <code>serialization</code> on the correct side of the outbox; call <code>consumer.Close()</code>, wait for its
+  <code>Listen</code> to return, then <code>dispatcher.Close()</code>.</p>
+</div>
+
+<h2>6. What was checked and found sound</h2>
+<ul>
+  <li>The v4.1.0 <code>await</code>/sever path: no way found for the sever itself to hang; a severed connection is never handed out again; concurrent and double <code>Close</code> are safe.</li>
+  <li>Heartbeat negotiation, blocked-notification relay goroutines (no leak, no blocking of the frame loop), closed-consumer detection, and multi-acknowledge tag ordering.</li>
+  <li>The streaming batching loop: the cached buffer length cannot strand a delivery; no strategy acknowledges before <code>Handle</code> returns; the pool mutex fix holds.</li>
+  <li><code>transactional</code> and <code>sqltx</code> control flow, including the no-resources-before-defer property and the nil-context check.</li>
+  <li>The outbox <code>sent</code> flag, deferred-cap accounting, the <code>ErrTxDone</code> mapping, <code>batch.Writer</code> reconnect and close idempotency, <code>Confirm</code>'s freedom from injection, and the <code>(dispatched, id)</code> index shape.</li>
+  <li>The status tolerance-window arithmetic and its reconnect hygiene, and connection-level 403/530 classification.</li>
+</ul>

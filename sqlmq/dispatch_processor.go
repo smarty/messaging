@@ -15,6 +15,7 @@ type dispatchProcessor struct {
 	retryWait time.Duration
 	store     messageStore
 	sender    messaging.Writer
+	deferred  *deferredHandoffs
 	logger    logger
 	monitor   monitor
 
@@ -32,6 +33,7 @@ func newDispatchProcessor(config configuration) messaging.ListenCloser {
 		retryWait: config.Sleep,
 		store:     config.MessageStore,
 		sender:    config.Sender,
+		deferred:  config.Deferred,
 		logger:    config.Logger,
 		monitor:   config.Monitor,
 	}
@@ -62,10 +64,17 @@ func (this *dispatchProcessor) listenProcess(waiter *sync.WaitGroup) {
 
 func (this *dispatchProcessor) readPending() bool {
 	dispatches, err := this.store.Load(this.ctx, this.latestID)
+	if len(dispatches) > 0 {
+		this.logger.Printf("[INFO] Startup recovery found [%d] undispatched message(s) in durable storage.", len(dispatches))
+	}
 
 	for _, dispatch := range dispatches {
 		this.latestID = dispatch.MessageID
-		this.channel <- dispatch
+		select {
+		case this.channel <- dispatch:
+		case <-this.ctx.Done():
+			return false // shutting down; the rows stay durable for the next startup
+		}
 	}
 
 	if err != nil {
@@ -85,12 +94,17 @@ func (this *dispatchProcessor) write() bool {
 			return false
 		}
 
-		if err := this.store.Confirm(this.ctx, this.buffer); err != nil {
+		confirmed, err := this.store.Confirm(this.ctx, this.buffer)
+		if err != nil {
 			this.logger.Printf("[WARN] Unable to mark messages as dispatched in durable storage [%s].", err)
 			return false
 		}
+		if confirmed != len(this.buffer) {
+			this.logger.Printf("[WARN] Confirmed [%d] of [%d] published message(s) in durable storage. Another instance may have published the rest, or MessageIDs are out of step with the table (compare AutoincrementStride with auto_increment_increment).",
+				confirmed, len(this.buffer))
+		}
 
-		this.monitor.MessageConfirmed(len(this.buffer))
+		this.monitor.MessageConfirmed(confirmed)
 		this.clearBuffer()
 	}
 }
@@ -119,6 +133,7 @@ func (this *dispatchProcessor) writeBufferToSender() bool {
 	}
 
 	if _, err := this.sender.Write(this.ctx, this.buffer...); err != nil {
+		this.logger.Printf("[WARN] Unable to publish [%d] message(s) to the transport [%s]; retrying in [%s].", len(this.buffer), err, this.retryWait)
 		return false
 	}
 
@@ -150,7 +165,10 @@ func (this *dispatchProcessor) sleep() {
 	<-ctx.Done()
 }
 func (this *dispatchProcessor) cleanup() {
-	close(this.channel)
+	// The channel is deliberately left open. Handlers that committed SQL just
+	// before shutdown and deferred handoff goroutines may still send on it;
+	// a send on a closed channel panics even inside a select.
+	_ = this.deferred.Close() // background handoffs stop; their rows stay durable for the next startup
 	if this.sender != nil {
 		_ = this.sender.Close()
 		this.sender = nil

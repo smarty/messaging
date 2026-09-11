@@ -23,6 +23,8 @@ type SubscriberFixture struct {
 	softContext  context.Context
 	softShutdown context.CancelFunc
 	subscriber   messaging.Listener
+	log          capturingLog
+	monitor      capturingMonitor
 
 	workerFactoryCount  int
 	workerFactoryConfig workerConfig
@@ -37,7 +39,8 @@ type SubscriberFixture struct {
 	readerCtx   context.Context
 	readerError error
 
-	closeCount int32
+	closeCount       int32
+	connectionClosed bool
 
 	streamCount   int
 	streamContext context.Context
@@ -64,7 +67,7 @@ func (this *SubscriberFixture) Setup() {
 	this.initializeSubscriber()
 }
 func (this *SubscriberFixture) initializeSubscriber() {
-	this.subscriber = newSubscriber(this, this.subscription, this.softContext, this.workerFactory)
+	this.subscriber = newSubscriber(this, this.subscription, this.softContext, this.workerFactory, &this.log, &this.monitor)
 }
 func (this *SubscriberFixture) workerFactory(config workerConfig) messaging.Listener {
 	this.workerFactoryCount++
@@ -73,24 +76,28 @@ func (this *SubscriberFixture) workerFactory(config workerConfig) messaging.List
 }
 
 func (this *SubscriberFixture) TestWhenOpeningAConnectionFails_ListenShouldReturn() {
-	this.currentError = errors.New("")
+	this.currentError = errors.New("dial refused")
 
 	this.subscriber.Listen()
 
 	this.So(this.currentContext, should.Equal, this.softContext)
 	this.So(this.currentCount, should.Equal, 1)
+	this.So(this.log.String(), should.ContainSubstring, "[WARN] Unable to open connection for stream [queue] [dial refused].")
+	this.So(this.monitor.Calls(), should.Equal, []string{"opened:queue:dial refused"})
 }
 func (this *SubscriberFixture) TestWhenOpeningReaderFails_ListenShouldReturn() {
-	this.readerError = errors.New("")
+	this.readerError = errors.New("channel refused")
 
 	this.subscriber.Listen()
 
 	this.So(this.readerCtx, should.Equal, this.softContext)
 	this.So(this.readerCount, should.Equal, 1)
 	this.So(this.releasedConnections, should.Equal, []messaging.Connection{this})
+	this.So(this.log.String(), should.ContainSubstring, "[WARN] Unable to open reader for stream [queue] [channel refused].")
+	this.So(this.monitor.Calls(), should.Equal, []string{"opened:queue:channel refused"})
 }
 func (this *SubscriberFixture) TestWhenOpeningStreamFails_ListenShouldReturn() {
-	this.streamError = errors.New("")
+	this.streamError = errors.New("NOT_FOUND - no exchange")
 
 	this.subscriber.Listen()
 
@@ -103,7 +110,10 @@ func (this *SubscriberFixture) TestWhenOpeningStreamFails_ListenShouldReturn() {
 		StreamName:        this.subscription.streamName,
 		Topics:            this.subscription.subscriptionTopics,
 	})
-	this.So(this.closeCount, should.Equal, 1) // reader
+	this.So(this.closeCount, should.Equal, 1)         // reader
+	this.So(this.releasedConnections, should.BeEmpty) // channel-level failure: the shared connection stays up for siblings
+	this.So(this.log.String(), should.ContainSubstring, "[WARN] Unable to open stream [queue] [NOT_FOUND - no exchange].")
+	this.So(this.monitor.Calls(), should.Equal, []string{"opened:queue:NOT_FOUND - no exchange"})
 }
 
 func (this *SubscriberFixture) TestWhenListening_EstablishWorkersAndListen() {
@@ -112,12 +122,16 @@ func (this *SubscriberFixture) TestWhenListening_EstablishWorkersAndListen() {
 	this.subscriber.Listen()
 
 	this.So(this.workerFactoryCount, should.Equal, len(this.subscription.handlers))
+	this.So(this.workerFactoryConfig.Now, should.NotBeNil)
+	this.workerFactoryConfig.Now = nil // funcs never compare equal
 	this.So(this.workerFactoryConfig, should.Equal, workerConfig{
 		Stream:       this,
 		Subscription: this.subscription,
 		Handler:      nil,
 		SoftContext:  this.softContext,
 		HardContext:  this.subscriber.(defaultSubscriber).hardContext,
+		Logger:       &this.log,
+		Monitor:      &this.monitor,
 	})
 	this.So(this.listenCount, should.Equal, len(this.subscription.handlers))
 }
@@ -131,7 +145,17 @@ func (this *SubscriberFixture) TestWhenListenConcludesOnShutdown_AllResourcesSho
 func (this *SubscriberFixture) TestWhenListeningConcludesWithoutShutdown_AllResourcesShouldBeClosed() {
 	this.subscriber.Listen()
 
-	this.So(this.closeCount, should.Equal, 2) // reader and stream
+	this.So(this.closeCount, should.Equal, 2)         // reader and stream
+	this.So(this.releasedConnections, should.BeEmpty) // the connection outlives one stream session
+	this.So(this.log.String(), should.BeBlank)
+	this.So(this.monitor.Calls(), should.Equal, []string{"opened:queue:<nil>", "closed:queue"})
+}
+func (this *SubscriberFixture) TestWhenConnectionIsClosedWhenTheSessionEnds_DisposeIt() {
+	this.connectionClosed = true
+
+	this.subscriber.Listen()
+
+	this.So(this.releasedConnections, should.Equal, []messaging.Connection{this})
 }
 func (this *SubscriberFixture) TestWhenSoftShutdownIsInvoked_HardDeadlineShouldStart() {
 	this.listenWaitForHardShutdown = true
@@ -146,6 +170,9 @@ func (this *SubscriberFixture) TestWhenSoftShutdownIsInvoked_HardDeadlineShouldS
 	this.So(duration, should.BeGreaterThan, this.subscription.shutdownTimeout)
 	_, hardDeadlineAlive := <-this.subscriber.(defaultSubscriber).hardContext.Done()
 	this.So(hardDeadlineAlive, should.BeFalse)
+	this.So(this.log.String(), should.ContainSubstring,
+		"[WARN] Workers on stream [queue] did not conclude within [5ms] of shutdown; abandoning in-flight deliveries.")
+	this.So(this.monitor.Calls(), should.Equal, []string{"opened:queue:<nil>", "forced:queue", "closed:queue"})
 }
 func (this *SubscriberFixture) SkipTestWhenSoftShutdownIsInvoked_ListenCanConcludeBeforeHardShutdownDeadline() {
 	this.listenSleepForHardShutdown = true
@@ -201,6 +228,7 @@ func (this *SubscriberFixture) Dispose(connection messaging.Connection) {
 }
 
 // Connection
+func (this *SubscriberFixture) Closed() bool { return this.connectionClosed }
 func (this *SubscriberFixture) Reader(ctx context.Context) (messaging.Reader, error) {
 	this.readerCount++
 	this.readerCtx = ctx

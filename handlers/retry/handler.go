@@ -2,6 +2,7 @@ package retry
 
 import (
 	"context"
+	"math/bits"
 	"math/rand/v2"
 	"runtime/debug"
 	"time"
@@ -76,8 +77,10 @@ func (this handler) backoffDelay(attempt int) time.Duration {
 		return this.minBackoff
 	}
 
-	backoff := this.minBackoff << min(attempt, 63)
-	delay := min(backoff, this.maxBackoff)
+	delay := this.maxBackoff
+	if attempt < 63-bits.Len64(uint64(this.minBackoff)) { // the shift cannot overflow int64
+		delay = min(this.minBackoff<<attempt, this.maxBackoff)
+	}
 
 	if this.jitterFactor > 0 && this.jitterFactor <= 1.0 {
 		jitterRange := float64(delay) * this.jitterFactor

@@ -10,7 +10,13 @@ import (
 
 type amqpConnector struct{}
 
-func (this amqpConnector) Connect(_ context.Context, socket net.Conn, config Config) (Connection, error) {
+// Connect completes the AMQP handshake on an already-dialed socket. amqp.Open
+// sets no deadline of its own, so the caller's context deadline is applied to
+// the socket for the duration of the handshake; a peer that accepts TCP and
+// then hangs (an auth backend that never answers) fails instead of parking
+// the caller forever. amqp091 clears the deadline itself once the handshake
+// completes.
+func (this amqpConnector) Connect(ctx context.Context, socket net.Conn, config Config) (Connection, error) {
 	plainAuth := &amqp.PlainAuth{Username: config.Username, Password: config.Password}
 	amqpConfig := amqp.Config{
 		SASL:      []amqp.Authentication{plainAuth},
@@ -18,22 +24,29 @@ func (this amqpConnector) Connect(_ context.Context, socket net.Conn, config Con
 		Heartbeat: config.Heartbeat,
 	}
 
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = socket.SetDeadline(deadline)
+	}
+
 	if connection, err := amqp.Open(socket, amqpConfig); err != nil {
 		return nil, err
 	} else {
 		// registered here, immediately after the handshake, so a broker that
-		// blocks the connection right away is not missed
+		// blocks or closes the connection right away is not missed
 		blocked := connection.NotifyBlocked(make(chan amqp.Blocking, 1))
-		return amqpConnection{Connection: connection, blocked: blocked}, nil
+		closes := connection.NotifyClose(make(chan *amqp.Error, 1))
+		return amqpConnection{Connection: connection, blocked: blocked, closes: closes}, nil
 	}
 }
 
 type amqpConnection struct {
 	*amqp.Connection
 	blocked chan amqp.Blocking
+	closes  chan *amqp.Error
 }
 
 func (this amqpConnection) BlockedNotifications() <-chan amqp.Blocking { return this.blocked }
+func (this amqpConnection) CloseNotifications() <-chan *amqp.Error     { return this.closes }
 
 // Close bounds the close handshake with a deadline on the underlying socket.
 // Setting the deadline also unblocks any write already stalled on a broker
@@ -48,11 +61,24 @@ func (this amqpConnection) Channel() (Channel, error) {
 	if channel, err := this.Connection.Channel(); err != nil {
 		return nil, err
 	} else {
-		return amqpChannel{Channel: channel}, nil
+		// registered at open, before any consumer or publish, so no close or
+		// cancel can slip through unobserved
+		return amqpChannel{
+			Channel: channel,
+			closes:  channel.NotifyClose(make(chan *amqp.Error, 1)),
+			cancels: channel.NotifyCancel(make(chan string, 1)),
+		}, nil
 	}
 }
 
-type amqpChannel struct{ *amqp.Channel }
+type amqpChannel struct {
+	*amqp.Channel
+	closes  chan *amqp.Error
+	cancels chan string
+}
+
+func (this amqpChannel) CloseNotifications() <-chan *amqp.Error { return this.closes }
+func (this amqpChannel) CancelNotifications() <-chan string     { return this.cancels }
 
 func (this amqpChannel) DeclareQueue(name string, replicated bool) error {
 	if replicated {
@@ -80,7 +106,7 @@ func (this amqpChannel) Consume(consumerID, queue string) (<-chan amqp.Delivery,
 	return this.Channel.Consume(queue, consumerID, false, false, false, false, amqp.Table{})
 }
 func (this amqpChannel) CancelConsumer(consumerID string) error {
-	return this.Channel.Cancel(consumerID, false)
+	return this.Channel.Cancel(consumerID, true) // noWait: a stuck channel must not hang shutdown; the connection close that follows is bounded
 }
 
 func (this amqpChannel) Publish(exchange, key string, envelope amqp.Publishing) error {

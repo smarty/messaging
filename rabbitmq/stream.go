@@ -2,33 +2,48 @@ package rabbitmq
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strconv"
 	"sync"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/smarty/messaging/v4"
 	"github.com/smarty/messaging/v4/rabbitmq/adapter"
 )
 
+// endReasonGrace is how long Read waits, once the delivery channel has
+// closed, for the close or cancel notification that explains why. amqp091
+// can close the deliveries a moment before it delivers the reason.
+const endReasonGrace = time.Millisecond * 50
+
 type defaultStream struct {
 	channel    adapter.Channel
 	deliveries <-chan amqp.Delivery
+	closes     <-chan *amqp.Error
+	cancels    <-chan string
 	streamID   string
 	streamName string
 	batchAck   bool
 	closer     sync.Once
+	sever      func() error
+	timeout    time.Duration
 	logger     logger
 	monitor    monitor
 }
 
-func newStream(channel adapter.Channel, deliveries <-chan amqp.Delivery, id, name string, exclusive bool, config configuration) messaging.Stream {
+func newStream(channel adapter.Channel, deliveries <-chan amqp.Delivery, id, name string, exclusive bool, sever func() error, config configuration) messaging.Stream {
 	return &defaultStream{
 		channel:    channel,
 		deliveries: deliveries,
+		closes:     channel.CloseNotifications(),
+		cancels:    channel.CancelNotifications(),
 		streamID:   id,
 		streamName: name,
 		batchAck:   exclusive,
+		sever:      sever,
+		timeout:    config.BrokerTimeout,
 		logger:     config.Logger,
 		monitor:    config.Monitor,
 	}
@@ -44,7 +59,7 @@ func (this *defaultStream) Read(ctx context.Context, target *messaging.Delivery)
 }
 func (this *defaultStream) processDelivery(source amqp.Delivery, target *messaging.Delivery, deliveryChannelOpen bool) error {
 	if !deliveryChannelOpen {
-		return io.EOF
+		return this.endReason()
 	}
 
 	target.Upstream = source
@@ -64,6 +79,26 @@ func (this *defaultStream) processDelivery(source amqp.Delivery, target *messagi
 	this.monitor.DeliveryReceived()
 	return nil
 }
+
+// endReason explains why the deliveries ended: the broker closed the channel
+// (a 406 acknowledgement timeout, a 404), the broker cancelled the consumer
+// (the queue was deleted), or nothing was reported, which is a plain EOF.
+func (this *defaultStream) endReason() error {
+	timer := time.NewTimer(endReasonGrace)
+	defer timer.Stop()
+	select {
+	case reason, open := <-this.closes:
+		if open && reason != nil {
+			return reason
+		}
+	case consumerID, open := <-this.cancels:
+		if open {
+			return fmt.Errorf("consumer [%s] on stream [%s] was cancelled by the broker (was the queue deleted?): %w", consumerID, this.streamName, io.EOF)
+		}
+	case <-timer.C:
+	}
+	return io.EOF
+}
 func parseUint64(value string) uint64 {
 	parsed, _ := strconv.ParseUint(value, 10, 64)
 	return parsed
@@ -82,7 +117,11 @@ func (this *defaultStream) Acknowledge(ctx context.Context, deliveries ...messag
 	}
 
 	for _, delivery := range deliveries {
-		if err := this.channel.Ack(delivery.DeliveryID, this.batchAck); err != nil {
+		tag := delivery.DeliveryID
+		err := awaitBroker(this.logger, "acknowledge", this.timeout, this.sever, ErrAcknowledgeTimeout, func() error {
+			return this.channel.Ack(tag, this.batchAck) // a socket write; blocks with no deadline if the broker stopped reading
+		})
+		if err != nil {
 			this.logger.Printf("[WARN] Unable to acknowledge delivery against underlying channel [%s].", err)
 			this.monitor.DeliveryAcknowledged(uint16(length), err)
 			return err

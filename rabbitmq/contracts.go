@@ -27,6 +27,11 @@ type logger interface {
 }
 
 var (
-	ErrAlreadyExclusive = errors.New("unable to open additional stream, an exclusive stream already exists")
-	ErrMultipleStreams  = errors.New("unable to open exclusive stream, another stream already exists")
+	ErrAlreadyExclusive   = errors.New("unable to open additional stream, an exclusive stream already exists")
+	ErrMultipleStreams    = errors.New("unable to open exclusive stream, another stream already exists")
+	ErrCommitTimeout      = errors.New("the broker did not acknowledge the transaction within the broker timeout")
+	ErrPublishTimeout     = errors.New("the broker did not accept the publish within the broker timeout")
+	ErrAcknowledgeTimeout = errors.New("the broker did not accept the acknowledgement within the broker timeout")
+	ErrCloseTimeout       = errors.New("the broker did not answer the channel close within the broker timeout")
+	ErrInvalidHeader      = errors.New("a dispatch header value has a type the AMQP wire format cannot carry")
 )

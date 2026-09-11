@@ -21,8 +21,12 @@ type configuration struct {
 	AutoincrementStride uint64
 	Now                 func() time.Time
 	Sleep               time.Duration
+	HandoffTimeout      time.Duration
 	Logger              logger
 	Monitor             monitor
+
+	DeferredHandoffCapacity int
+	Deferred                *deferredHandoffs
 
 	MessageStore messageStore
 	Sender       messaging.Writer
@@ -79,6 +83,36 @@ func (singleton) Now(value func() time.Time) option {
 func (singleton) RetryTimeout(value time.Duration) option {
 	return func(this *configuration) { this.Sleep = value }
 }
+
+// HandoffTimeout bounds how long a committed outbox transaction waits to hand
+// its messages to the dispatch processor. When the bound elapses, the messages
+// that were not accepted move to a background handoff (see
+// DeferredHandoffCapacity) and Commit returns success, because the rows are
+// already durable. A zero or negative value is replaced with the default.
+func (singleton) HandoffTimeout(value time.Duration) option {
+	return func(this *configuration) { this.HandoffTimeout = sanitizeHandoffTimeout(value) }
+}
+func sanitizeHandoffTimeout(value time.Duration) time.Duration {
+	if value <= 0 {
+		return defaultHandoffTimeout
+	}
+	return value
+}
+
+// DeferredHandoffCapacity caps the number of committed messages that may be
+// held in memory by background handoffs at once. When a new deferral would
+// exceed the cap, Commit instead waits for the dispatch processor, which
+// applies back-pressure to the caller. A value of 1 effectively disables
+// deferral. A zero or negative value is replaced with the default.
+func (singleton) DeferredHandoffCapacity(value int) option {
+	return func(this *configuration) { this.DeferredHandoffCapacity = sanitizeDeferredHandoffCapacity(value) }
+}
+func sanitizeDeferredHandoffCapacity(value int) int {
+	if value <= 0 {
+		return defaultDeferredHandoffCapacity
+	}
+	return value
+}
 func (singleton) MessageStore(value messageStore) option {
 	return func(this *configuration) { this.MessageStore = value }
 }
@@ -109,6 +143,8 @@ func (singleton) apply(options ...option) option {
 		if this.Sender == nil {
 			this.Sender = batch.NewWriter(this.Target)
 		}
+
+		this.Deferred = newDeferredHandoffs(this.Context, this.Channel, this.DeferredHandoffCapacity)
 	}
 }
 func (singleton) defaults(options ...option) []option {
@@ -127,10 +163,17 @@ func (singleton) defaults(options ...option) []option {
 		Options.AutoincrementStride(defaultAutoincrementStride),
 		Options.Now(time.Now),
 		Options.RetryTimeout(defaultRetryTimeout),
+		Options.HandoffTimeout(defaultHandoffTimeout),
+		Options.DeferredHandoffCapacity(defaultDeferredHandoffCapacity),
 		Options.Logger(defaultLogger),
 		Options.Monitor(defaultMonitor),
 	}, options...)
 }
+
+const (
+	defaultHandoffTimeout          = time.Second * 10
+	defaultDeferredHandoffCapacity = 8192
+)
 
 type nop struct{}
 

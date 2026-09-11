@@ -28,6 +28,7 @@ type configuration struct {
 	Now                  func() time.Time
 	TopologyFailurePanic bool
 	Heartbeat            time.Duration
+	BrokerTimeout        time.Duration
 }
 
 var Options singleton
@@ -88,6 +89,27 @@ func sanitizeHeartbeat(value time.Duration) time.Duration {
 	}
 	return value
 }
+
+// BrokerTimeout bounds every wait on the broker: a transaction commit or
+// rollback, a publish, an acknowledgement, a channel close, and the connect
+// handshake when the caller's context has no deadline. When the bound
+// elapses, the library logs a warning, closes the connection the operation
+// belongs to (which is what makes the pending call return), and returns the
+// matching sentinel (ErrCommitTimeout, ErrPublishTimeout,
+// ErrAcknowledgeTimeout, ErrCloseTimeout). Every channel on that connection
+// is lost, so share a connection between a consumer and a transactional
+// writer only if the consumer can tolerate a reconnect. A zero or negative
+// value is replaced with the default, so the bound cannot be disabled by
+// accident.
+func (singleton) BrokerTimeout(value time.Duration) option {
+	return func(this *configuration) { this.BrokerTimeout = sanitizeBrokerTimeout(value) }
+}
+func sanitizeBrokerTimeout(value time.Duration) time.Duration {
+	if value <= 0 {
+		return defaultBrokerTimeout
+	}
+	return value
+}
 func (singleton) apply(options ...option) option {
 	return func(this *configuration) {
 		for _, item := range Options.defaults(options...) {
@@ -138,12 +160,14 @@ func (singleton) defaults(options ...option) []option {
 		Options.Monitor(defaultMonitor),
 		Options.Now(defaultNow),
 		Options.Heartbeat(defaultHeartbeat),
+		Options.BrokerTimeout(defaultBrokerTimeout),
 	}, options...)
 }
 
 const (
-	defaultAddress   = "amqp://guest:guest@127.0.0.1:5672/"
-	defaultHeartbeat = 10 * time.Second
+	defaultAddress       = "amqp://guest:guest@127.0.0.1:5672/"
+	defaultHeartbeat     = 10 * time.Second
+	defaultBrokerTimeout = 30 * time.Second
 )
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
