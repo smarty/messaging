@@ -237,9 +237,9 @@ func (this *ConnectorFixture) Connect(ctx context.Context, socket net.Conn, conf
 }
 
 func (this *ConnectorFixture) Close() error { this.callsToClose++; return nil }
-func (this *ConnectorFixture) NotifyClose(receiver chan *amqp.Error) chan *amqp.Error {
-	this.closing = receiver
-	return receiver
+func (this *ConnectorFixture) CloseNotifications() <-chan *amqp.Error {
+	this.closing = make(chan *amqp.Error, 1)
+	return this.closing
 }
 func (this *ConnectorFixture) Channel() (adapter.Channel, error)          { panic("nop") }
 func (this *ConnectorFixture) BlockedNotifications() <-chan amqp.Blocking { return nil }

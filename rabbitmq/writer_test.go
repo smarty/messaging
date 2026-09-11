@@ -385,3 +385,5 @@ func (this *WriterFixture) Consume(_, _ string) (<-chan amqp.Delivery, error) { 
 func (this *WriterFixture) Ack(deliveryTag uint64, multiple bool) error       { panic("nop") }
 func (this *WriterFixture) CancelConsumer(consumerID string) error            { panic("nop") }
 func (this *WriterFixture) Tx() error                                         { panic("nop") }
+func (this *WriterFixture) CloseNotifications() <-chan *amqp.Error            { return nil }
+func (this *WriterFixture) CancelNotifications() <-chan string                { return nil }

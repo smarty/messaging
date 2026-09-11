@@ -100,7 +100,9 @@ disabled by accident. Keep that property when adding options. See `doc/release-n
   Levels used: `INFO` for expected conditions (shutdown, recovery counts), `WARN` for anything that needs a
   human eventually.
 - **Adapter seams**: `rabbitmq/adapter` and `sqlmq/adapter` exist so the packages above them can be tested
-  with fakes. Changing an adapter interface is a breaking change for consumers who fake it.
+  with fakes. Notification channels (blocked, close, cancel) are registered by the adapter at open time and
+  exposed as methods on the interfaces; do not reach for amqp091's `Notify*` by promotion, because a decorator
+  or a fake will not carry it. Changing an adapter interface breaks external fakes; none are known to exist.
 - **Docs**: design work lives in `doc/work-sessions/<year>/*.html` (proposals with implementation
   checklists) and each release gets `doc/release-notes-vX.Y.Z.md` written in plain, short-sentence style.
 - Go version: `go.mod` says 1.25; CI uses `go-version: stable`.

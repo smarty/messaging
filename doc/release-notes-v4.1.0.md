@@ -61,6 +61,17 @@ service.
 A successful probe now means the broker accepted the publish and answered
 the commit. It still does not prove the message was routed anywhere.
 
+## Breaking for adapter fakes: `rabbitmq/adapter` interface additions
+
+`adapter.Connection` gains `CloseNotifications() <-chan *amqp.Error`.
+`adapter.Channel` gains `CloseNotifications() <-chan *amqp.Error` and
+`CancelNotifications() <-chan string`. The real adapter registers them at
+open, in the same style as `BlockedNotifications`. Anything that implements
+or fakes these interfaces must add the methods; a fake can return nil. A
+search of every repository on hand found no implementation outside this
+module, which is why this lands in a minor version with a note, as the
+v4.0.0 `BlockedNotifications` addition did.
+
 ## `rabbitmq`: closes initiated by the broker or network are reported
 
 The connection registered for blocked notifications but never for close
@@ -70,7 +81,8 @@ deleted queue surfaced only as a bare `EOF` on the next read, the reason was
 lost, and `ConnectionClosed` never fired, so an open-minus-closed gauge
 drifted upward forever.
 
-The connection now logs
+The adapter now exposes close and cancel notifications (see the breaking
+note above), and the connection logs
 `[WARN] AMQP connection closed by the broker or network [...]`, fires
 `ConnectionClosed` exactly once, and reports `Closed()` as true. A stream
 whose channel the broker closed returns the broker's error from `Read`

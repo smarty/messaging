@@ -287,10 +287,13 @@ func (this *ConnectionFixture) Close() error {
 	}
 	return this.closeError
 }
-func (this *ConnectionFixture) NotifyClose(receiver chan *amqp.Error) chan *amqp.Error {
-	this.closing = receiver // like the real adapter connection, which promotes amqp.Connection.NotifyClose
-	return receiver
+func (this *ConnectionFixture) CloseNotifications() <-chan *amqp.Error {
+	// a fresh channel per connection, like the real adapter; tests send into
+	// the most recent connection's channel
+	this.closing = make(chan *amqp.Error, 1)
+	return this.closing
 }
+func (this *ConnectionFixture) CancelNotifications() <-chan string { return nil }
 func (this *ConnectionFixture) BlockedNotifications() <-chan amqp.Blocking {
 	// a fresh channel per connection, like the real adapter; tests send into
 	// the most recent connection's channel

@@ -13,16 +13,6 @@ import (
 	"github.com/smarty/messaging/v4/rabbitmq/adapter"
 )
 
-// channelCloseNotifier and consumerCancelNotifier are satisfied by the real
-// adapter channel, which promotes amqp.Channel's methods. They are optional so
-// existing fakes keep working.
-type channelCloseNotifier interface {
-	NotifyClose(receiver chan *amqp.Error) chan *amqp.Error
-}
-type consumerCancelNotifier interface {
-	NotifyCancel(receiver chan string) chan string
-}
-
 // endReasonGrace is how long Read waits, once the delivery channel has
 // closed, for the close or cancel notification that explains why. amqp091
 // can close the deliveries a moment before it delivers the reason.
@@ -44,19 +34,11 @@ type defaultStream struct {
 }
 
 func newStream(channel adapter.Channel, deliveries <-chan amqp.Delivery, id, name string, exclusive bool, sever func() error, config configuration) messaging.Stream {
-	var closes <-chan *amqp.Error
-	if notifier, ok := channel.(channelCloseNotifier); ok {
-		closes = notifier.NotifyClose(make(chan *amqp.Error, 1))
-	}
-	var cancels <-chan string
-	if notifier, ok := channel.(consumerCancelNotifier); ok {
-		cancels = notifier.NotifyCancel(make(chan string, 1))
-	}
 	return &defaultStream{
 		channel:    channel,
 		deliveries: deliveries,
-		closes:     closes,
-		cancels:    cancels,
+		closes:     channel.CloseNotifications(),
+		cancels:    channel.CancelNotifications(),
 		streamID:   id,
 		streamName: name,
 		batchAck:   exclusive,

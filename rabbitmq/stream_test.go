@@ -222,13 +222,13 @@ func (this *StreamFixture) CancelConsumer(consumerID string) error {
 	this.cancellations = append(this.cancellations, consumerID)
 	return nil
 }
-func (this *StreamFixture) NotifyClose(receiver chan *amqp.Error) chan *amqp.Error {
-	this.closing = receiver
-	return receiver
+func (this *StreamFixture) CloseNotifications() <-chan *amqp.Error {
+	this.closing = make(chan *amqp.Error, 1)
+	return this.closing
 }
-func (this *StreamFixture) NotifyCancel(receiver chan string) chan string {
-	this.cancelling = receiver
-	return receiver
+func (this *StreamFixture) CancelNotifications() <-chan string {
+	this.cancelling = make(chan string, 1)
+	return this.cancelling
 }
 func (this *StreamFixture) Ack(deliveryTag uint64, multiple bool) error {
 	if this.acknowledgeBlocks {

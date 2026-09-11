@@ -262,6 +262,8 @@ func (this *ReaderFixture) Publish(exchange, key string, envelope amqp.Publishin
 func (this *ReaderFixture) Tx() error {
 	panic("nop")
 }
+func (this *ReaderFixture) CloseNotifications() <-chan *amqp.Error { return nil }
+func (this *ReaderFixture) CancelNotifications() <-chan string     { return nil }
 func (this *ReaderFixture) TxCommit() error {
 	panic("nop")
 }

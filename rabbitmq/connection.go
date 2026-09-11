@@ -19,12 +19,6 @@ type defaultConnection struct {
 	onClosed func(*defaultConnection) // lets the connector stop tracking a closed connection
 }
 
-// closeNotifier is satisfied by the real adapter connection, which promotes
-// amqp.Connection.NotifyClose. It is optional so existing fakes keep working.
-type closeNotifier interface {
-	NotifyClose(receiver chan *amqp.Error) chan *amqp.Error
-}
-
 func newConnection(inner adapter.Connection, config configuration, onClosed func(*defaultConnection)) messaging.Connection {
 	// NOTE: using pointer type to allow for pointer equality check
 	config.Monitor.ConnectionOpened(nil)
@@ -32,9 +26,7 @@ func newConnection(inner adapter.Connection, config configuration, onClosed func
 	relay := make(chan amqp.Blocking, 1)
 	go relayBlockedState(inner.BlockedNotifications(), relay, this.done)
 	go this.watchBlockedState(relay)
-	if notifier, ok := inner.(closeNotifier); ok {
-		go this.watchClose(notifier.NotifyClose(make(chan *amqp.Error, 1)))
-	}
+	go this.watchClose(inner.CloseNotifications())
 	return this
 }
 
