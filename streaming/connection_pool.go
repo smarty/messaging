@@ -43,7 +43,7 @@ func (this *defaultConnectionPool) Dispose(connection messaging.Connection) {
 	_ = connection.Close()
 
 	this.mutex.Lock()
-	this.mutex.Unlock()
+	defer this.mutex.Unlock()
 
 	if this.connection == connection {
 		this.connection = nil

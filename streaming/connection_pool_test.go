@@ -3,6 +3,7 @@ package streaming
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/smarty/gunit"
@@ -88,6 +89,30 @@ func (this *ConnectionPoolFixture) TestWhenReleasingPriorConnection_ItShouldStil
 	this.So(secondA, should.Equal, secondB)
 	this.So(secondB, should.NotBeNil)
 	this.So(this.connectCount, should.Equal, 2)
+}
+
+func (this *ConnectionPoolFixture) TestWhenDisposingAndActivatingConcurrently_NoDataRace() {
+	first, _ := this.pool.Active(this.ctx)
+	var waiter sync.WaitGroup
+	waiter.Add(2)
+
+	go func() {
+		defer waiter.Done()
+		for i := 0; i < 100; i++ {
+			this.pool.Dispose(first)
+		}
+	}()
+	go func() {
+		defer waiter.Done()
+		for i := 0; i < 100; i++ {
+			_, _ = this.pool.Active(this.ctx)
+		}
+	}()
+	waiter.Wait()
+
+	current, _ := this.pool.Active(this.ctx)
+	this.So(current, should.NotBeNil)
+	this.So(current, should.NotEqual, first)
 }
 
 func (this *ConnectionPoolFixture) TestWhenClosing_ReleaseCurrentConnectionIfAny() {
