@@ -87,6 +87,8 @@ disabled by accident. Keep that property when adding options. See `doc/release-n
   `Options.apply(options...)` which prepends `Options.defaults(...)` so caller values win, a `nop` type that
   satisfies the package's `logger` and `monitor`. `handlers/*` inline the defaults loop in `New` instead of
   `apply`; `streaming` has a second family, `SubscriptionOptions`, whose `apply` panics on invalid input.
+- **`streaming` has a logger but no monitor.** Its failure paths (connect, reader, stream, acknowledge,
+  forced shutdown, reconnect) each log once; there is nothing else to observe, so keep those lines intact.
 - **Per-package `monitor` and `logger` interfaces** are unexported and defined in each package's
   `contracts.go`. Adding a method to a `monitor` interface breaks every implementer and is a major-version
   change. Prefer a new sentinel error through an existing callback (as `ErrCommitTimeout` does), or log-only.

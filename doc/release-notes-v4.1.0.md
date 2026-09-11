@@ -121,6 +121,23 @@ The startup read also reports what it found: `[INFO] Startup recovery found
 [N] undispatched message(s) in durable storage.` The line does not appear when
 the table holds no undispatched rows.
 
+## `streaming`: the logger is now used
+
+`streaming.Options.Logger` existed before this release but nothing read it.
+The consumer runtime swallowed every error. A missing queue, a refused
+topology, an unreachable broker, or a failing acknowledgement all produced a
+process that ran and consumed nothing, in silence. The runtime now logs at
+each of those points, and at each reconnect and each forced shutdown. Pass a
+logger. The lines and their meanings are in the table below and in the
+README's "Consuming" section.
+
+## `streaming`: connection pool race fixed
+
+`Dispose` on the internal connection pool unlocked its mutex immediately
+instead of deferring the unlock, so the write that clears the cached
+connection ran unguarded and raced with `Active`. The unlock is now deferred.
+A test runs both concurrently under the race detector.
+
 ## New log lines
 
 | Level  | Line                                                                                                                                                        |
@@ -131,6 +148,11 @@ the table holds no undispatched rows.
 | `WARN` | `Deferred handoff capacity [8192] reached; waiting for the dispatch processor to accept [M] message(s).`                                                    |
 | `INFO` | `Context ended during handoff; [M] committed message(s) remain in durable storage for the next startup.`                                                    |
 | `INFO` | `Startup recovery found [N] undispatched message(s) in durable storage.`                                                                                    |
+| `WARN` | `Unable to open connection for stream [queue] [...]` / `Unable to open reader for stream [queue] [...]` / `Unable to open stream [queue] [...]`              |
+| `WARN` | `Unable to acknowledge [N] delivery(ies) from stream [queue] [...]; the broker will redeliver them.`                                                        |
+| `WARN` | `Workers on stream [queue] did not conclude within [5s] of shutdown; abandoning in-flight deliveries.`                                                      |
+| `INFO` | `Stream [queue] ended [...]`                                                                                                                                |
+| `INFO` | `Subscription to stream [queue] concluded; reconnecting in [5s].`                                                                                           |
 
 No monitor interface changed. The `rabbitmq` monitor receives
 `ErrCommitTimeout` through the existing `TransactionCommitted` and

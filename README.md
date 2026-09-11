@@ -245,6 +245,19 @@ Subscription options you are most likely to set:
 `MaxAttempts` (effectively unlimited), `ImmediateRetry(values...)` for panic values that should not
 sleep, `LogStackTrace` (on).
 
+Pass `streaming.Options.Logger` so the consumer can tell you when it cannot connect, cannot open a
+stream, or cannot acknowledge. Without it the runtime retries forever in silence. The lines it emits:
+
+| Level  | Line                                                                                                  | When                                                      |
+|--------|-------------------------------------------------------------------------------------------------------|-----------------------------------------------------------|
+| `WARN` | `Unable to open connection for stream [queue] [...]`                                                  | Broker unreachable. Retried after `ReconnectDelay`.       |
+| `WARN` | `Unable to open reader for stream [queue] [...]`                                                      | Channel refused. Retried after `ReconnectDelay`.          |
+| `WARN` | `Unable to open stream [queue] [...]`                                                                 | Queue or exchange missing, topology refused. Retried.     |
+| `WARN` | `Unable to acknowledge [N] delivery(ies) from stream [queue] [...]; the broker will redeliver them.`   | The handler ran; the batch will run again after reconnect.|
+| `WARN` | `Workers on stream [queue] did not conclude within [5s] of shutdown; abandoning in-flight deliveries.` | Shutdown timeout hit; the next start begins with redeliveries. |
+| `INFO` | `Stream [queue] ended [...]`                                                                          | A stream read failed, usually a broker close.             |
+| `INFO` | `Subscription to stream [queue] concluded; reconnecting in [5s].`                                     | The reconnect loop is about to run.                       |
+
 ## Serialization
 
 `serialization.New` wraps any connector. On write, it looks up the Go type of `Dispatch.Message` in
@@ -374,6 +387,12 @@ directly, so the alert does not depend on batch size. A restart does not help. T
 and close counters rise together about once per commit cycle. On their own they are noisy during a
 rolling broker restart. Combine them with the timeout counter to tell a sever from a normal reconnect.
 
+**Consumer reconnect loops.** The streaming runtime has no monitor, only a logger. A repeating
+`Unable to open stream [queue]` line every `ReconnectDelay` means the queue or one of its exchanges is
+missing or was refused, and the consumer will never receive anything until someone fixes the topology.
+Match it and page on a sustained rate. A repeating `Unable to acknowledge` line means every batch is
+being handled and then redelivered, which is the duplicate-side-effects case; page on it too.
+
 **Startup recovery.** The line `Startup recovery found [N] undispatched message(s)` appears once per
 start. A small `N` after a deploy is normal. A large or rising `N` across restarts means the service is
 restarting faster than it can drain its backlog. Record `N` as a gauge and alert when it exceeds a few
@@ -407,7 +426,9 @@ the publisher is behind. The rows are durable and the next start publishes them.
 3. Build the stored-minus-confirmed gap panel and alert on it.
 4. Match and count the two outbox handoff `WARN` lines in your log pipeline.
 5. Page on the blocked-connection gauge and on the deferred-capacity line.
-6. Confirm `/status` fails for a stalled publisher in your platform, and that the platform's reaction
+6. Pass `streaming.Options.Logger` and page on a sustained rate of `Unable to open stream` or
+   `Unable to acknowledge`.
+7. Confirm `/status` fails for a stalled publisher in your platform, and that the platform's reaction
    (a restart) is what you want.
 
 ## Shutdown

@@ -27,6 +27,7 @@ type WorkerFixture struct {
 	subscription  Subscription
 	channelBuffer chan messaging.Delivery
 	worker        messaging.Listener
+	log           capturingLog
 
 	readCount      int
 	maxReadCount   int
@@ -52,7 +53,7 @@ func (this *WorkerFixture) Setup() {
 	this.handler = this
 	this.softContext, this.softShutdown = context.WithCancel(context.Background())
 	this.hardContext, this.hardShutdown = context.WithCancel(context.Background())
-	this.subscription = Subscription{bufferCapacity: 16, batchCapacity: 16}
+	this.subscription = Subscription{streamName: "queue", bufferCapacity: 16, batchCapacity: 16}
 	this.initializeWorker()
 }
 func (this *WorkerFixture) initializeWorker() {
@@ -62,6 +63,7 @@ func (this *WorkerFixture) initializeWorker() {
 		Handler:      this.handler,
 		SoftContext:  this.softContext,
 		HardContext:  this.hardContext,
+		Logger:       &this.log,
 	}).(*defaultWorker)
 	this.worker = worker
 	this.channelBuffer = worker.channelBuffer
@@ -210,7 +212,7 @@ func (this *WorkerFixture) TestWhenConfigured_PassFullDeliveryToContext() {
 }
 
 func (this *WorkerFixture) TestWhenAcknowledgementFails_ListeningConcludesWithoutProcessingBufferedDeliveries() {
-	this.acknowledgeError = errors.New("")
+	this.acknowledgeError = errors.New("channel closed")
 	this.readError = io.EOF
 	this.subscription.batchCapacity = 1
 	this.subscription.bufferCapacity = 2
@@ -222,6 +224,17 @@ func (this *WorkerFixture) TestWhenAcknowledgementFails_ListeningConcludesWithou
 
 	this.So(this.acknowledgeCount, should.Equal, 1)
 	this.So(len(this.channelBuffer), should.Equal, 1)
+	this.So(this.log.String(), should.ContainSubstring,
+		"[WARN] Unable to acknowledge [1] delivery(ies) from stream [queue] [channel closed]; the broker will redeliver them.")
+}
+func (this *WorkerFixture) TestWhenStreamReadEnds_LogTheReason() {
+	this.handler = nil
+	this.readError = io.EOF
+	this.initializeWorker()
+
+	this.worker.Listen()
+
+	this.So(this.log.String(), should.Equal, "[INFO] Stream [queue] ended [EOF].")
 }
 func (this *WorkerFixture) SkipTestWhenConfiguredToBufferBetweenBatches_SleepAfterAcknowledgementAndNoMoreWork() {
 	const timeout = time.Millisecond * 5

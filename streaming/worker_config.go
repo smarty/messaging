@@ -14,4 +14,5 @@ type workerConfig struct {
 	Handler      messaging.Handler
 	SoftContext  context.Context
 	HardContext  context.Context
+	Logger       logger
 }

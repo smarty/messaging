@@ -23,6 +23,7 @@ type SubscriberFixture struct {
 	softContext  context.Context
 	softShutdown context.CancelFunc
 	subscriber   messaging.Listener
+	log          capturingLog
 
 	workerFactoryCount  int
 	workerFactoryConfig workerConfig
@@ -64,7 +65,7 @@ func (this *SubscriberFixture) Setup() {
 	this.initializeSubscriber()
 }
 func (this *SubscriberFixture) initializeSubscriber() {
-	this.subscriber = newSubscriber(this, this.subscription, this.softContext, this.workerFactory)
+	this.subscriber = newSubscriber(this, this.subscription, this.softContext, this.workerFactory, &this.log)
 }
 func (this *SubscriberFixture) workerFactory(config workerConfig) messaging.Listener {
 	this.workerFactoryCount++
@@ -73,24 +74,26 @@ func (this *SubscriberFixture) workerFactory(config workerConfig) messaging.List
 }
 
 func (this *SubscriberFixture) TestWhenOpeningAConnectionFails_ListenShouldReturn() {
-	this.currentError = errors.New("")
+	this.currentError = errors.New("dial refused")
 
 	this.subscriber.Listen()
 
 	this.So(this.currentContext, should.Equal, this.softContext)
 	this.So(this.currentCount, should.Equal, 1)
+	this.So(this.log.String(), should.ContainSubstring, "[WARN] Unable to open connection for stream [queue] [dial refused].")
 }
 func (this *SubscriberFixture) TestWhenOpeningReaderFails_ListenShouldReturn() {
-	this.readerError = errors.New("")
+	this.readerError = errors.New("channel refused")
 
 	this.subscriber.Listen()
 
 	this.So(this.readerCtx, should.Equal, this.softContext)
 	this.So(this.readerCount, should.Equal, 1)
 	this.So(this.releasedConnections, should.Equal, []messaging.Connection{this})
+	this.So(this.log.String(), should.ContainSubstring, "[WARN] Unable to open reader for stream [queue] [channel refused].")
 }
 func (this *SubscriberFixture) TestWhenOpeningStreamFails_ListenShouldReturn() {
-	this.streamError = errors.New("")
+	this.streamError = errors.New("NOT_FOUND - no exchange")
 
 	this.subscriber.Listen()
 
@@ -104,6 +107,7 @@ func (this *SubscriberFixture) TestWhenOpeningStreamFails_ListenShouldReturn() {
 		Topics:            this.subscription.subscriptionTopics,
 	})
 	this.So(this.closeCount, should.Equal, 1) // reader
+	this.So(this.log.String(), should.ContainSubstring, "[WARN] Unable to open stream [queue] [NOT_FOUND - no exchange].")
 }
 
 func (this *SubscriberFixture) TestWhenListening_EstablishWorkersAndListen() {
@@ -118,6 +122,7 @@ func (this *SubscriberFixture) TestWhenListening_EstablishWorkersAndListen() {
 		Handler:      nil,
 		SoftContext:  this.softContext,
 		HardContext:  this.subscriber.(defaultSubscriber).hardContext,
+		Logger:       &this.log,
 	})
 	this.So(this.listenCount, should.Equal, len(this.subscription.handlers))
 }
@@ -132,6 +137,7 @@ func (this *SubscriberFixture) TestWhenListeningConcludesWithoutShutdown_AllReso
 	this.subscriber.Listen()
 
 	this.So(this.closeCount, should.Equal, 2) // reader and stream
+	this.So(this.log.String(), should.BeBlank)
 }
 func (this *SubscriberFixture) TestWhenSoftShutdownIsInvoked_HardDeadlineShouldStart() {
 	this.listenWaitForHardShutdown = true
@@ -146,6 +152,8 @@ func (this *SubscriberFixture) TestWhenSoftShutdownIsInvoked_HardDeadlineShouldS
 	this.So(duration, should.BeGreaterThan, this.subscription.shutdownTimeout)
 	_, hardDeadlineAlive := <-this.subscriber.(defaultSubscriber).hardContext.Done()
 	this.So(hardDeadlineAlive, should.BeFalse)
+	this.So(this.log.String(), should.ContainSubstring,
+		"[WARN] Workers on stream [queue] did not conclude within [5ms] of shutdown; abandoning in-flight deliveries.")
 }
 func (this *SubscriberFixture) SkipTestWhenSoftShutdownIsInvoked_ListenCanConcludeBeforeHardShutdownDeadline() {
 	this.listenSleepForHardShutdown = true

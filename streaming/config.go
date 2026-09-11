@@ -12,8 +12,8 @@ func New(connector messaging.Connector, options ...option) messaging.ListenClose
 
 	pool := newConnectionPool(connector)
 	return newManager(pool, configuration.subscriptions, func(ctx context.Context, sub Subscription) messaging.Listener {
-		return newSubscriber(pool, sub, ctx, newWorker)
-	})
+		return newSubscriber(pool, sub, ctx, newWorker, configuration.logger)
+	}, configuration.logger)
 }
 
 type config struct {

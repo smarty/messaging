@@ -16,9 +16,10 @@ type defaultManager struct {
 	subscriptions  []Subscription
 	connectionPool io.Closer
 	factory        subscriberFactory
+	logger         logger
 }
 
-func newManager(pool io.Closer, subscriptions []Subscription, factory subscriberFactory) messaging.ListenCloser {
+func newManager(pool io.Closer, subscriptions []Subscription, factory subscriberFactory, logger logger) messaging.ListenCloser {
 	softContext, softShutdown := context.WithCancel(context.Background())
 	return defaultManager{
 		softContext:    softContext,
@@ -26,6 +27,7 @@ func newManager(pool io.Closer, subscriptions []Subscription, factory subscriber
 		subscriptions:  subscriptions,
 		connectionPool: pool,
 		factory:        factory,
+		logger:         logger,
 	}
 }
 
@@ -48,6 +50,10 @@ func (this defaultManager) listen(index int) {
 	for this.isAlive() {
 		subscriber := this.factory(this.softContext, subscription)
 		subscriber.Listen()
+		if !this.isAlive() {
+			return
+		}
+		this.logger.Printf("[INFO] Subscription to stream [%s] concluded; reconnecting in [%s].", subscription.streamName, subscription.reconnectDelay)
 		this.sleep(subscription.reconnectDelay)
 	}
 }

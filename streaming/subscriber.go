@@ -16,9 +16,10 @@ type defaultSubscriber struct {
 	hardShutdown context.CancelFunc
 	factory      workerFactory
 	workersDone  chan struct{}
+	logger       logger
 }
 
-func newSubscriber(pool connectionPool, subscription Subscription, softContext context.Context, factory workerFactory) messaging.Listener {
+func newSubscriber(pool connectionPool, subscription Subscription, softContext context.Context, factory workerFactory, logger logger) messaging.Listener {
 	hardContext, hardShutdown := subscription.hardShutdown(softContext)
 	return defaultSubscriber{
 		pool:         pool,
@@ -28,24 +29,28 @@ func newSubscriber(pool connectionPool, subscription Subscription, softContext c
 		hardShutdown: hardShutdown,
 		factory:      factory,
 		workersDone:  make(chan struct{}),
+		logger:       logger,
 	}
 }
 
 func (this defaultSubscriber) Listen() {
 	connection, err := this.pool.Active(this.softContext)
 	if err != nil {
+		this.logger.Printf("[WARN] Unable to open connection for stream [%s] [%s].", this.subscription.streamName, err)
 		return
 	}
 	defer this.pool.Dispose(connection)
 
 	reader, err := connection.Reader(this.softContext)
 	if err != nil {
+		this.logger.Printf("[WARN] Unable to open reader for stream [%s] [%s].", this.subscription.streamName, err)
 		return
 	}
 	defer closeResource(reader)
 
 	stream, err := reader.Stream(this.softContext, this.subscription.streamConfig())
 	if err != nil {
+		this.logger.Printf("[WARN] Unable to open stream [%s] [%s].", this.subscription.streamName, err)
 		return
 	}
 
@@ -73,6 +78,7 @@ func (this defaultSubscriber) consume(index int, stream messaging.Stream) {
 		Handler:      this.subscription.handlers[index],
 		SoftContext:  this.softContext,
 		HardContext:  this.hardContext,
+		Logger:       this.logger,
 	})
 	worker.Listen()
 }
@@ -88,6 +94,8 @@ func (this defaultSubscriber) shutdown(stream io.Closer) {
 		case <-this.workersDone:
 			return // no need to wait for full deadline, workers have finished
 		case <-deadline.Done():
+			this.logger.Printf("[WARN] Workers on stream [%s] did not conclude within [%s] of shutdown; abandoning in-flight deliveries.",
+				this.subscription.streamName, this.subscription.shutdownTimeout)
 			this.hardShutdown() // tell workers to stop, they're taking too long
 			<-this.workersDone
 		}

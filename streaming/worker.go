@@ -14,6 +14,8 @@ type defaultWorker struct {
 	softContext context.Context
 	hardContext context.Context
 	handler     messaging.Handler
+	logger      logger
+	streamName  string
 
 	channelBuffer   chan messaging.Delivery
 	currentBatch    []any
@@ -31,6 +33,8 @@ func newWorker(config workerConfig) messaging.Listener {
 		softContext: config.SoftContext,
 		hardContext: config.HardContext,
 		handler:     config.Handler,
+		logger:      config.Logger,
+		streamName:  config.Subscription.streamName,
 
 		channelBuffer:   make(chan messaging.Delivery, config.Subscription.bufferCapacity),
 		currentBatch:    make([]any, 0, config.Subscription.batchCapacity),
@@ -58,6 +62,7 @@ func (this *defaultWorker) readFromStream(waiter *sync.WaitGroup) {
 	for {
 		var delivery messaging.Delivery
 		if err := this.stream.Read(this.hardContext, &delivery); err != nil {
+			this.logger.Printf("[INFO] Stream [%s] ended [%s].", this.streamName, err)
 			break
 		}
 
@@ -124,7 +129,12 @@ func (this *defaultWorker) deliverBatch() bool {
 		this.handler.Handle(this.deliveryContext(), this.currentBatch...)
 	}
 
-	return this.stream.Acknowledge(this.hardContext, this.unacknowledged...) == nil
+	if err := this.stream.Acknowledge(this.hardContext, this.unacknowledged...); err != nil {
+		this.logger.Printf("[WARN] Unable to acknowledge [%d] delivery(ies) from stream [%s] [%s]; the broker will redeliver them.",
+			len(this.unacknowledged), this.streamName, err)
+		return false
+	}
+	return true
 }
 func (this *defaultWorker) deliveryContext() context.Context {
 	if this.contextDelivery {
