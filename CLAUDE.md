@@ -14,6 +14,7 @@ go test -timeout=1s -short -race -run 'TestDispatchReceiverFixture/TestWhenHando
 make test.integration.local    # real RabbitMQ via docker/podman compose (doc/docker-compose.integration.yml), then down
 make test.integration          # single-process tests against a cluster the user already started (they will usually do this for you)
 make test.integration.ghost    # the incident timeline; stops/starts cluster nodes between phases
+make test.integration.alarm    # the resource-alarm timeline; raises/clears a memory alarm on node 1 between phases
 ```
 
 Integration tests live in `integration/` behind the `integration` build tag, use only the public API, and
@@ -21,6 +22,8 @@ create uniquely named exchanges and queues per test so runs never collide. They 
 (forced close, queue deletion) through the management HTTP API on port 15678. The ghosted-queue scenario
 is three phase tests that only observe; `make test.integration.ghost` stops and starts cluster nodes
 between them and shares the queue name via `INTEGRATION_GHOST_QUEUE` (the tests skip when it is unset).
+The resource-alarm scenario has the same shape: `make test.integration.alarm` sets node 1's memory
+watermark to zero and back between its phases and shares the queue name via `INTEGRATION_ALARM_QUEUE`.
 Tests never run container commands; the Makefile does.
 Assert by consuming from queues, not by the management API's message counts, which lag by a stats interval.
 CI runs this suite only on tag pushes (`.github/workflows/integration.yml`).

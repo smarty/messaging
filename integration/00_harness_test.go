@@ -163,6 +163,22 @@ func (this *management) Nodes() map[string]bool {
 	}
 	return result
 }
+
+// MemoryAlarm reports whether any node has a memory alarm in effect. An alarm
+// on one node blocks publishers cluster-wide.
+func (this *management) MemoryAlarm() bool {
+	_, body := this.do(http.MethodGet, "/api/nodes", nil)
+	var nodes []struct {
+		MemoryAlarm bool `json:"mem_alarm"`
+	}
+	_ = json.Unmarshal(body, &nodes)
+	for _, node := range nodes {
+		if node.MemoryAlarm {
+			return true
+		}
+	}
+	return false
+}
 func (this *management) RunningNodes() (count int) {
 	for _, running := range this.Nodes() {
 		if running {

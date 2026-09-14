@@ -156,8 +156,10 @@ message arriving once quorum returns: the channel had already handed it to
 the queue's log. The outbox and the `transactional` handler retry the batch,
 so consumers can receive it twice. This is the at-least-once contract the
 library has always had; the timeout makes the window visible. The
-`batch.Writer` and the `transactional` handler already reconnect after a
-commit error. No new code is necessary in a service.
+integration test that raises a memory alarm shows the same for a publish
+timeout: frames a blocked connection had already written are published once
+the alarm clears. The `batch.Writer` and the `transactional` handler already
+reconnect after a commit error. No new code is necessary in a service.
 
 ### Every broker wait is now bounded
 

@@ -2,8 +2,8 @@ name: Integration
 
 # Runs only when a tag is pushed. It boots a three-node RabbitMQ cluster with
 # docker compose (the same file developers use locally) and runs the
-# integration suite, including the test that puts a quorum queue into
-# minority by stopping two nodes.
+# integration suite, including the timelines that put a quorum queue into
+# minority by stopping two nodes and that raise a memory alarm on one node.
 on:
   push:
     tags:

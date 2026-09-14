@@ -597,10 +597,22 @@ Phase three proves publishing resumes without a restart, and shows the severed t
 arriving after recovery, which is why consumers must be idempotent. The phases share a queue name
 through `INTEGRATION_GHOST_QUEUE` and skip when it is unset.
 
+`make test.integration.alarm` reproduces a broker resource alarm the same way. Phase one proves a
+transactional publish commits. The Makefile then sets node 1's memory watermark to zero, which raises
+the alarm at once: the broker blocks every connection that publishes and stops reading from its socket.
+Phase two proves the block reaches the log and the monitor, a commit behind a small publish times out
+within `BrokerTimeout` and severs, a batch too large for the socket buffers times out in the write itself
+and reports zero written, a status probe fails within the bound, and a connection that only consumes is
+unaffected. The Makefile restores the watermark. Phase three proves publishing resumes and shows that
+frames the blocked connections had already written may be published once the alarm clears, so a publish
+timeout, like a commit timeout, means "unknown". The phases share a queue name through
+`INTEGRATION_ALARM_QUEUE` and skip when it is unset.
+
 ```sh
 make test.integration.local   # starts the cluster with docker or podman compose, runs everything, stops it
 make test.integration         # the single-process tests, against a cluster you already started
 make test.integration.ghost   # the incident timeline, against a cluster you already started
+make test.integration.alarm   # the resource-alarm timeline, against a cluster you already started
 ```
 
 `doc/docker-compose.integration.yml` runs three nodes that form a cluster from a static peer list, with
