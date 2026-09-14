@@ -307,7 +307,9 @@ acknowledged without reaching the handler.
 one empty message to a probe topic (`amq.direct` by default) inside an AMQP transaction and commits it.
 The commit is synchronous, so a fault on the probe topic surfaces in the same probe, and it is bounded by
 `rabbitmq.Options.BrokerTimeout`, so a stalled broker fails the probe within that bound. Wire it to your
-`/status` endpoint, and always pass a context with a deadline.
+`/status` endpoint, and always pass a context with a deadline. When that deadline passes first, the checker
+severs the connection and waits up to `Options.SeverTimeout` (default 5 seconds) for the probe to return
+before abandoning it.
 
 The checker tolerates failures inside a window (`Options.FailureTolerance`, default 30 seconds). While
 consecutive probes fail inside the window it logs a `WARN` and returns `nil`, so a broker failover does
@@ -330,6 +332,7 @@ default, so a bound cannot be disabled by accident.
 | `rabbitmq` | `Options.Heartbeat`               | 10 seconds    | How long a dead socket goes unnoticed (about 1.5 times this value).                                         |
 | `sqlmq`    | `Options.HandoffTimeout`          | 10 seconds    | The wait, after the SQL commit, to hand messages to the dispatcher.                                         |
 | `sqlmq`    | `Options.DeferredHandoffCapacity` | 8192 messages | The messages that background handoffs may hold in memory at one time.                                       |
+| `status`   | `Options.SeverTimeout`            | 5 seconds     | After the probe's context ends and the connection is severed, the wait for the stalled probe to return.     |
 
 What happens at each bound:
 

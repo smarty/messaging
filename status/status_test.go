@@ -35,6 +35,8 @@ type StatusFixture struct {
 	closeCalls   int
 	writeGate    chan struct{} // when non-nil, Write parks here until Close severs it
 	gateClosed   bool
+	severIgnored bool // a transport whose Close leaves the parked write parked
+	logged       []string
 }
 
 func (this *StatusFixture) Setup() {
@@ -42,9 +44,15 @@ func (this *StatusFixture) Setup() {
 	this.clock = time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 	this.checker = this.newChecker(Options.FailureTolerance(0))
 }
+func (this *StatusFixture) Teardown() {
+	if this.writeGate != nil && !this.gateClosed {
+		close(this.writeGate) // let an abandoned probe goroutine finish
+	}
+}
 func (this *StatusFixture) newChecker(options ...option) Checker {
 	return New(append([]option{
 		Options.Connector(this),
+		Options.Logger(this),
 		Options.Topic("status-topic"),
 		Options.Now(func() time.Time { return this.clock }),
 	}, options...)...)
@@ -98,6 +106,31 @@ func (this *StatusFixture) TestWhenWriteBlocks_ProbeHonorsContextDeadlineAndSeve
 	this.So(this.closeCalls, should.Equal, 2) // the wedged connection was severed
 }
 
+func (this *StatusFixture) TestWhenTheSeveredWriteNeverReturns_GiveUpAfterTheSeverTimeout() {
+	this.checker = this.newChecker(Options.FailureTolerance(0), Options.SeverTimeout(time.Millisecond*5))
+	this.writeGate = make(chan struct{})
+	this.severIgnored = true // a transport that breaks the invariant; without a second bound Status parks forever
+	ctx, cancel := context.WithTimeout(this.ctx, time.Millisecond*5)
+	defer cancel()
+
+	err := this.checker.Status(ctx)
+
+	this.So(err, should.Equal, context.DeadlineExceeded)
+	this.So(this.closeCalls, should.Equal, 2)
+	this.So(this.logged, should.Contain, "[WARN] Status probe still pending [5ms] after the connection was severed; abandoning it.")
+}
+func (this *StatusFixture) TestSeverTimeout_DefaultsToFiveSecondsAndRejectsNonPositiveValues() {
+	var config configuration
+
+	Options.apply()(&config)
+	this.So(config.severTimeout, should.Equal, time.Second*5)
+
+	Options.apply(Options.SeverTimeout(-1))(&config)
+	this.So(config.severTimeout, should.Equal, time.Second*5)
+
+	Options.apply(Options.SeverTimeout(time.Second))(&config)
+	this.So(config.severTimeout, should.Equal, time.Second)
+}
 func (this *StatusFixture) TestWhenWriteFailsWithPasswordError_ReturnUnderlyingError() {
 	this.writeError = errors.New("ACCESS_REFUSED: bad password")
 
@@ -284,9 +317,12 @@ func (this *StatusFixture) Write(_ context.Context, dispatches ...messaging.Disp
 	}
 	return len(dispatches), nil
 }
+func (this *StatusFixture) Printf(format string, args ...any) {
+	this.logged = append(this.logged, fmt.Sprintf(format, args...))
+}
 func (this *StatusFixture) Close() error {
 	this.closeCalls++
-	if this.writeGate != nil && !this.gateClosed {
+	if this.writeGate != nil && !this.gateClosed && !this.severIgnored {
 		this.gateClosed = true
 		close(this.writeGate) // severing the connection unblocks the parked write
 	}

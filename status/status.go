@@ -20,18 +20,20 @@ type defaultStatusChecker struct {
 	connection   messaging.Connection
 	writer       messaging.CommitWriter
 	tolerance    time.Duration
+	severTimeout time.Duration
 	now          func() time.Time
 	firstFailure time.Time
 }
 
 func newDefaultStatusChecker(config configuration) Checker {
 	return &defaultStatusChecker{
-		lock:      new(sync.Mutex),
-		logger:    config.logger,
-		connector: config.connector,
-		dispatch:  messaging.Dispatch{Topic: config.topic},
-		tolerance: config.failureTolerance,
-		now:       config.now,
+		lock:         new(sync.Mutex),
+		logger:       config.logger,
+		connector:    config.connector,
+		dispatch:     messaging.Dispatch{Topic: config.topic},
+		tolerance:    config.failureTolerance,
+		severTimeout: config.severTimeout,
+		now:          config.now,
 	}
 }
 func (this *defaultStatusChecker) Status(ctx context.Context) error {
@@ -90,9 +92,11 @@ func (this *defaultStatusChecker) tryWrite(ctx context.Context) error {
 // reading (a resource alarm) can block the underlying socket write
 // indefinitely. On timeout, the checker severs the connection, which unblocks
 // the write. The wait that follows relies on the transport: the rabbitmq
-// connector bounds the probe's own write and commit with BrokerTimeout and
-// fails every pending call on a closed connection, so the wait ends within
-// that bound. A transport that does neither would park here.
+// connector fails every pending call on a closed connection, so the probe
+// returns within its close grace period. SeverTimeout guards against a
+// transport that does not: the probe is abandoned with a warning rather than
+// parking Status forever. completed is buffered, so a late return leaks
+// nothing.
 func (this *defaultStatusChecker) write(ctx context.Context) error {
 	writer := this.writer
 	completed := make(chan error, 1)
@@ -102,7 +106,13 @@ func (this *defaultStatusChecker) write(ctx context.Context) error {
 		return err
 	case <-ctx.Done():
 		_ = this.Close()
-		<-completed // bounded by the transport: see the doc comment
+		timer := time.NewTimer(this.severTimeout)
+		defer timer.Stop()
+		select {
+		case <-completed:
+		case <-timer.C:
+			this.logger.Printf("[WARN] Status probe still pending [%s] after the connection was severed; abandoning it.", this.severTimeout)
+		}
 		return ctx.Err()
 	}
 }

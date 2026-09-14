@@ -79,7 +79,8 @@ return or raise an error**, or the batch is redelivered and its side effects run
 
 `rabbitmq.Options.BrokerTimeout` (30 s) bounds every broker wait (commit, rollback, publish, acknowledge,
 channel close, consumer cancel, connect handshake) via `awaitBroker`, which severs the connection to unblock the call;
-`sqlmq.Options.HandoffTimeout` (10 s) and `DeferredHandoffCapacity` (8192) bound the post-commit handoff.
+`sqlmq.Options.HandoffTimeout` (10 s) and `DeferredHandoffCapacity` (8192) bound the post-commit handoff;
+`status.Options.SeverTimeout` (5 s) bounds the probe's wait after it severs a stalled connection.
 Options that carry a bound sanitize zero/negative input back to the default so a bound cannot be
 disabled by accident. Keep that property when adding options. See `doc/release-notes-v4.1.0.md`.
 
