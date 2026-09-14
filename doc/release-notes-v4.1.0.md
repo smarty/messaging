@@ -343,9 +343,17 @@ A test runs both concurrently under the race detector.
 
 ## New log lines
 
+The sever makes the stuck call return because the AMQP library fails every
+call parked on a connection it shuts down. `awaitBroker` waits one more
+`BrokerTimeout` for that to happen and then abandons the call with the
+"still pending" line below rather than park the caller forever. With the
+bundled adapter that line should never appear; it exists so that a future
+adapter which breaks the invariant stalls a goroutine instead of a service.
+
 | Level  | Line                                                                                                                                                        |
 |--------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `WARN` | `AMQP transaction commit did not complete within [30s]; severing the connection.` (also `rollback`)                                                         |
+| `WARN` | `AMQP transaction commit still pending [30s] after the connection was severed; abandoning it.` (not expected with the bundled adapter; see below)           |
 | `WARN` | `Unable to commit channel transaction [...]` (existing line, now also for timeouts)                                                                         |
 | `WARN` | `Committed [N] message(s) to durable storage, but the dispatch processor did not accept [M] of them within [10s]. The handoff continues in the background.` |
 | `WARN` | `Deferred handoff capacity [8192] reached; waiting for the dispatch processor to accept [M] message(s).`                                                    |
