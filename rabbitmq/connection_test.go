@@ -33,6 +33,8 @@ type ConnectionFixture struct {
 
 	blocking chan amqp.Blocking
 	closing  chan *amqp.Error
+
+	brokerClosesImmediately bool // the close notification is already buffered when the connection's watchers start
 }
 
 func (this *ConnectionFixture) Setup() {
@@ -40,7 +42,10 @@ func (this *ConnectionFixture) Setup() {
 	this.connection = this.open(configuration{Monitor: nop{}, Logger: nop{}})
 }
 func (this *ConnectionFixture) open(config configuration) messaging.Connection {
-	connection := newConnection(this, config, nil)
+	return this.openTracked(config, nil)
+}
+func (this *ConnectionFixture) openTracked(config configuration, tracker connectionTracker) messaging.Connection {
+	connection := newConnection(this, config, tracker)
 	this.connections = append(this.connections, connection)
 	return connection
 }
@@ -178,6 +183,15 @@ func (this *ConnectionFixture) TestWhenMonitorCallbackIsSlow_LatestBlockedStateI
 	this.So(receiveLast(monitor.calls), should.Equal, "blocked:final")
 }
 
+func (this *ConnectionFixture) TestWhenTheBrokerClosesTheConnectionAsItOpens_TrackBeforeRelease() {
+	tracker := &recordingTracker{events: make(chan string, 2)}
+	this.brokerClosesImmediately = true
+
+	this.openTracked(configuration{Monitor: nop{}, Logger: nop{}}, tracker)
+
+	this.So(receive(tracker.events), should.Equal, "tracked") // or release finds nothing and the closed connection is tracked forever
+	this.So(receive(tracker.events), should.Equal, "released")
+}
 func (this *ConnectionFixture) TestWhenNotificationChannelClosesWhileBlocked_ReportUnblockedThenStop() {
 	monitor := &blockingMonitor{calls: make(chan string, 4)}
 	this.connection = this.open(configuration{Monitor: monitor, Logger: nop{}})
@@ -291,6 +305,9 @@ func (this *ConnectionFixture) CloseNotifications() <-chan *amqp.Error {
 	// a fresh channel per connection, like the real adapter; tests send into
 	// the most recent connection's channel
 	this.closing = make(chan *amqp.Error, 1)
+	if this.brokerClosesImmediately {
+		this.closing <- &amqp.Error{Code: amqp.ConnectionForced, Reason: "CONNECTION_FORCED"}
+	}
 	return this.closing
 }
 func (this *ConnectionFixture) CancelNotifications() <-chan string { return nil }
@@ -342,6 +359,11 @@ type closingMonitor struct {
 }
 
 func (this *closingMonitor) ConnectionClosed() { this.calls <- "closed" }
+
+type recordingTracker struct{ events chan string }
+
+func (this *recordingTracker) track(*defaultConnection)   { this.events <- "tracked" }
+func (this *recordingTracker) release(*defaultConnection) { this.events <- "released" }
 
 type capturingLogger struct{ lines chan string }
 

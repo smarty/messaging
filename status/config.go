@@ -19,6 +19,7 @@ type configuration struct {
 	connector        messaging.Connector
 	topic            string
 	failureTolerance time.Duration
+	severTimeout     time.Duration
 	now              func() time.Time
 }
 
@@ -44,6 +45,21 @@ func (singleton) Topic(topic string) option {
 func (singleton) FailureTolerance(value time.Duration) option {
 	return func(this *configuration) { this.failureTolerance = max(value, 0) }
 }
+
+// SeverTimeout bounds the wait, after the caller's context ends and the
+// connection is severed, for the stalled probe to return. The rabbitmq
+// transport fails every pending call on a closed connection, so the probe
+// returns well inside the default. A transport that does not would otherwise
+// park Status forever; past this bound the probe is abandoned with a warning.
+// A zero or negative value is replaced with the default.
+func (singleton) SeverTimeout(value time.Duration) option {
+	return func(this *configuration) {
+		if value <= 0 {
+			value = defaultSeverTimeout
+		}
+		this.severTimeout = value
+	}
+}
 func (singleton) Now(value func() time.Time) option {
 	return func(this *configuration) { this.now = value }
 }
@@ -62,9 +78,14 @@ func (singleton) defaults(options ...option) []option {
 		Options.Logger(nop{}),
 		Options.Topic("amq.direct"),
 		Options.FailureTolerance(defaultFailureTolerance),
+		Options.SeverTimeout(defaultSeverTimeout),
 		Options.Now(time.Now),
 	}, options...)
 }
+
+// defaultSeverTimeout matches the rabbitmq adapter's close grace period: a
+// severed connection fails its pending calls within that window.
+const defaultSeverTimeout = time.Second * 5
 
 type nop struct{}
 

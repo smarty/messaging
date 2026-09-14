@@ -91,8 +91,8 @@ func sanitizeHeartbeat(value time.Duration) time.Duration {
 }
 
 // BrokerTimeout bounds every wait on the broker: a transaction commit or
-// rollback, a publish, an acknowledgement, a channel close, and the connect
-// handshake when the caller's context has no deadline. When the bound
+// rollback, a publish, an acknowledgement, a channel close, a consumer cancel,
+// and the connect handshake when the caller's context has no deadline. When the bound
 // elapses, the library logs a warning, closes the connection the operation
 // belongs to (which is what makes the pending call return), and returns the
 // matching sentinel (ErrCommitTimeout, ErrPublishTimeout,

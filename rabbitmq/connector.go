@@ -63,11 +63,16 @@ func (this *defaultConnector) Connect(ctx context.Context) (messaging.Connection
 	}
 
 	this.logger.Printf("[INFO] Established [%s] AMQP connection with user [%s] to [%s://%s] using virtual host [%s].", encryption, config.Username, this.broker.Address.Scheme, hostAddress, config.VirtualHost)
-	connection := newConnection(amqpConnection, this.config, this.release)
+	return newConnection(amqpConnection, this.config, this), nil
+}
+
+// track remembers a connection so that Close can close it. newConnection
+// calls it before the connection's watchers start, so release always finds
+// the entry.
+func (this *defaultConnector) track(connection *defaultConnection) {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 	this.active = append(this.active, connection)
-	return connection, nil
 }
 
 // release forgets a connection once it has closed, however it closed. Without

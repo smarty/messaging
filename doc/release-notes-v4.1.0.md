@@ -58,6 +58,13 @@ writer panics on a 404 at commit when `PanicOnTopologyError` is on; the
 probe converts that panic into the definitive error instead of crashing the
 service.
 
+When the caller's context ends first, the probe severs the connection and
+waits for the stalled write to return. That wait is now bounded by
+`Options.SeverTimeout` (default 5 seconds, matching the rabbitmq adapter's
+close grace period). With the rabbitmq transport the probe returns inside
+that window. A transport that leaves a call pending on a closed connection
+is abandoned with a warning instead of parking `Status` forever.
+
 A successful probe now means the broker accepted the publish and answered
 the commit. It still does not prove the message was routed anywhere.
 
@@ -98,7 +105,10 @@ own `Close` emptied. Every reconnect during an outage, every commit-timeout
 sever, every failed status probe, and every `transactional` batch (which
 connects fresh) leaked a closed connection and its buffers for the life of
 the process. A connection now removes itself from the list when it closes,
-whether by its owner, by a sever, or by the broker.
+whether by its owner, by a sever, or by the broker. The connector registers
+the connection before its close watcher starts, so a broker that forces the
+connection closed right after the handshake cannot leave a closed entry
+behind.
 
 ## `rabbitmq`: unsupported header values are rejected before the wire
 
@@ -162,7 +172,10 @@ now covers:
 - **Channel close.** `Reader.Close` and `Writer.Close` are synchronous RPCs
   that ran before the bounded connection close and could hang a shutdown on a
   stuck channel. They now return `ErrCloseTimeout` after severing. Consumer
-  cancel uses `noWait`, so `Stream.Close` never waits on the broker.
+  cancel uses `noWait`, so `Stream.Close` never waits for a reply, but the
+  cancel is still a frame write that a stopped broker can park. It runs under
+  the same bound and returns `ErrCloseTimeout` after severing. This matters
+  because `streaming` closes the stream before the bounded reader close.
 - **Connect.** The TLS handshake and the AMQP handshake set no deadline, so a
   peer that accepted TCP and then hung (an auth backend that never answers)
   parked every reconnect loop and the status probe forever. Both now run
@@ -177,6 +190,12 @@ sever only affects the writer that is already stuck. A service that shares one
 connection between a consumer and a transactional writer loses the consumer
 stream when a commit times out. The stream reconnects on its own. If your
 service cannot tolerate that reconnect, give the writer its own connection.
+
+The same applies to consumers. `streaming` shares one connection between
+sibling subscriptions, so an acknowledge or cancel timeout on one stream ends
+the others on that connection, and each reconnects. This is not collateral
+damage: a stalled frame write holds the connection-wide send lock, so every
+other channel on that connection was already unable to send.
 
 ## `sqlmq`: the handoff always returns success after the SQL commit
 
@@ -347,19 +366,28 @@ A test runs both concurrently under the race detector.
 
 ## New log lines
 
-| Level  | Line                                                                                                                                                        |
-|--------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `WARN` | `AMQP transaction commit did not complete within [30s]; severing the connection.` (also `rollback`)                                                         |
-| `WARN` | `Unable to commit channel transaction [...]` (existing line, now also for timeouts)                                                                         |
-| `WARN` | `Committed [N] message(s) to durable storage, but the dispatch processor did not accept [M] of them within [10s]. The handoff continues in the background.` |
-| `WARN` | `Deferred handoff capacity [8192] reached; waiting for the dispatch processor to accept [M] message(s).`                                                    |
-| `INFO` | `Context ended during handoff; [M] committed message(s) remain in durable storage for the next startup.`                                                    |
-| `INFO` | `Startup recovery found [N] undispatched message(s) in durable storage.`                                                                                    |
-| `WARN` | `Unable to open connection for stream [queue] [...]` / `Unable to open reader for stream [queue] [...]` / `Unable to open stream [queue] [...]`              |
-| `WARN` | `Unable to acknowledge [N] delivery(ies) from stream [queue] [...]; the broker will redeliver them.`                                                        |
-| `WARN` | `Workers on stream [queue] did not conclude within [5s] of shutdown; abandoning in-flight deliveries.`                                                      |
-| `INFO` | `Stream [queue] ended [...]`                                                                                                                                |
-| `INFO` | `Subscription to stream [queue] concluded; reconnecting in [5s].`                                                                                           |
+The sever makes the stuck call return because the AMQP library fails every
+call parked on a connection it shuts down. `awaitBroker` waits one more
+`BrokerTimeout` for that to happen and then abandons the call with the
+"still pending" line below rather than park the caller forever. With the
+bundled adapter that line should never appear; it exists so that a future
+adapter which breaks the invariant stalls a goroutine instead of a service.
+
+| Level      | Line                                                                                                                                                                |
+|------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `WARN`     | `AMQP transaction commit did not complete within [30s]; severing the connection.` (also `rollback`, `publish`, `acknowledge`, `channel close`, `consumer cancel`)   |
+| `WARN`     | `AMQP transaction commit still pending [30s] after the connection was severed; abandoning it.` (not expected with the bundled adapter; see below)                   |
+| `WARN`     | `Unable to commit channel transaction [...]` (existing line, now also for timeouts)                                                                                 |
+| `WARN`     | `Committed [N] message(s) to durable storage, but the dispatch processor did not accept [M] of them within [10s]. The handoff continues in the background.`         |
+| `WARN`     | `Deferred handoff capacity [8192] reached; waiting for the dispatch processor to accept [M] message(s).`                                                            |
+| `INFO`     | `Context ended during handoff; [M] committed message(s) remain in durable storage for the next startup.`                                                            |
+| `INFO`     | `Startup recovery found [N] undispatched message(s) in durable storage.`                                                                                            |
+| `WARN`     | `Unable to open connection for stream [queue] [...]` / `Unable to open reader for stream [queue] [...]` / `Unable to open stream [queue] [...]`                     |
+| `WARN`     | `Unable to acknowledge [N] delivery(ies) from stream [queue] [...]; the broker will redeliver them.`                                                                |
+| `WARN`     | `Workers on stream [queue] did not conclude within [5s] of shutdown; abandoning in-flight deliveries.`                                                              |
+| `INFO`     | `Stream [queue] ended [...]`                                                                                                                                        |
+| `INFO`     | `Subscription to stream [queue] concluded; reconnecting in [5s].`                                                                                                   |
+| `WARN`     | `Status probe still pending [5s] after the connection was severed; abandoning it.` (not expected with the bundled transport)                                        |
 
 No monitor interface changed. The `rabbitmq` monitor receives
 `ErrCommitTimeout` through the existing `TransactionCommitted` and
