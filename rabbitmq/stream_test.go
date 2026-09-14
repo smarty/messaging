@@ -34,6 +34,7 @@ type StreamFixture struct {
 	acknowledgedMultiples []bool
 	acknowledgeError      error
 	acknowledgeBlocks     bool
+	cancelBlocks          bool
 	severGate             chan struct{}
 	severCalls            int
 	log                   bytes.Buffer
@@ -97,6 +98,15 @@ func (this *StreamFixture) TestWhenAcknowledgeBlocks_SeverTheConnectionAndReturn
 	this.So(this.log.String(), should.ContainSubstring, "[WARN] AMQP acknowledge did not complete within [5ms]; severing the connection.")
 }
 
+func (this *StreamFixture) TestWhenCancelBlocks_SeverTheConnectionAndReturnCloseTimeout() {
+	this.cancelBlocks = true
+
+	err := this.stream.Close()
+
+	this.So(err, should.Equal, ErrCloseTimeout)
+	this.So(this.severCalls, should.Equal, 1)
+	this.So(this.log.String(), should.ContainSubstring, "[WARN] AMQP consumer cancel did not complete within [5ms]; severing the connection.")
+}
 func (this *StreamFixture) TestWhenCloseInvokedMultipleTimes_OnlyCancelConsumerOnce() {
 	_ = this.stream.Close()
 
@@ -219,6 +229,10 @@ func (this *StreamFixture) TestWhenAcknowledgingFails_ReturnUnderlyingError() {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 func (this *StreamFixture) CancelConsumer(consumerID string) error {
+	if this.cancelBlocks {
+		<-this.severGate // parked in the socket write, like a broker that stopped reading
+		return amqp.ErrClosed
+	}
 	this.cancellations = append(this.cancellations, consumerID)
 	return nil
 }

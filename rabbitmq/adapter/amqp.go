@@ -106,7 +106,7 @@ func (this amqpChannel) Consume(consumerID, queue string) (<-chan amqp.Delivery,
 	return this.Channel.Consume(queue, consumerID, false, false, false, false, amqp.Table{})
 }
 func (this amqpChannel) CancelConsumer(consumerID string) error {
-	return this.Channel.Cancel(consumerID, true) // noWait: a stuck channel must not hang shutdown; the connection close that follows is bounded
+	return this.Channel.Cancel(consumerID, true) // noWait: no reply to wait for; the frame write itself is bounded by the caller (Stream.Close)
 }
 
 func (this amqpChannel) Publish(exchange, key string, envelope amqp.Publishing) error {

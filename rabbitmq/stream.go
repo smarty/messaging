@@ -119,7 +119,7 @@ func (this *defaultStream) Acknowledge(ctx context.Context, deliveries ...messag
 	for _, delivery := range deliveries {
 		tag := delivery.DeliveryID
 		err := awaitBroker(this.logger, "acknowledge", this.timeout, this.sever, ErrAcknowledgeTimeout, func() error {
-			return this.channel.Ack(tag, this.batchAck) // a socket write; blocks with no deadline if the broker stopped reading
+			return this.channel.Ack(tag, this.batchAck) // a frame write with no deadline of its own; awaitBroker bounds it and severs on expiry
 		})
 		if err != nil {
 			this.logger.Printf("[WARN] Unable to acknowledge delivery against underlying channel [%s].", err)
@@ -132,9 +132,17 @@ func (this *defaultStream) Acknowledge(ctx context.Context, deliveries ...messag
 	return nil
 }
 
+// Close cancels the consumer. The cancel skips the broker's reply, but it is
+// still a frame write, which a broker that stopped reading parks with no
+// deadline. It therefore runs under BrokerTimeout like every other channel
+// call and severs the connection on expiry. The streaming subscriber closes
+// the stream before the bounded reader close, so an unbounded cancel would
+// hang a shutdown.
 func (this *defaultStream) Close() (err error) {
 	this.closer.Do(func() {
-		err = this.channel.CancelConsumer(this.streamID)
+		err = awaitBroker(this.logger, "consumer cancel", this.timeout, this.sever, ErrCloseTimeout, func() error {
+			return this.channel.CancelConsumer(this.streamID)
+		})
 	})
 	return err
 }
