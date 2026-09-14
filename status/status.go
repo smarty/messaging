@@ -89,7 +89,10 @@ func (this *defaultStatusChecker) tryWrite(ctx context.Context) error {
 // write bounds the probe with the caller's context. A broker that has stopped
 // reading (a resource alarm) can block the underlying socket write
 // indefinitely. On timeout, the checker severs the connection, which unblocks
-// the write.
+// the write. The wait that follows relies on the transport: the rabbitmq
+// connector bounds the probe's own write and commit with BrokerTimeout and
+// fails every pending call on a closed connection, so the wait ends within
+// that bound. A transport that does neither would park here.
 func (this *defaultStatusChecker) write(ctx context.Context) error {
 	writer := this.writer
 	completed := make(chan error, 1)
@@ -99,7 +102,7 @@ func (this *defaultStatusChecker) write(ctx context.Context) error {
 		return err
 	case <-ctx.Done():
 		_ = this.Close()
-		<-completed // bounded: the severed connection errors the write promptly
+		<-completed // bounded by the transport: see the doc comment
 		return ctx.Err()
 	}
 }

@@ -15,7 +15,7 @@ import (
 type defaultReader struct {
 	streams []io.Closer
 	inner   adapter.Channel
-	sever   func() error // closes the parent connection; the only way to unblock a channel RPC that the broker never answers
+	sever   func() error // closes the parent connection; the only way to unblock a channel RPC or frame write that the broker never services
 	config  configuration
 	mutex   sync.Mutex
 	counter uint64

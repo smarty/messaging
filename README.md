@@ -50,7 +50,7 @@ The root package, `messaging`, declares the vocabulary. Every other package spea
 
 | Package                  | Role                                                                                                                                                                 |
 |--------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `rabbitmq`               | The transport. A `Connector` over [`amqp091-go`](https://github.com/rabbitmq/amqp091-go). Heartbeats, blocked-connection notifications, bounded transaction commits. |
+| `rabbitmq`               | The transport. A `Connector` over [`amqp091-go`](https://github.com/rabbitmq/amqp091-go). Heartbeats, blocked-connection notifications, bounded broker waits.        |
 | `serialization`          | A decorator. Encodes `Dispatch.Message` into `Payload` on the way out and decodes `Delivery.Payload` into `Message` on the way in. JSON by default.                  |
 | `sqlmq`                  | A decorator and the outbox. Its `CommitWriter` stores messages in a SQL table inside your transaction. A background processor publishes them later.                  |
 | `batch`                  | A `Writer` that does connect, write, and commit as one publish, and redials after any error. `sqlmq` uses it to publish.                                             |
@@ -326,7 +326,7 @@ default, so a bound cannot be disabled by accident.
 
 | Package    | Option                            | Default       | Bounds                                                                                                      |
 |------------|-----------------------------------|---------------|-------------------------------------------------------------------------------------------------------------|
-| `rabbitmq` | `Options.BrokerTimeout`           | 30 seconds    | Every wait on the broker: commit, rollback, publish, acknowledge, channel close, and the connect handshake. |
+| `rabbitmq` | `Options.BrokerTimeout`           | 30 seconds    | Every wait on the broker: commit, rollback, publish, acknowledge, channel close, cancel, and connect.       |
 | `rabbitmq` | `Options.Heartbeat`               | 10 seconds    | How long a dead socket goes unnoticed (about 1.5 times this value).                                         |
 | `sqlmq`    | `Options.HandoffTimeout`          | 10 seconds    | The wait, after the SQL commit, to hand messages to the dispatcher.                                         |
 | `sqlmq`    | `Options.DeferredHandoffCapacity` | 8192 messages | The messages that background handoffs may hold in memory at one time.                                       |
