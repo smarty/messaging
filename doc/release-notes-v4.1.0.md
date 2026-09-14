@@ -98,7 +98,10 @@ own `Close` emptied. Every reconnect during an outage, every commit-timeout
 sever, every failed status probe, and every `transactional` batch (which
 connects fresh) leaked a closed connection and its buffers for the life of
 the process. A connection now removes itself from the list when it closes,
-whether by its owner, by a sever, or by the broker.
+whether by its owner, by a sever, or by the broker. The connector registers
+the connection before its close watcher starts, so a broker that forces the
+connection closed right after the handshake cannot leave a closed entry
+behind.
 
 ## `rabbitmq`: unsupported header values are rejected before the wire
 

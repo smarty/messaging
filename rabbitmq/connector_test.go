@@ -39,8 +39,9 @@ type ConnectorFixture struct {
 	connectConfig  adapter.Config
 	connectError   error
 
-	callsToClose int
-	closing      chan *amqp.Error
+	callsToClose            int
+	closing                 chan *amqp.Error
+	brokerClosesImmediately bool // the close notification is already buffered when the connection's watchers start
 }
 
 func (this *ConnectorFixture) Setup() {
@@ -194,6 +195,13 @@ func (this *ConnectorFixture) TestWhenTheBrokerClosesAConnection_ItIsNoLongerTra
 
 	this.So(eventually(func() bool { return this.tracked() == 0 }), should.BeTrue)
 }
+func (this *ConnectorFixture) TestWhenTheBrokerClosesAConnectionAsSoonAsItOpens_ItIsNoLongerTracked() {
+	this.brokerClosesImmediately = true
+
+	_, _ = this.connector.Connect(this.ctx)
+
+	this.So(eventually(func() bool { return this.tracked() == 0 }), should.BeTrue)
+}
 func (this *ConnectorFixture) tracked() int {
 	connector := this.connector.(*defaultConnector)
 	connector.mutex.Lock()
@@ -239,6 +247,9 @@ func (this *ConnectorFixture) Connect(ctx context.Context, socket net.Conn, conf
 func (this *ConnectorFixture) Close() error { this.callsToClose++; return nil }
 func (this *ConnectorFixture) CloseNotifications() <-chan *amqp.Error {
 	this.closing = make(chan *amqp.Error, 1)
+	if this.brokerClosesImmediately {
+		this.closing <- &amqp.Error{Code: amqp.ConnectionForced, Reason: "CONNECTION_FORCED"}
+	}
 	return this.closing
 }
 func (this *ConnectorFixture) Channel() (adapter.Channel, error)          { panic("nop") }

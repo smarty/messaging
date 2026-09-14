@@ -9,20 +9,37 @@ import (
 	"github.com/smarty/messaging/v4/rabbitmq/adapter"
 )
 
-type defaultConnection struct {
-	inner    adapter.Connection
-	config   configuration
-	logger   logger
-	monitor  monitor
-	done     chan struct{}
-	closer   sync.Once
-	onClosed func(*defaultConnection) // lets the connector stop tracking a closed connection
+// connectionTracker is the connector's view of a connection's lifetime: it
+// learns of the connection before the watchers start and forgets it once the
+// connection has closed, however it closed.
+type connectionTracker interface {
+	track(*defaultConnection)
+	release(*defaultConnection)
 }
 
-func newConnection(inner adapter.Connection, config configuration, onClosed func(*defaultConnection)) messaging.Connection {
+type defaultConnection struct {
+	inner   adapter.Connection
+	config  configuration
+	logger  logger
+	monitor monitor
+	done    chan struct{}
+	closer  sync.Once
+	tracker connectionTracker // nil when nothing tracks the connection
+}
+
+// newConnection registers the connection with the tracker before starting
+// the watchers. A close notification that is already buffered when they
+// start (a broker that forces the connection closed right after the
+// handshake) then finds the entry to release. Registering afterward let the
+// release run first and find nothing, leaving a closed connection tracked
+// until the connector closed.
+func newConnection(inner adapter.Connection, config configuration, tracker connectionTracker) messaging.Connection {
 	// NOTE: using pointer type to allow for pointer equality check
 	config.Monitor.ConnectionOpened(nil)
-	this := &defaultConnection{inner: inner, config: config, logger: config.Logger, monitor: config.Monitor, done: make(chan struct{}), onClosed: onClosed}
+	this := &defaultConnection{inner: inner, config: config, logger: config.Logger, monitor: config.Monitor, done: make(chan struct{}), tracker: tracker}
+	if tracker != nil {
+		tracker.track(this)
+	}
 	relay := make(chan amqp.Blocking, 1)
 	go relayBlockedState(inner.BlockedNotifications(), relay, this.done)
 	go this.watchBlockedState(relay)
@@ -158,7 +175,7 @@ func (this *defaultConnection) Close() (err error) {
 	return err
 }
 func (this *defaultConnection) released() {
-	if this.onClosed != nil {
-		this.onClosed(this)
+	if this.tracker != nil {
+		this.tracker.release(this)
 	}
 }
