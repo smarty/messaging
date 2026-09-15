@@ -24,11 +24,17 @@ type ConfigFixture struct {
 
 	readerContext context.Context
 	readerError   error
+	log           capturingLog
+	monitor       capturingMonitor
 }
 
 func (this *ConfigFixture) Setup() {
 	this.ctx, this.shutdown = context.WithCancel(context.Background())
-	this.manager = New(this, Options.Subscriptions(NewSubscription("queue", SubscriptionOptions.AddWorkers(this))))
+	this.manager = New(this,
+		Options.Logger(&this.log),
+		Options.Monitor(&this.monitor),
+		Options.Subscriptions(NewSubscription("queue", SubscriptionOptions.AddWorkers(this))),
+	)
 }
 
 func (this *ConfigFixture) TestWhenManagerListens_UnderlyingWorkerStarted() {
@@ -40,6 +46,30 @@ func (this *ConfigFixture) TestWhenManagerListens_UnderlyingWorkerStarted() {
 	this.manager.Listen()
 
 	this.So(this.readerContext, should.NotBeNil)
+}
+func (this *ConfigFixture) TestWhenConfiguredLoggerProvided_SubscriberFailuresAreLoggedThroughIt() {
+	this.readerError = errors.New("channel refused")
+	go func() {
+		time.Sleep(time.Millisecond * 5)
+		closeResource(this.manager)
+	}()
+	this.manager.Listen()
+
+	this.So(this.log.String(), should.ContainSubstring, "[WARN] Unable to open reader for stream [queue] [channel refused].")
+	this.So(this.log.String(), should.ContainSubstring, "[INFO] Subscription to stream [queue] concluded; reconnecting in [5s].")
+}
+func (this *ConfigFixture) TestWhenConfiguredMonitorProvided_SubscriberEventsReachIt() {
+	this.readerError = errors.New("channel refused")
+	go func() {
+		time.Sleep(time.Millisecond * 5)
+		closeResource(this.manager)
+	}()
+	this.manager.Listen()
+
+	this.So(this.monitor.Calls(), should.Contain, "opened:queue:channel refused")
+}
+func (this *ConfigFixture) TestWhenNoMonitorProvided_DefaultIsNop() {
+	var _ monitor = nop{}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

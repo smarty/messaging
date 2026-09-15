@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proposal: Bounded AMQP Commit and Outbox Handoff</title>
+<style>
+  :root {
+    --ink: #1a1f27;
+    --muted: #5b6572;
+    --paper: #ffffff;
+    --panel: #f6f8fa;
+    --border: #d8dee5;
+    --accent: #0b5fa5;
+    --warn-bg: #fff7e6;
+    --warn-border: #e0b25a;
+    --good-bg: #eefaf0;
+    --good-border: #7cc48a;
+    --bad: #b3382c;
+    --code-bg: #f0f2f5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto;
+    max-width: 60rem;
+    padding: 2.5rem 2rem 5rem;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Charter", "Georgia", serif;
+    font-size: 17px;
+    line-height: 1.55;
+  }
+  h1, h2, h3, h4 { font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; line-height: 1.2; }
+  h1 { font-size: 1.9rem; margin-bottom: 0.3rem; }
+  h2 { font-size: 1.4rem; margin-top: 2.8rem; border-bottom: 2px solid var(--border); padding-bottom: 0.35rem; }
+  h3 { font-size: 1.12rem; margin-top: 2rem; color: var(--accent); }
+  h4 { font-size: 1rem; margin-top: 1.4rem; }
+  .meta { color: var(--muted); font-size: 0.95rem; margin-bottom: 2rem;
+          font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; }
+  code, pre {
+    font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.86em;
+  }
+  code { background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
+  pre {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.9rem 1.1rem;
+    overflow-x: auto;
+    line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1rem 0;
+    font-size: 0.95rem;
+  }
+  th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; vertical-align: top; }
+  th { background: var(--panel); font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; }
+  .callout {
+    border-left: 4px solid var(--warn-border);
+    background: var(--warn-bg);
+    padding: 0.8rem 1.1rem;
+    border-radius: 0 8px 8px 0;
+    margin: 1.2rem 0;
+  }
+  .callout.good { border-left-color: var(--good-border); background: var(--good-bg); }
+  .fig {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem;
+    margin: 1.5rem 0;
+    overflow-x: auto;
+  }
+  .fig figcaption {
+    color: var(--muted);
+    font-size: 0.88rem;
+    margin-top: 0.7rem;
+    font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+  }
+  .fig svg { display: block; margin: 0 auto; max-width: 100%; }
+  .fig text { font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; font-size: 13px; fill: var(--ink); }
+  .fig text.small { font-size: 11px; fill: var(--muted); }
+  .fig text.mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 11.5px; }
+  .fig .box { fill: #ffffff; stroke: var(--border); stroke-width: 1.5; rx: 6; }
+  .fig .box.stuck { fill: #fdecea; stroke: var(--bad); }
+  .fig .box.fixed { fill: var(--good-bg); stroke: var(--good-border); }
+  .fig .box.broker { fill: #eef4fb; stroke: var(--accent); }
+  .fig line, .fig path { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+  .fig .stuckline { stroke: var(--bad); stroke-dasharray: 5 4; }
+  ul.checklist { list-style: none; padding-left: 0.3rem; }
+  ul.checklist li { margin: 0.45rem 0; padding-left: 1.9rem; position: relative; }
+  ul.checklist li::before {
+    content: ""; position: absolute; left: 0; top: 0.3rem;
+    width: 1.05rem; height: 1.05rem; border: 2px solid var(--muted); border-radius: 4px; background: #fff;
+  }
+  ul.checklist li.done::before {
+    content: "\2713"; background: var(--good-bg); border-color: var(--good-border); color: #2c7a3d;
+    font-size: 0.8rem; font-weight: 700; line-height: 1.05rem; text-align: center;
+  }
+  ul.checklist li.done { color: var(--muted); }
+  ul.checklist li.red::after, ul.checklist li.green::after {
+    font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; font-size: 0.7rem; font-weight: 600;
+    padding: 0.05rem 0.4rem; border-radius: 3px; margin-left: 0.5rem; vertical-align: middle;
+  }
+  ul.checklist li.red::after { content: "RED"; background: #fdecea; color: var(--bad); }
+  ul.checklist li.green::after { content: "GREEN"; background: var(--good-bg); color: #2c7a3d; }
+  dl dt { font-weight: 600; font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; margin-top: 0.8rem; }
+  dl dd { margin-left: 0; margin-top: 0.2rem; }
+  .decided { color: #2c7a3d; font-weight: 600; font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+
+<h1>Bounded AMQP Commit and Outbox Handoff</h1>
+<div class="meta">
+  Proposal &middot; <code>github.com/smarty/messaging/v4</code> &middot; branch <code>mikewhat/no-stalls</code> &middot; 2026-09-10<br>
+  Target release: <strong>v4.1.0</strong> (additive options, no interface changes) &middot; Status: <strong>revision 2, for review</strong><br>
+  Revision 2 changes: the periodic recovery sweep is removed; a deferred handoff replaces it. The shutdown path is included in Fix 2. Defaults are accepted.
+</div>
+
+<h2>1. Background</h2>
+
+<p>
+On 2026-09-10 a consuming service stopped consuming from RabbitMQ. About 16 million
+messages accumulated. The process logged nothing. Its health check passed. A goroutine dump of a local
+reproduction showed the exact chain of blocked calls.
+</p>
+
+<figure class="fig">
+<svg width="860" height="300" viewBox="0 0 860 300" role="img" aria-label="Chain of blocked goroutines in the outbox pipeline">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b6572" stroke="none"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b3382c" stroke="none"/>
+    </marker>
+  </defs>
+
+  <rect class="box stuck" x="20" y="30" width="200" height="70"/>
+  <text x="120" y="55" text-anchor="middle">Handler worker &times;3</text>
+  <text class="mono" x="120" y="74" text-anchor="middle">dispatchReceiver.Commit</text>
+  <text class="small" x="120" y="90" text-anchor="middle">SQL committed, waiting on channel</text>
+
+  <rect class="box stuck" x="330" y="30" width="200" height="70"/>
+  <text x="430" y="55" text-anchor="middle">Outbox channel</text>
+  <text class="mono" x="430" y="74" text-anchor="middle">chan Dispatch (cap 1024)</text>
+  <text class="small" x="430" y="90" text-anchor="middle">full</text>
+
+  <rect class="box stuck" x="640" y="30" width="200" height="70"/>
+  <text x="740" y="55" text-anchor="middle">Startup loader</text>
+  <text class="mono" x="740" y="74" text-anchor="middle">dispatchProcessor.readPending</text>
+  <text class="small" x="740" y="90" text-anchor="middle">12 580 rows, blocked on send</text>
+
+  <line class="stuckline" x1="220" y1="65" x2="330" y2="65" marker-end="url(#arrow-red)"/>
+  <line class="stuckline" x1="640" y1="65" x2="530" y2="65" marker-end="url(#arrow-red)"/>
+
+  <rect class="box stuck" x="330" y="160" width="200" height="70"/>
+  <text x="430" y="185" text-anchor="middle">Dispatch processor</text>
+  <text class="mono" x="430" y="204" text-anchor="middle">writeBufferToSender</text>
+  <text class="small" x="430" y="220" text-anchor="middle">1025 messages in buffer</text>
+
+  <line x1="430" y1="100" x2="430" y2="160" marker-end="url(#arrow)"/>
+  <text class="small" x="440" y="135">drains</text>
+
+  <rect class="box stuck" x="20" y="160" width="200" height="70"/>
+  <text x="120" y="185" text-anchor="middle">RabbitMQ writer</text>
+  <text class="mono" x="120" y="204" text-anchor="middle">defaultWriter.Commit</text>
+  <text class="small" x="120" y="220" text-anchor="middle">TxCommit, no deadline</text>
+
+  <line x1="330" y1="195" x2="220" y2="195" marker-end="url(#arrow)"/>
+
+  <rect class="box broker" x="640" y="160" width="200" height="70"/>
+  <text x="740" y="185" text-anchor="middle">Broker</text>
+  <text class="mono" x="740" y="204" text-anchor="middle">tx.commit</text>
+  <text class="small" x="740" y="220" text-anchor="middle">a routed queue is down</text>
+
+  <path class="stuckline" d="M 120 230 L 120 265 L 740 265 L 740 230" marker-end="url(#arrow-red)"/>
+  <text class="small" x="430" y="285" text-anchor="middle">commit-ok never arrives (11 minutes and counting)</text>
+</svg>
+<figcaption>
+The chain observed in the goroutine dump. Red boxes are blocked. The broker never answers the transaction
+commit because one queue bound to the fanout exchange is down. Every other block follows from that one.
+</figcaption>
+</figure>
+
+<p>The chain, in order of cause:</p>
+<ol>
+  <li>A queue bound to the <code>subscription</code> fanout exchange was down. The broker held the
+      transaction commit that routed to it. <code>defaultWriter.Commit</code> waited without a deadline.</li>
+  <li>The dispatch processor could not publish its first batch. It never drained the outbox channel.</li>
+  <li>The startup loader read 12&nbsp;580 undispatched rows from <code>Messages</code>. It filled the channel and
+      blocked on the next send.</li>
+  <li>Each handler committed its SQL transaction, then blocked on the same full channel inside
+      <code>dispatchReceiver.Commit</code>. The handler never returned, so the worker never acknowledged its
+      deliveries.</li>
+</ol>
+
+<p>
+Three properties made this failure silent. No call had a deadline. No call logged while it waited.
+The status probe uses a plain publish, which a down queue does not stall. The v4.0.0 release added a
+heartbeat, blocked-connection notifications, and an honest probe. None of those fire for this case.
+The v4.0.0 proposal named the context-aware commit in its out-of-scope list. This proposal delivers it,
+and bounds the two waits that sit behind it.
+</p>
+
+<div class="callout">
+<strong>One constraint shapes Fix 2.</strong> The handlers had already committed their SQL work when they
+blocked. On every restart, the broker redelivered the same batch and the service processed it again. A fix
+that returns an error after the SQL commit reproduces this problem on purpose, because the transactional
+handler panics on a commit error and the retry handler runs the batch again. After the SQL commit,
+<code>dispatchReceiver.Commit</code> must always return success.
+</div>
+
+<div class="callout">
+<strong>One constraint shapes Fix 3.</strong> Many services use this module, and instances share an outbox
+table. Any recovery that scans the <code>Messages</code> table on a timer would republish rows that another
+process holds in flight, once per interval. So this proposal adds no periodic sweep. Recovery of rows that
+miss the handoff happens in memory inside the same process, and at the next startup as it does today.
+</div>
+
+<h2>2. Approach</h2>
+
+<p>Three fixes, each independently useful.</p>
+
+<table>
+  <tr><th>Fix</th><th>Package</th><th>New option</th><th>Default</th><th>Effect on the incident</th></tr>
+  <tr><td>1. Bounded transaction commit</td><td><code>rabbitmq</code></td><td><code>Options.CommitTimeout</code></td><td>30 s</td>
+      <td>The stuck commit fails after 30 s, logs a WARN, severs the connection, and the batch writer retries.</td></tr>
+  <tr><td>2. Deferred outbox handoff</td><td><code>sqlmq</code></td><td><code>Options.HandoffTimeout</code><br><code>Options.DeferredHandoffCapacity</code></td><td>10 s<br>8192 messages</td>
+      <td>Handlers wait at most 10 s after their SQL commit. A background goroutine finishes the handoff. Handlers return success and acknowledge their deliveries.</td></tr>
+  <tr><td>3. Shutdown-safe startup read</td><td><code>sqlmq</code></td><td>none</td><td>&mdash;</td>
+      <td>The process can shut down while the outbox channel is full. Startup recovery logs how many rows it found.</td></tr>
+</table>
+
+<figure class="fig">
+<svg width="860" height="250" viewBox="0 0 860 250" role="img" aria-label="Same pipeline after the three fixes">
+  <rect class="box fixed" x="20" y="30" width="200" height="70"/>
+  <text x="120" y="55" text-anchor="middle">Handler worker</text>
+  <text class="mono" x="120" y="74" text-anchor="middle">Commit: wait &le; 10 s</text>
+  <text class="small" x="120" y="90" text-anchor="middle">then defer, WARN, return nil, ack</text>
+
+  <rect class="box" x="330" y="30" width="200" height="70"/>
+  <text x="430" y="55" text-anchor="middle">Outbox channel</text>
+  <text class="mono" x="430" y="74" text-anchor="middle">chan Dispatch (cap 1024)</text>
+
+  <rect class="box fixed" x="640" y="30" width="200" height="70"/>
+  <text x="740" y="55" text-anchor="middle">Deferred handoff</text>
+  <text class="mono" x="740" y="74" text-anchor="middle">goroutine per late batch</text>
+  <text class="small" x="740" y="90" text-anchor="middle">capped at 8192 messages, exits at shutdown</text>
+
+  <line x1="220" y1="65" x2="330" y2="65" marker-end="url(#arrow)"/>
+  <line x1="640" y1="65" x2="530" y2="65" marker-end="url(#arrow)"/>
+  <path d="M 120 100 L 120 125 L 740 125 L 740 100" marker-end="url(#arrow)"/>
+  <text class="small" x="430" y="140" text-anchor="middle">on timeout, the remaining messages move to a deferred handoff</text>
+
+  <rect class="box" x="330" y="160" width="200" height="70"/>
+  <text x="430" y="185" text-anchor="middle">Dispatch processor</text>
+  <text class="mono" x="430" y="204" text-anchor="middle">retry every 5 s on error</text>
+
+  <line x1="430" y1="100" x2="430" y2="160" marker-end="url(#arrow)"/>
+
+  <rect class="box fixed" x="20" y="160" width="200" height="70"/>
+  <text x="120" y="185" text-anchor="middle">RabbitMQ writer</text>
+  <text class="mono" x="120" y="204" text-anchor="middle">Commit: wait &le; 30 s</text>
+  <text class="small" x="120" y="220" text-anchor="middle">then WARN, sever, return error</text>
+
+  <line x1="330" y1="195" x2="220" y2="195" marker-end="url(#arrow)"/>
+
+  <rect class="box broker" x="640" y="160" width="200" height="70"/>
+  <text x="740" y="185" text-anchor="middle">Broker</text>
+  <text class="mono" x="740" y="204" text-anchor="middle">tx.commit</text>
+
+  <path d="M 120 230 L 120 242 L 740 242 L 740 230" marker-end="url(#arrow)"/>
+</svg>
+<figcaption>
+After the fixes. Every wait has a bound. A stall becomes a WARN line every 40 seconds, handlers keep
+acknowledging, and the deferred handoffs complete once the processor drains the channel. No table scan.
+</figcaption>
+</figure>
+
+<h3>Fix 1 &mdash; Bounded transaction commit and rollback (<code>rabbitmq</code>)</h3>
+
+<p>
+<code>defaultWriter.Commit</code> and <code>defaultWriter.Rollback</code> call <code>TxCommit</code> and
+<code>TxRollback</code>. Both are synchronous AMQP calls. The amqp091 client parks the caller until the broker
+answers, the channel errors, or the connection shuts down. The writer will run the call in a goroutine and
+wait with a timer.
+</p>
+
+<p>
+On timeout, the writer must make the pending call return. Closing the channel does not work:
+<code>Channel.Close</code> is itself a synchronous call on the same stuck channel. Closing the connection does
+work. <code>adapter.Connection.Close</code> already uses <code>CloseDeadline</code> with a 5-second socket
+deadline, so the connection shuts down, every channel on it shuts down, and the pending call returns
+<code>amqp.ErrClosed</code> promptly. The status probe in v4.0.0 uses this same pattern.
+</p>
+
+<pre><code>// rabbitmq/contracts.go
+var ErrCommitTimeout = errors.New("the broker did not acknowledge the transaction within the commit timeout")
+
+// rabbitmq/writer.go (sketch)
+type defaultWriter struct {
+	inner         adapter.Channel
+	sever         func() error        // closes the parent connection; unblocks the pending call
+	commitTimeout time.Duration
+	// ... existing fields
+}
+
+func (this defaultWriter) Commit() error {
+	err := this.await("commit", this.inner.TxCommit)
+	if err == nil {
+		this.monitor.TransactionCommitted(nil)
+		return nil
+	}
+	this.logger.Printf("[WARN] Unable to commit channel transaction [%s].", err)
+	this.monitor.TransactionCommitted(err)
+	return this.tryPanic(err)
+}
+
+func (this defaultWriter) await(operation string, call func() error) error {
+	completed := make(chan error, 1)
+	go func() { completed &lt;- call() }()
+
+	timer := time.NewTimer(this.commitTimeout)
+	defer timer.Stop()
+
+	select {
+	case err := &lt;-completed:
+		return err
+	case &lt;-timer.C:
+		this.logger.Printf("[WARN] AMQP transaction %s did not complete within [%s]; severing the connection.", operation, this.commitTimeout)
+		_ = this.sever()
+		&lt;-completed // bounded: the severed connection errors the pending call within the 5 s close deadline
+		return ErrCommitTimeout
+	}
+}</code></pre>
+
+<p>
+<code>defaultConnection.writer</code> passes <code>this.Close</code> as the <code>sever</code> function.
+<code>defaultConnection.Close</code> uses <code>sync.Once</code>, so a later close by the owner is a no-op.
+</p>
+
+<p>Downstream behavior, which needs no new code:</p>
+<ul>
+  <li><code>batch.Writer</code> closes its handles on any error and reconnects on the next <code>Write</code>.
+      The sqlmq dispatch processor sleeps for <code>RetryTimeout</code> (5 s) and tries the same buffer again.</li>
+  <li>The <code>transactional</code> handler panics on a commit error. The <code>retry</code> handler catches
+      the panic and runs the batch again. This is the existing contract for a failed publish.</li>
+  <li>The <code>TransactionCommitted(err)</code> monitor callback fires with <code>ErrCommitTimeout</code>,
+      so a service can count timeouts with <code>errors.Is</code>.</li>
+</ul>
+
+<p>
+The option sanitizes its input the same way <code>Options.Heartbeat</code> does. A zero or negative value
+becomes the default. A caller cannot disable the bound by accident.
+</p>
+
+<h3>Fix 2 &mdash; Deferred outbox handoff (<code>sqlmq</code>)</h3>
+
+<p>
+<code>dispatchReceiver.Commit</code> stores the buffered messages, commits the SQL transaction, then sends
+each message into the outbox channel. Today that send waits on the channel or on <code>ctx.Done()</code>, and
+on cancellation it returns <code>ctx.Err()</code>. Both behaviors change.
+</p>
+
+<h4>After the SQL commit, <code>Commit</code> always returns <code>nil</code></h4>
+<p>
+The rows are durable once the SQL transaction commits. From that point the handler's work is done and the
+caller must acknowledge. An error would cause a panic, a retry, and a second run of the handler's side
+effects. This applies to the new timeout path and to the existing shutdown path alike. On shutdown, the
+receiver logs an INFO line and returns <code>nil</code>. The startup read publishes the rows when the process
+returns.
+</p>
+
+<h4>On timeout, the handoff continues in the background</h4>
+<p>
+The send loop gains a timer of <code>HandoffTimeout</code>. When it fires, the receiver moves the messages it
+has not yet delivered to a <em>deferred handoff</em>: a goroutine that keeps sending them into the channel
+until it finishes or the context ends. The receiver logs a WARN with the counts and returns <code>nil</code>.
+The messages stay in memory, in the same process, so no table scan is needed and no other instance can
+see them. Ordering across batches is not guaranteed, which matches the outbox today, since concurrent handlers
+already interleave.
+</p>
+
+<h4>Deferred memory is capped</h4>
+<p>
+A stall that lasts for hours could accumulate deferred messages without bound. A shared
+<code>deferredHandoffs</code> tracker counts the messages held by deferred goroutines. When a new deferral
+would exceed <code>DeferredHandoffCapacity</code> (default 8192 messages, eight channels' worth), the receiver
+does not defer. It logs a WARN naming the cap and falls back to a blocking send, which is today's behavior
+plus the shutdown case. This is deliberate back-pressure: memory stays bounded, and the stall is already
+loud from Fix 1.
+</p>
+
+<pre><code>// sqlmq/dispatch_receiver.go (sketch)
+this.monitor.MessageStored(len(this.buffer))
+remaining := this.handoff(this.buffer, this.handoffTimeout)   // sends until done, ctx ends, or timer fires
+if len(remaining) == 0 {
+	return nil
+}
+if this.ctx.Err() != nil {
+	this.logger.Printf("[INFO] Context ended during handoff; [%d] committed message(s) remain in durable storage for the next startup.", len(remaining))
+	return nil
+}
+if this.deferred.TryDefer(this.ctx, remaining) {
+	this.logger.Printf("[WARN] Committed [%d] message(s) to durable storage, but the dispatch processor did not accept [%d] of them within [%s]. The handoff continues in the background.",
+		len(this.buffer), len(remaining), this.handoffTimeout)
+	return nil
+}
+this.logger.Printf("[WARN] Deferred handoff capacity [%d] reached; waiting for the dispatch processor to accept [%d] message(s).",
+	this.deferred.capacity, len(remaining))
+this.handoff(remaining, 0) // no timer: wait for the channel or for shutdown
+return nil
+
+// sqlmq/deferred_handoffs.go (sketch)
+type deferredHandoffs struct {
+	output   chan messaging.Dispatch
+	capacity int64
+	pending  atomic.Int64
+}
+
+func (this *deferredHandoffs) TryDefer(ctx context.Context, dispatches []messaging.Dispatch) bool {
+	count := int64(len(dispatches))
+	if this.pending.Add(count) &gt; this.capacity {
+		this.pending.Add(-count)
+		return false
+	}
+	go func() {
+		defer this.pending.Add(-count)
+		for _, dispatch := range dispatches {
+			select {
+			case this.output &lt;- dispatch:
+			case &lt;-ctx.Done():
+				return // the rows are durable; the next startup publishes them
+			}
+		}
+	}()
+	return true
+}</code></pre>
+
+<p>
+The tracker is created once in <code>Options.apply</code>, like the channel, and shared by every receiver
+built from that configuration. The context is the receiver's context, which the <code>transactional</code>
+handler derives from the worker's long-lived context, so deferred goroutines live until shutdown.
+A caller that cancels its context per request ends its deferred goroutines early. The rows are durable
+either way.
+</p>
+
+<p>
+The default of 10 seconds is deliberately shorter than the 30-second commit timeout. A healthy handoff
+takes microseconds. A wait of several seconds already means the publisher is stalled. Ten seconds is long
+enough to ride out a normal broker failover, and short enough that handlers keep their consumer lag low.
+</p>
+
+<h3>Fix 3 &mdash; Shutdown-safe startup read (<code>sqlmq</code>)</h3>
+
+<p>
+<code>dispatchProcessor.readPending</code> runs once at startup and sends every undispatched row into the
+channel with a bare <code>this.channel &lt;- dispatch</code>. If the channel is full when <code>Close</code>
+runs, that goroutine never exits, <code>Listen</code> never returns, and the host's shutdown hangs. The
+incident had exactly this state: goroutine 51 blocked on that send for 11 minutes. The send gains a
+<code>ctx.Done()</code> case. The startup read stays startup-only. The processor also logs how many rows the
+startup read found, which the v4.0.0 proposal asked for.
+</p>
+
+<pre><code>// sqlmq/dispatch_processor.go (sketch)
+func (this *dispatchProcessor) readPending() bool {
+	dispatches, err := this.store.Load(this.ctx, this.latestID)
+	if len(dispatches) &gt; 0 {
+		this.logger.Printf("[INFO] Startup recovery found [%d] undispatched message(s) in durable storage.", len(dispatches))
+	}
+	for _, dispatch := range dispatches {
+		this.latestID = dispatch.MessageID
+		select {
+		case this.channel &lt;- dispatch:
+		case &lt;-this.ctx.Done():
+			return false
+		}
+	}
+	if err != nil {
+		this.logger.Printf("[WARN] Unable to load persisted messages from durable storage [%s].", err)
+	}
+	return err == nil
+}</code></pre>
+
+<h3>Message severity and observability</h3>
+
+<table>
+  <tr><th>Event</th><th>Level</th><th>Message</th></tr>
+  <tr><td>Commit or rollback exceeds the timeout</td><td>WARN</td><td><code>AMQP transaction commit did not complete within [30s]; severing the connection.</code></td></tr>
+  <tr><td>Commit fails (existing line, now also for timeouts)</td><td>WARN</td><td><code>Unable to commit channel transaction [...]</code></td></tr>
+  <tr><td>Handoff exceeds the timeout, deferred</td><td>WARN</td><td><code>Committed [N] message(s) ... did not accept [M] of them within [10s]. The handoff continues in the background.</code></td></tr>
+  <tr><td>Deferred capacity reached, blocking</td><td>WARN</td><td><code>Deferred handoff capacity [8192] reached; waiting for the dispatch processor to accept [M] message(s).</code></td></tr>
+  <tr><td>Context ended during handoff</td><td>INFO</td><td><code>Context ended during handoff; [M] committed message(s) remain in durable storage for the next startup.</code></td></tr>
+  <tr><td>Startup read finds rows</td><td>INFO</td><td><code>Startup recovery found [N] undispatched message(s) in durable storage.</code></td></tr>
+</table>
+
+<p>
+No monitor interface changes. Adding a method to <code>rabbitmq.monitor</code> or <code>sqlmq.monitor</code>
+breaks every implementer and forces a v5. The existing <code>TransactionCommitted(err)</code> callback carries
+<code>ErrCommitTimeout</code>. The handoff and recovery events are log-only in this release.
+</p>
+
+<h2>3. Trade-offs and open questions</h2>
+
+<dl>
+  <dt>1. Severing the connection affects every channel on it.</dt>
+  <dd>
+    In this library, every <code>CommitWriter</code> lives on a connection that the caller opened for it:
+    <code>batch.Writer</code> dials its own, and the <code>transactional</code> handler calls
+    <code>Connect</code> per batch. Consumers use the streaming pool, which is separate. So a sever only
+    hurts the writer that is already stuck. A caller who shares one connection between a consumer and a
+    writer would lose the consumer stream on a commit timeout. The stream reconnects on its own. This is
+    acceptable and will be documented.
+  </dd>
+
+  <dt>2. No periodic sweep. <span class="decided">Decided</span></dt>
+  <dd>
+    Many services share outbox tables across instances. A timed sweep would republish rows another process
+    holds in flight, once per interval. Revision 1 proposed such a sweep; it is withdrawn. Rows that miss the
+    handoff are recovered in memory by the deferred handoff, and at the next startup by the existing read.
+    The cost: a row that misses the handoff <em>and</em> outlives its deferred goroutine (a crash, or a caller
+    whose context ends) waits for the next startup. That is today's behavior for every undispatched row.
+  </dd>
+
+  <dt>3. The shutdown path returns success. <span class="decided">Decided: included</span></dt>
+  <dd>
+    <code>dispatchReceiver.Commit</code> returned <code>ctx.Err()</code> when the context ended during the
+    handoff. The rows were committed, so the caller's panic caused a redelivery and a second run of the batch
+    after the restart. It now returns <code>nil</code> with an INFO line. The existing test
+    <code>TestWhenTransactionContextCancelled_DoNotBlockWhenWritingToOutputChannel</code> keeps its
+    non-blocking assertion and changes its expected error to <code>nil</code>.
+  </dd>
+
+  <dt>4. Handlers proceed while the broker is down, up to a cap.</dt>
+  <dd>
+    With Fix 2, a broker outage no longer applies back-pressure to handlers until 8192 messages are deferred.
+    Below the cap, handlers commit SQL, log a WARN, and acknowledge. This is the outbox pattern working as
+    designed: the database is the source of truth and the broker is eventually consistent. Above the cap,
+    handlers block as they do today, so memory stays bounded. A service that prefers immediate back-pressure
+    can set <code>DeferredHandoffCapacity</code> to 1. A service that wants a larger buffer raises it.
+  </dd>
+
+  <dt>5. Deferred messages are lost from memory on a crash.</dt>
+  <dd>
+    They are not lost from the database. The startup read publishes them. This is the same guarantee the
+    outbox gives every message today between SQL commit and broker confirm.
+  </dd>
+
+  <dt>6. <code>Write</code> can still block on the socket.</dt>
+  <dd>
+    A broker under a resource alarm stops reading the socket. <code>Publish</code> then blocks in a kernel
+    write, before any transaction commit. Fix 1 does not bound that. The v4.0.0 blocked-connection
+    notification and the honest status probe cover that case, and a restart clears it. Bounding
+    <code>Write</code> would need a socket write deadline in the adapter, which is a separate change.
+  </dd>
+
+  <dt>7. Time-based tests.</dt>
+  <dd>
+    The new behaviors are timer driven. Tests will use timeouts of a few milliseconds against fakes that block
+    until released, so each test proves the timer path without sleeping for long. The suite runs with
+    <code>-timeout=1s</code>, so every test must complete well under that.
+  </dd>
+
+  <dt>8. Default values. <span class="decided">Decided: accepted</span></dt>
+  <dd>
+    30 s commit, 10 s handoff, 8192 deferred messages. A healthy commit takes milliseconds, so 30 s is
+    generous and only matters when something is wrong. Together with the 5 s close deadline and the 5 s
+    retry sleep, a stuck publisher produces one WARN cycle about every 40 s.
+  </dd>
+</dl>
+
+<h2>4. Implementation checklists</h2>
+
+<p>
+Each phase follows red-green-refactor. Run <code>make test</code> after every green step. Tests use
+<code>gunit</code> with <code>should</code> assertions and the fixtures already present in each package.
+</p>
+
+<h3>Phase 1 &mdash; Bounded transaction commit and rollback (<code>rabbitmq</code>)</h3>
+
+<h4>1a. Option and configuration</h4>
+<ul class="checklist">
+  <li class="red done">In <code>rabbitmq/config_test.go</code>, add tests: the default <code>CommitTimeout</code> is 30 s; a zero value becomes the default; a negative value becomes the default; a positive value is kept.</li>
+  <li class="red done">Run <code>go test ./rabbitmq/</code>. Confirm a compile error on the missing option.</li>
+  <li class="green done">Add <code>CommitTimeout time.Duration</code> to <code>configuration</code>, the <code>Options.CommitTimeout</code> option with a <code>sanitizeCommitTimeout</code> helper, the <code>defaultCommitTimeout</code> constant, and the default in <code>defaults</code>.</li>
+  <li class="green done">Run the tests. Confirm they pass.</li>
+  <li class="done">Add a doc comment on the option in the style of <code>Options.Heartbeat</code>.</li>
+</ul>
+
+<h4>1b. Sentinel error</h4>
+<ul class="checklist">
+  <li class="done">Add <code>ErrCommitTimeout</code> to <code>rabbitmq/contracts.go</code> beside the existing sentinel errors.</li>
+</ul>
+
+<h4>1c. Writer timeout and sever</h4>
+<ul class="checklist">
+  <li class="red done">In <code>rabbitmq/writer_test.go</code>, extend <code>WriterFixture</code>: a <code>commitGate chan struct{}</code>, a <code>commitBlocks bool</code>, a <code>severCalls int</code>, a <code>commitReturned bool</code>, and a <code>sever()</code> method that increments the count and closes the gate. Make the fake <code>TxCommit</code> and <code>TxRollback</code> wait on the gate when <code>commitBlocks</code> is true, then return <code>amqp.ErrClosed</code>.</li>
+  <li class="red done">Change <code>initializeWriter</code> to pass <code>this.sever</code> and a 5 ms <code>CommitTimeout</code>.</li>
+  <li class="red done">Add test: when <code>TxCommit</code> completes in time, <code>Commit</code> returns nil and <code>severCalls</code> is 0.</li>
+  <li class="red done">Add test: when <code>TxCommit</code> blocks, <code>Commit</code> returns <code>ErrCommitTimeout</code>, <code>severCalls</code> is 1, the monitor received the error, and the log contains the WARN line with the timeout.</li>
+  <li class="red done">Add test: when <code>TxCommit</code> blocks, <code>Commit</code> does not return until the fake <code>TxCommit</code> has returned (assert <code>commitReturned</code> after <code>Commit</code>).</li>
+  <li class="red done">Add test: when <code>TxRollback</code> blocks, <code>Rollback</code> behaves the same way.</li>
+  <li class="red done">Add test: <code>tryPanic</code> does not panic on <code>ErrCommitTimeout</code> even with <code>PanicOnTopologyError(true)</code>.</li>
+  <li class="red done">Run <code>go test ./rabbitmq/</code>. Confirm a compile error on the new <code>newWriter</code> signature.</li>
+  <li class="green done">Add <code>sever</code> and <code>commitTimeout</code> fields to <code>defaultWriter</code>. Change <code>newWriter(inner, sever, config)</code>. Implement <code>await</code>. Route <code>Commit</code> and <code>Rollback</code> through it.</li>
+  <li class="green done">Run the tests. Confirm they pass, including the existing writer tests. <em>(Note: the two call sites in <code>connection.go</code> had to be updated here so the package compiles; they now pass <code>this.Close</code>.)</em></li>
+  <li class="done">Refactor: confirm the WARN wording matches the table in section 2.</li>
+</ul>
+
+<h4>1d. Connection wiring</h4>
+<ul class="checklist">
+  <li class="red done">In <code>rabbitmq/connection_test.go</code>, make the fake channel's <code>TxCommit</code> block on a gate that the fake connection's <code>Close</code> closes. Add test: a <code>CommitWriter</code> whose commit times out closes the connection exactly once and fires <code>ConnectionClosed</code> on the monitor.</li>
+  <li class="red done">Run the tests. Confirm the compile error on <code>newWriter</code> call sites. <em>(Deviation: no compile error occurred, because the call sites were already updated in 1c so that package could compile for its GREEN run. The new test passed on first run and serves as a confirmation test.)</em></li>
+  <li class="green done">In <code>defaultConnection.writer</code>, call <code>newWriter(channel, this.Close, this.config)</code>. Update any other call site (<code>reader_test.go</code>, <code>stream_test.go</code>) so the package compiles. <em>(No other call sites existed.)</em></li>
+  <li class="green done">Run <code>go test ./rabbitmq/</code>. Confirm all pass.</li>
+</ul>
+
+<h3>Phase 2 &mdash; Deferred outbox handoff (<code>sqlmq</code>)</h3>
+
+<h4>2a. Options and configuration</h4>
+<ul class="checklist">
+  <li class="red done">In <code>sqlmq/config_test.go</code>, add tests: the default <code>HandoffTimeout</code> is 10 s; zero and negative values become the default. The default <code>DeferredHandoffCapacity</code> is 8192; zero and negative values become the default. <code>Options.apply</code> creates one <code>deferredHandoffs</code> tracker bound to the configured channel.</li>
+  <li class="red done">Run <code>go test ./sqlmq/</code>. Confirm the compile error.</li>
+  <li class="green done">Add <code>HandoffTimeout</code>, <code>DeferredHandoffCapacity</code>, and <code>Deferred *deferredHandoffs</code> to <code>configuration</code>. Add the two options, sanitizers, constants, and defaults. Create the tracker in <code>apply</code> after the channel is known. <em>(Note: the <code>deferredHandoffs</code> struct and constructor were created here so <code>apply</code> compiles; <code>TryDefer</code> is left for 2b.)</em></li>
+  <li class="green done">Run the tests. Confirm they pass.</li>
+</ul>
+
+<h4>2b. Deferred handoff tracker</h4>
+<ul class="checklist">
+  <li class="red done">Create <code>sqlmq/deferred_handoffs_test.go</code> with a fixture. Add tests: <code>TryDefer</code> under the cap returns true and the messages arrive on the channel once it has room; <code>TryDefer</code> that would exceed the cap returns false and leaves <code>pending</code> unchanged; the goroutine exits on context cancellation and <code>pending</code> returns to 0; <code>pending</code> returns to 0 after a full delivery.</li>
+  <li class="red done">Run the tests. Confirm the compile error on the missing type. <em>(The error was on the missing <code>TryDefer</code> method; the type itself was created in 2a.)</em></li>
+  <li class="green done">Create <code>sqlmq/deferred_handoffs.go</code> with <code>newDeferredHandoffs(output, capacity)</code> and <code>TryDefer</code> as sketched.</li>
+  <li class="green done">Run the tests. Confirm they pass under <code>-race</code>.</li>
+</ul>
+
+<h4>2c. Receiver: timeout, deferral, cap fallback, shutdown</h4>
+<ul class="checklist">
+  <li class="red done">In <code>sqlmq/dispatch_receiver_test.go</code>, give <code>DispatchReceiverFixture</code> a log buffer and a <code>Printf</code> method, passed as <code>Options.Logger</code>. Pass a 5 ms <code>HandoffTimeout</code>. Let each test choose the channel capacity and <code>DeferredHandoffCapacity</code> before <code>initializeDispatchWriter</code>.</li>
+  <li class="red done">Add test (deferral): channel capacity 1, already full, one dispatch. <code>Commit</code> returns nil, calls the SQL commit once, and logs the WARN naming 1 committed and 1 not accepted. After draining the channel, the dispatch arrives within 50 ms.</li>
+  <li class="red done">Add test (partial deferral): channel capacity 2, three dispatches. <code>Commit</code> returns nil; the channel holds the first two; the log names 3 committed and 1 not accepted; the third arrives after a drain.</li>
+  <li class="red done">Add test (cap fallback): <code>DeferredHandoffCapacity</code> 1, channel capacity 1 already full, two dispatches. <code>Commit</code> blocks; a goroutine drains the channel after 10 ms; <code>Commit</code> then returns nil; the log contains the capacity WARN.</li>
+  <li class="red done">Add test (shutdown): channel full, context cancelled before <code>Commit</code>. <code>Commit</code> returns nil and logs the INFO line naming the remaining count.</li>
+  <li class="red done">Change <code>TestWhenTransactionContextCancelled_DoNotBlockWhenWritingToOutputChannel</code> to expect nil.</li>
+  <li class="red done">Add test (happy path): with room in the channel, <code>Commit</code> returns nil and logs nothing.</li>
+  <li class="red done">Run the tests. Confirm the new tests fail on the missing fields or on the changed return value. <em>(They failed by hanging: the deferral tests blocked in <code>Commit</code> until the 1 s suite timeout, because no handoff timer existed yet.)</em></li>
+  <li class="green done">Add <code>handoffTimeout</code> and <code>deferred</code> fields to <code>dispatchReceiver</code>. Implement <code>handoff(dispatches, timeout) (remaining []messaging.Dispatch)</code> with the three-way select (zero timeout means no timer). Rewrite the tail of <code>Commit</code> as sketched.</li>
+  <li class="green done">Run the tests. Confirm they pass under <code>-race</code>.</li>
+  <li class="done">Refactor: confirm every return after the SQL commit is <code>nil</code>. Confirm the log wording matches the table.</li>
+</ul>
+
+<h3>Phase 3 &mdash; Shutdown-safe startup read (<code>sqlmq</code>)</h3>
+<ul class="checklist">
+  <li class="red done">In <code>sqlmq/dispatch_processor_test.go</code>, give <code>DispatchProcessorFixture</code> a log buffer and <code>Printf</code>, passed as <code>Options.Logger</code>.</li>
+  <li class="red done">Add test: with a channel of capacity 1, a fake <code>Load</code> that returns 5 dispatches, and a fake sender that blocks until the context ends, <code>Close</code> makes <code>Listen</code> return within 50 ms.</li>
+  <li class="red done">Add test: when <code>Load</code> returns two dispatches, the log contains the INFO line naming 2 messages. When it returns none, the log has no INFO line.</li>
+  <li class="red done">Run the tests. Confirm the shutdown test fails because <code>Listen</code> never returns, and the log test fails on the missing line.</li>
+  <li class="green done">In <code>readPending</code>, replace the bare send with a <code>select</code> on the channel send and <code>this.ctx.Done()</code>. Return false when the context ends. Add the INFO line.</li>
+  <li class="green done">Run the tests. Confirm they pass, including <code>TestWhenListening_ReadPendingDispatchesFromStorage</code>.</li>
+</ul>
+
+<h3>Phase 4 &mdash; Release</h3>
+<ul class="checklist">
+  <li class="done">Run <code>make test</code> at the repository root. Confirm all packages pass under <code>-race</code>.</li>
+  <li class="done">Run the test suite three times. Confirm the timer-based tests are stable.</li>
+  <li class="done">Write <code>doc/release-notes-v4.1.0.md</code> in ASD-STE100 style. Cover: the three options and their defaults, the sever behavior and its effect on shared connections, the handoff returning success on timeout and on shutdown, the deferred handoff and its cap, the shutdown-hang fix, and the new log lines with levels.</li>
+  <li class="done">Add a short "Bounded waits" section to <code>README.md</code> that lists the three options.</li>
+  <li class="done">Confirm no exported interface changed: <code>go build ./...</code> against a copy of a v4.0.1 consumer compiles without edits. <em>(Verified two ways: a full <code>go doc -all</code> diff of every package between the <code>v4.0.1</code> tag and this tree shows only the added <code>ErrCommitTimeout</code>; and a scratch consumer implementing v4.0.1-shaped <code>rabbitmq</code>/<code>sqlmq</code> monitors and <code>adapter.Connection</code>/<code>Channel</code> fakes builds against this tree without edits.)</em></li>
+</ul>
+
+<h2>5. Out of scope / future work</h2>
+<ul>
+  <li><strong>Bounded <code>Publish</code>.</strong> A socket write deadline in the adapter, for brokers that stop reading under a resource alarm. Covered today by the v4.0.0 status probe and a restart.</li>
+  <li><strong>Status probe with a transactional publish.</strong> Would let <code>/status</code> detect a down queue on the probe topic. Deferred in v4.0.0 and still deferred. Fix 1 makes the stall loud and self-recovering, which reduces the need.</li>
+  <li><strong>Monitor callbacks for handoff timeouts and deferred counts.</strong> Needs a monitor interface change, so it belongs to a v5 or to an optional interface checked by type assertion.</li>
+  <li><strong>Periodic outbox recovery.</strong> Withdrawn from this proposal because instances share tables. A safe version needs ownership (a per-instance column or lease) in the <code>Messages</code> schema, which is a schema change for every service.</li>
+  <li><strong>Consumer-side adoption.</strong> The consuming service's upgrade to v4 happens in a later session and is not part of this work.</li>
+</ul>
+
+<h2>6. How we know it worked</h2>
+<p>Reproduce the incident against a test broker with one queue bound to the target exchange and stopped.</p>
+<ul>
+  <li>Within 30 s: one WARN <code>AMQP transaction commit did not complete</code>, one WARN <code>Unable to commit channel transaction</code>, and a reconnect. The pattern repeats about every 40 s.</li>
+  <li>Within 10 s of each handler batch: one WARN <code>Committed [N] message(s) ... The handoff continues in the background</code>. The consumer's acknowledged count keeps climbing. The queue does not back up.</li>
+  <li>After about 8192 deferred messages: the capacity WARN appears and handlers block. Consumer lag grows, memory does not.</li>
+  <li>Start the queue. Within about 40 s the publish and confirm counters climb, deferred goroutines finish, and handlers resume. No restart.</li>
+  <li>Stop the process while the channel is full. <code>Listen</code> returns within the host's shutdown timeout. Handlers that were mid-handoff log the INFO line and acknowledge. The next start logs <code>Startup recovery found [N]</code> and publishes them.</li>
+  <li>Compare with the 2026-09-10 goroutine dump: no goroutine sits in <code>Channel.call</code>, <code>readPending</code>, or <code>dispatchReceiver.Commit</code> for longer than the configured bounds, except a receiver that is intentionally blocked at the deferred cap.</li>
+</ul>
+
+</body>
+</html>

@@ -27,9 +27,13 @@ type WorkerFixture struct {
 	subscription  Subscription
 	channelBuffer chan messaging.Delivery
 	worker        messaging.Listener
+	log           capturingLog
+	monitor       capturingMonitor
+	now           time.Time
 
 	readCount      int
 	maxReadCount   int
+	readBlocks     bool // after maxReadCount, park on ctx like the real stream
 	readContext    context.Context
 	readDeliveries []messaging.Delivery
 	readError      error
@@ -52,7 +56,8 @@ func (this *WorkerFixture) Setup() {
 	this.handler = this
 	this.softContext, this.softShutdown = context.WithCancel(context.Background())
 	this.hardContext, this.hardShutdown = context.WithCancel(context.Background())
-	this.subscription = Subscription{bufferCapacity: 16, batchCapacity: 16}
+	this.hardContext = context.WithValue(this.hardContext, hardContextMarker{}, true)
+	this.subscription = Subscription{streamName: "queue", bufferCapacity: 16, batchCapacity: 16}
 	this.initializeWorker()
 }
 func (this *WorkerFixture) initializeWorker() {
@@ -62,6 +67,9 @@ func (this *WorkerFixture) initializeWorker() {
 		Handler:      this.handler,
 		SoftContext:  this.softContext,
 		HardContext:  this.hardContext,
+		Logger:       &this.log,
+		Monitor:      &this.monitor,
+		Now:          func() time.Time { this.now = this.now.Add(time.Millisecond); return this.now },
 	}).(*defaultWorker)
 	this.worker = worker
 	this.channelBuffer = worker.channelBuffer
@@ -79,9 +87,9 @@ func (this *WorkerFixture) TestWhenReadingFromUnderlyingStream_AddToBufferedChan
 
 	this.worker.Listen()
 
-	this.So(len(this.channelBuffer), should.Equal, cap(this.channelBuffer)) // buffer is full
-	this.So(this.readContext, should.Equal, this.hardContext)
-	this.So(this.readCount, should.Equal, cap(this.channelBuffer)+1) // last read fails
+	this.So(len(this.channelBuffer), should.Equal, cap(this.channelBuffer))  // buffer is full
+	this.So(this.readContext.Value(hardContextMarker{}), should.Equal, true) // derived from the hard context
+	this.So(this.readCount, should.Equal, cap(this.channelBuffer)+1)         // last read fails
 
 	var readDeliveries []messaging.Delivery
 	for delivery := range this.channelBuffer {
@@ -98,7 +106,7 @@ func (this *WorkerFixture) TestWhenReadingFromUnderlyingStream_FailOnContextClos
 	this.worker.Listen()
 
 	this.So(this.channelBuffer, should.BeEmpty)
-	this.So(this.readContext, should.Equal, this.hardContext)
+	this.So(this.readContext.Value(hardContextMarker{}), should.Equal, true) // derived from the hard context
 	this.So(this.readCount, should.Equal, 1)
 }
 func (this *WorkerFixture) TestWhenChannelBufferIsFull_WaitUntilSpaceAvailableOrContextCancellation() {
@@ -108,8 +116,8 @@ func (this *WorkerFixture) TestWhenChannelBufferIsFull_WaitUntilSpaceAvailableOr
 
 	this.worker.Listen()
 
-	this.So(len(this.channelBuffer), should.Equal, cap(this.channelBuffer)) // buffer is full
-	this.So(this.readContext, should.Equal, this.hardContext)
+	this.So(len(this.channelBuffer), should.Equal, cap(this.channelBuffer))  // buffer is full
+	this.So(this.readContext.Value(hardContextMarker{}), should.Equal, true) // derived from the hard context
 }
 
 func (this *WorkerFixture) TestWhenOnlySingleDeliveryAvailable_SendTheBatchWithoutWaitingForMore() {
@@ -210,7 +218,7 @@ func (this *WorkerFixture) TestWhenConfigured_PassFullDeliveryToContext() {
 }
 
 func (this *WorkerFixture) TestWhenAcknowledgementFails_ListeningConcludesWithoutProcessingBufferedDeliveries() {
-	this.acknowledgeError = errors.New("")
+	this.acknowledgeError = errors.New("channel closed")
 	this.readError = io.EOF
 	this.subscription.batchCapacity = 1
 	this.subscription.bufferCapacity = 2
@@ -222,6 +230,59 @@ func (this *WorkerFixture) TestWhenAcknowledgementFails_ListeningConcludesWithou
 
 	this.So(this.acknowledgeCount, should.Equal, 1)
 	this.So(len(this.channelBuffer), should.Equal, 1)
+	this.So(this.log.String(), should.ContainSubstring,
+		"[WARN] Unable to acknowledge [1] delivery(ies) from stream [queue] [channel closed]; the broker will redeliver them.")
+	this.So(this.monitor.Calls(), should.Contain, "acknowledged:queue:1:channel closed")
+}
+func (this *WorkerFixture) TestWhenBatchDelivered_ReportHandledAndAcknowledgedToMonitor() {
+	this.readError = io.EOF
+	this.channelBuffer <- messaging.Delivery{Message: 1}
+	this.channelBuffer <- messaging.Delivery{Message: 2}
+	this.channelBuffer <- messaging.Delivery{} // acknowledged but not handed to the handler
+
+	this.worker.Listen()
+
+	this.So(this.monitor.Calls(), should.Equal, []string{"handled:queue:2:1ms", "acknowledged:queue:3:<nil>"})
+}
+func (this *WorkerFixture) TestWhenHandlerPanicEscapes_ReaderIsReleasedAndPanicPropagatesWithAnErrorLog() {
+	this.handler = panickingHandler{}
+	this.readBlocks = true // the stream parks like a live queue with no traffic
+	this.subscription.bufferCapacity = 1
+	this.subscription.batchCapacity = 1
+	this.initializeWorker()
+	this.channelBuffer <- messaging.Delivery{Message: 1}
+
+	returned := make(chan any, 1)
+	go func() {
+		defer func() { returned <- recover() }()
+		this.worker.Listen()
+	}()
+
+	select {
+	case recovered := <-returned:
+		this.So(recovered, should.Equal, "handler failed")
+	case <-time.After(time.Millisecond * 50):
+		this.So("Listen did not return within 50ms", should.BeBlank)
+	}
+	this.So(this.log.String(), should.ContainSubstring, "[ERROR] Handler on stream [queue] panicked [handler failed]; the worker is exiting.")
+}
+func (this *WorkerFixture) TestWhenHandlerPanics_StillReportHandledToMonitor() {
+	this.handler = panickingHandler{}
+	this.readError = io.EOF
+	this.initializeWorker()
+	this.channelBuffer <- messaging.Delivery{Message: 1}
+
+	this.So(func() { this.worker.Listen() }, should.Panic)
+	this.So(this.monitor.Calls(), should.Equal, []string{"handled:queue:1:1ms"})
+}
+func (this *WorkerFixture) TestWhenStreamReadEnds_LogTheReason() {
+	this.handler = nil
+	this.readError = io.EOF
+	this.initializeWorker()
+
+	this.worker.Listen()
+
+	this.So(this.log.String(), should.Equal, "[INFO] Stream [queue] ended [EOF].")
 }
 func (this *WorkerFixture) SkipTestWhenConfiguredToBufferBetweenBatches_SleepAfterAcknowledgementAndNoMoreWork() {
 	const timeout = time.Millisecond * 5
@@ -296,6 +357,9 @@ func (this *WorkerFixture) Read(ctx context.Context, delivery *messaging.Deliver
 
 	if this.readCount > this.maxReadCount && this.readError != nil {
 		return this.readError
+	} else if this.readCount > this.maxReadCount && this.readBlocks {
+		<-ctx.Done()
+		return ctx.Err()
 	} else if this.readCount > this.maxReadCount {
 		this.hardShutdown()
 	}
@@ -319,3 +383,9 @@ func (this *WorkerFixture) Handle(ctx context.Context, messages ...any) {
 	this.handleCtx = ctx
 	this.handleMessages = append(this.handleMessages, messages...)
 }
+
+type panickingHandler struct{}
+
+func (panickingHandler) Handle(context.Context, ...any) { panic("handler failed") }
+
+type hardContextMarker struct{}

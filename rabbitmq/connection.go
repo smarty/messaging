@@ -9,6 +9,14 @@ import (
 	"github.com/smarty/messaging/v4/rabbitmq/adapter"
 )
 
+// connectionTracker is the connector's view of a connection's lifetime: it
+// learns of the connection before the watchers start and forgets it once the
+// connection has closed, however it closed.
+type connectionTracker interface {
+	track(*defaultConnection)
+	release(*defaultConnection)
+}
+
 type defaultConnection struct {
 	inner   adapter.Connection
 	config  configuration
@@ -16,16 +24,46 @@ type defaultConnection struct {
 	monitor monitor
 	done    chan struct{}
 	closer  sync.Once
+	tracker connectionTracker // nil when nothing tracks the connection
 }
 
-func newConnection(inner adapter.Connection, config configuration) messaging.Connection {
+// newConnection registers the connection with the tracker before starting
+// the watchers. A close notification that is already buffered when they
+// start (a broker that forces the connection closed right after the
+// handshake) then finds the entry to release. Registering afterward let the
+// release run first and find nothing, leaving a closed connection tracked
+// until the connector closed.
+func newConnection(inner adapter.Connection, config configuration, tracker connectionTracker) messaging.Connection {
 	// NOTE: using pointer type to allow for pointer equality check
 	config.Monitor.ConnectionOpened(nil)
-	this := &defaultConnection{inner: inner, config: config, logger: config.Logger, monitor: config.Monitor, done: make(chan struct{})}
+	this := &defaultConnection{inner: inner, config: config, logger: config.Logger, monitor: config.Monitor, done: make(chan struct{}), tracker: tracker}
+	if tracker != nil {
+		tracker.track(this)
+	}
 	relay := make(chan amqp.Blocking, 1)
 	go relayBlockedState(inner.BlockedNotifications(), relay, this.done)
 	go this.watchBlockedState(relay)
+	go this.watchClose(inner.CloseNotifications())
 	return this
+}
+
+// watchClose reports a close that the broker or the network initiated: a
+// heartbeat timeout, CONNECTION_FORCED, a node shutdown. Without it those
+// surfaced only as a bare EOF on the next read, and ConnectionClosed never
+// fired, so open-minus-closed gauges drifted upward.
+func (this *defaultConnection) watchClose(closes <-chan *amqp.Error) {
+	select {
+	case <-this.done:
+	case reason, open := <-closes:
+		if open && reason != nil {
+			this.closer.Do(func() {
+				close(this.done)
+				this.logger.Printf("[WARN] AMQP connection closed by the broker or network [%s].", reason)
+				this.monitor.ConnectionClosed()
+				this.released()
+			})
+		}
+	}
 }
 
 // relayBlockedState keeps the amqp library's frame-dispatch goroutine from
@@ -64,7 +102,9 @@ func deliverLatest(notification amqp.Blocking, relay chan amqp.Blocking, done ch
 	}
 }
 func (this *defaultConnection) watchBlockedState(notifications chan amqp.Blocking) {
+	blocked := false
 	for notification := range notifications {
+		blocked = notification.Active
 		if notification.Active {
 			this.logger.Printf("[WARN] AMQP connection blocked by broker (reason: %s); publishes will stall until the broker unblocks.", notification.Reason)
 			this.monitor.ConnectionBlocked(notification.Reason)
@@ -73,13 +113,17 @@ func (this *defaultConnection) watchBlockedState(notifications chan amqp.Blockin
 			this.monitor.ConnectionUnblocked()
 		}
 	}
+	if blocked { // the connection closed while blocked (a sever, a drop); no unblock will ever arrive for it
+		this.logger.Printf("[INFO] AMQP connection closed while blocked; treating it as unblocked.")
+		this.monitor.ConnectionUnblocked()
+	}
 }
 func (this *defaultConnection) Reader(_ context.Context) (messaging.Reader, error) {
 	if channel, err := this.inner.Channel(); err != nil {
 		this.logger.Printf("[WARN] Unable able open read channel [%s].", err)
 		return nil, err
 	} else {
-		return newReader(channel, this.config), nil
+		return newReader(channel, this.Close, this.config), nil
 	}
 }
 
@@ -97,7 +141,7 @@ func (this *defaultConnection) writer(transactional bool) (messaging.CommitWrite
 	}
 
 	if !transactional {
-		return newWriter(channel, this.config), nil
+		return newWriter(channel, this.Close, this.config), nil
 	}
 
 	if err = channel.Tx(); err != nil {
@@ -105,7 +149,20 @@ func (this *defaultConnection) writer(transactional bool) (messaging.CommitWrite
 		return nil, err
 	}
 
-	return newWriter(channel, this.config), nil
+	return newWriter(channel, this.Close, this.config), nil
+}
+
+// Closed reports whether this connection has been closed: by its owner, by a
+// writer, reader, or stream that severed it after a broker timeout, or by the
+// broker or the network. Consumers that cache a shared connection use it to
+// avoid handing out a dead one.
+func (this *defaultConnection) Closed() bool {
+	select {
+	case <-this.done:
+		return true
+	default:
+		return false
+	}
 }
 
 func (this *defaultConnection) Close() (err error) {
@@ -113,7 +170,13 @@ func (this *defaultConnection) Close() (err error) {
 		close(this.done)
 		err = this.inner.Close()
 		this.monitor.ConnectionClosed()
+		this.released()
 	})
 
 	return err
+}
+func (this *defaultConnection) released() {
+	if this.tracker != nil {
+		this.tracker.release(this)
+	}
 }

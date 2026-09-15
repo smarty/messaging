@@ -157,17 +157,27 @@ func (this *DispatchStoreFixture) TestWhenLoadingQueryRowIterationsFails_ItShoul
 }
 
 func (this *DispatchStoreFixture) TestConfirmNothing_NoOperationsPerformed() {
-	err := this.store.Confirm(this.ctx, nil)
+	confirmed, err := this.store.Confirm(this.ctx, nil)
 
 	this.So(err, should.BeEmpty)
+	this.So(confirmed, should.Equal, 0)
 	this.So(this.execCalls, should.BeZeroValue)
+}
+func (this *DispatchStoreFixture) TestConfirmAffectsFewerRowsThanDispatches_ReportTheActualCount() {
+	this.rowsAffectedValue = 2
+	writes := []messaging.Dispatch{{MessageID: 1}, {MessageID: 2}, {MessageID: 3}}
+
+	confirmed, err := this.store.Confirm(this.ctx, writes)
+
+	this.So(err, should.BeNil)
+	this.So(confirmed, should.Equal, 2)
 }
 func (this *DispatchStoreFixture) TestConfirmedDispatches_WrittenToUnderlyingStorage() {
 	this.now = time.Date(2020, 01, 02, 12, 30, 15, 37, time.UTC)
 	this.execError = errors.New("")
 	writes := []messaging.Dispatch{{MessageID: 1}, {MessageID: 2}, {MessageID: 3}}
 
-	err := this.store.Confirm(this.ctx, writes)
+	_, err := this.store.Confirm(this.ctx, writes)
 
 	this.So(err, should.Equal, this.execError)
 	this.So(this.execContext, should.Equal, this.ctx)

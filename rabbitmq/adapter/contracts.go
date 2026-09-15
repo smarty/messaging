@@ -30,6 +30,9 @@ type Connection interface {
 	// (not on first call), so a registration window never drops a
 	// notification. The channel closes when the connection closes.
 	BlockedNotifications() <-chan amqp.Blocking
+	// CloseNotifications reports a close the broker or the network initiated.
+	// The channel closes when the connection shuts down for any reason.
+	CloseNotifications() <-chan *amqp.Error
 
 	io.Closer
 }
@@ -48,6 +51,13 @@ type Channel interface {
 	Tx() error
 	TxCommit() error
 	TxRollback() error
+
+	// CloseNotifications reports a channel close the broker initiated (a 404,
+	// a 406 acknowledgement timeout). CancelNotifications reports a consumer
+	// the broker cancelled (its queue was deleted). Both close when the
+	// channel shuts down. A fake may return nil for either.
+	CloseNotifications() <-chan *amqp.Error
+	CancelNotifications() <-chan string
 
 	io.Closer
 }

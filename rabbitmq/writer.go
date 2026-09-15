@@ -2,6 +2,7 @@ package rabbitmq
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,16 +14,20 @@ import (
 
 type defaultWriter struct {
 	inner         adapter.Channel
+	sever         func() error // closes the parent connection, which makes a pending synchronous call return
+	brokerTimeout time.Duration
 	topologyPanic bool
 	now           func() time.Time
 	logger        logger
 	monitor       monitor
 }
 
-func newWriter(inner adapter.Channel, config configuration) messaging.CommitWriter {
+func newWriter(inner adapter.Channel, sever func() error, config configuration) messaging.CommitWriter {
 	config.Logger.Printf("[INFO] Writer channel established on AMQP connection.")
 	return defaultWriter{
 		inner:         inner,
+		sever:         sever,
+		brokerTimeout: config.BrokerTimeout,
 		topologyPanic: config.TopologyFailurePanic,
 		now:           config.Now,
 		logger:        config.Logger,
@@ -30,12 +35,33 @@ func newWriter(inner adapter.Channel, config configuration) messaging.CommitWrit
 	}
 }
 
+// Write publishes each dispatch. Publishes are asynchronous, but the socket
+// write behind them blocks with no deadline once a broker under a resource
+// alarm stops reading, so the whole batch is bounded by BrokerTimeout. On
+// timeout the connection is severed and the batch reports zero written so
+// the caller retries all of it.
 func (this defaultWriter) Write(_ context.Context, messages ...messaging.Dispatch) (count int, err error) {
+	err = this.await("publish", ErrPublishTimeout, func() (err error) {
+		count, err = this.publish(messages)
+		return err
+	})
+	if err == ErrPublishTimeout {
+		return 0, err
+	}
+	return count, err
+}
+func (this defaultWriter) publish(messages []messaging.Dispatch) (count int, err error) {
 	now := this.now().UTC()
 
 	for _, message := range messages {
 		if len(message.Topic) == 0 {
 			return count, messaging.ErrEmptyDispatchTopic
+		}
+		if key, value, ok := invalidHeader(message.Headers); !ok {
+			// amqp091 discovers an unsupported type mid-frame and shuts the whole
+			// connection down, taking every channel with it; reject it here instead.
+			this.logger.Printf("[WARN] Dispatch rejected: header [%s] has unsupported type [%T].", key, value)
+			return count, fmt.Errorf("%w: header [%s] has unsupported type [%T]", ErrInvalidHeader, key, value)
 		}
 
 		count++
@@ -51,6 +77,18 @@ func (this defaultWriter) Write(_ context.Context, messages ...messaging.Dispatc
 	}
 
 	return count, nil
+}
+
+// invalidHeader reports the first header whose value the AMQP table encoding
+// cannot carry (for example uint64, time.Duration, []string, or a nested
+// map[string]any that is not an amqp.Table).
+func invalidHeader(headers map[string]any) (key string, value any, ok bool) {
+	for key, value = range headers {
+		if err := (amqp.Table{key: value}).Validate(); err != nil {
+			return key, value, false
+		}
+	}
+	return "", nil, true
 }
 func formatPartition(value uint64) string {
 	if value == 0 {
@@ -78,13 +116,16 @@ func toAMQPDispatch(dispatch messaging.Dispatch, now time.Time) amqp.Publishing 
 		Body:            dispatch.Payload,
 	}
 }
+
+// computeExpiration renders the per-message TTL. The broker interprets the
+// AMQP expiration property as a string of whole milliseconds.
 func computeExpiration(expiration time.Duration) string {
 	if expiration == 0 {
 		return ""
-	} else if seconds := int(expiration.Seconds()); seconds <= 0 {
+	} else if milliseconds := expiration.Milliseconds(); milliseconds <= 0 {
 		return "1"
 	} else {
-		return strconv.FormatUint(uint64(seconds), 10)
+		return strconv.FormatInt(milliseconds, 10)
 	}
 }
 func computePersistence(durable bool) uint8 {
@@ -96,7 +137,7 @@ func computePersistence(durable bool) uint8 {
 }
 
 func (this defaultWriter) Commit() error {
-	if err := this.inner.TxCommit(); err == nil {
+	if err := this.await("transaction commit", ErrCommitTimeout, this.inner.TxCommit); err == nil {
 		this.monitor.TransactionCommitted(nil)
 		return nil
 	} else {
@@ -106,7 +147,7 @@ func (this defaultWriter) Commit() error {
 	}
 }
 func (this defaultWriter) Rollback() error {
-	if err := this.inner.TxRollback(); err == nil {
+	if err := this.await("transaction rollback", ErrCommitTimeout, this.inner.TxRollback); err == nil {
 		this.monitor.TransactionRolledBack(nil)
 		return nil
 	} else {
@@ -114,6 +155,10 @@ func (this defaultWriter) Rollback() error {
 		this.monitor.TransactionRolledBack(err)
 		return this.tryPanic(err)
 	}
+}
+
+func (this defaultWriter) await(operation string, timeoutErr error, call func() error) error {
+	return awaitBroker(this.logger, operation, this.brokerTimeout, this.sever, timeoutErr, call)
 }
 func (this defaultWriter) tryPanic(err error) error {
 	if !this.topologyPanic {
@@ -128,5 +173,5 @@ func (this defaultWriter) tryPanic(err error) error {
 }
 
 func (this defaultWriter) Close() error {
-	return this.inner.Close()
+	return this.await("channel close", ErrCloseTimeout, this.inner.Close)
 }

@@ -21,6 +21,7 @@ type ManagerFixture struct {
 
 	manager       messaging.ListenCloser
 	subscriptions []Subscription
+	log           capturingLog
 
 	mutex sync.Mutex
 
@@ -39,12 +40,12 @@ func (this *ManagerFixture) Setup() {
 	const enoughSubscribersToExposeConcurrency = 64
 	for i := 0; i < enoughSubscribersToExposeConcurrency; i++ {
 		name := strconv.FormatInt(int64(i), 10)
-		this.subscriptions = append(this.subscriptions, Subscription{name: name})
+		this.subscriptions = append(this.subscriptions, Subscription{name: name, streamName: "queue-" + name})
 	}
 	this.initializeManager()
 }
 func (this *ManagerFixture) initializeManager() {
-	this.manager = newManager(this, this.subscriptions, this.newSubscriber)
+	this.manager = newManager(this, this.subscriptions, this.newSubscriber, &this.log)
 }
 func (this *ManagerFixture) newSubscriber(ctx context.Context, subscription Subscription) messaging.Listener {
 	this.mutex.Lock()
@@ -85,6 +86,16 @@ func (this *ManagerFixture) TestWhenSubscriberListeningExitsEarly_AdditionalNewS
 
 	this.So(this.subscriberCount, should.BeGreaterThan, len(this.subscriptions))
 	this.So(this.listenCount, should.BeGreaterThan, len(this.subscriptions))
+	this.So(this.log.String(), should.ContainSubstring, "[INFO] Subscription to stream [queue-0] concluded; reconnecting in [0s].")
+}
+func (this *ManagerFixture) TestWhenSubscriberListeningExitsBecauseOfShutdown_DoNotLogReconnect() {
+	go func() {
+		time.Sleep(time.Millisecond * 2)
+		closeResource(this.manager)
+	}()
+	this.manager.Listen()
+
+	this.So(this.log.String(), should.BeBlank)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

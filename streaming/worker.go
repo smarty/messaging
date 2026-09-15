@@ -13,7 +13,13 @@ type defaultWorker struct {
 	stream      messaging.Stream
 	softContext context.Context
 	hardContext context.Context
+	readContext context.Context // child of hardContext; cancelled when this worker stops consuming
+	cancelRead  context.CancelFunc
 	handler     messaging.Handler
+	logger      logger
+	monitor     monitor
+	now         func() time.Time
+	streamName  string
 
 	channelBuffer   chan messaging.Delivery
 	currentBatch    []any
@@ -26,11 +32,18 @@ type defaultWorker struct {
 }
 
 func newWorker(config workerConfig) messaging.Listener {
+	readContext, cancelRead := context.WithCancel(config.HardContext)
 	return &defaultWorker{
 		stream:      config.Stream,
 		softContext: config.SoftContext,
 		hardContext: config.HardContext,
+		readContext: readContext,
+		cancelRead:  cancelRead,
 		handler:     config.Handler,
+		logger:      config.Logger,
+		monitor:     config.Monitor,
+		now:         config.Now,
+		streamName:  config.Subscription.streamName,
 
 		channelBuffer:   make(chan messaging.Delivery, config.Subscription.bufferCapacity),
 		currentBatch:    make([]any, 0, config.Subscription.batchCapacity),
@@ -45,10 +58,26 @@ func newWorker(config workerConfig) messaging.Listener {
 func (this *defaultWorker) Listen() {
 	var waiter sync.WaitGroup
 	defer waiter.Wait()
+	defer this.cancelRead() // runs before the wait: releases a reader parked in Read or on a full buffer
+	defer this.reportPanic()
 
 	waiter.Add(1)
 	go this.readFromStream(&waiter)
+	if this.handler == nil {
+		waiter.Wait() // facilitates testing: let the reader run to completion and leave the buffer for inspection
+		return
+	}
 	this.deliverToHandler()
+}
+
+// reportPanic makes an escaped handler panic attributable. Without it the
+// runtime prints nothing until every deferred call returns, and before the
+// worker-local read context existed, that was never.
+func (this *defaultWorker) reportPanic() {
+	if recovered := recover(); recovered != nil {
+		this.logger.Printf("[ERROR] Handler on stream [%s] panicked [%v]; the worker is exiting.", this.streamName, recovered)
+		panic(recovered)
+	}
 }
 
 func (this *defaultWorker) readFromStream(waiter *sync.WaitGroup) {
@@ -57,22 +86,19 @@ func (this *defaultWorker) readFromStream(waiter *sync.WaitGroup) {
 
 	for {
 		var delivery messaging.Delivery
-		if err := this.stream.Read(this.hardContext, &delivery); err != nil {
-			break
+		if err := this.stream.Read(this.readContext, &delivery); err != nil {
+			this.logger.Printf("[INFO] Stream [%s] ended [%s].", this.streamName, err)
+			return
 		}
 
 		select {
-		case <-this.hardContext.Done():
-			break
+		case <-this.readContext.Done():
+			return
 		case this.channelBuffer <- delivery:
 		}
 	}
 }
 func (this *defaultWorker) deliverToHandler() {
-	if this.handler == nil {
-		return // this facilitates testing
-	}
-
 	for delivery := range this.channelBuffer {
 		if this.isComplete(ShutdownStrategyImmediate) {
 			break
@@ -121,10 +147,24 @@ func (this *defaultWorker) measureBufferLength() int {
 }
 func (this *defaultWorker) deliverBatch() bool {
 	if len(this.currentBatch) > 0 {
-		this.handler.Handle(this.deliveryContext(), this.currentBatch...)
+		this.handleBatch()
 	}
 
-	return this.stream.Acknowledge(this.hardContext, this.unacknowledged...) == nil
+	err := this.stream.Acknowledge(this.hardContext, this.unacknowledged...)
+	this.monitor.BatchAcknowledged(this.streamName, len(this.unacknowledged), err)
+	if err != nil {
+		this.logger.Printf("[WARN] Unable to acknowledge [%d] delivery(ies) from stream [%s] [%s]; the broker will redeliver them.",
+			len(this.unacknowledged), this.streamName, err)
+		return false
+	}
+	return true
+}
+func (this *defaultWorker) handleBatch() {
+	started := this.now()
+	defer func() { // deferred so a batch that panics is still measured
+		this.monitor.BatchHandled(this.streamName, len(this.currentBatch), this.now().Sub(started))
+	}()
+	this.handler.Handle(this.deliveryContext(), this.currentBatch...)
 }
 func (this *defaultWorker) deliveryContext() context.Context {
 	if this.contextDelivery {

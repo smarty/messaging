@@ -141,6 +141,20 @@ func (this *Fixture) TestWhenRecoveryGivesSpecifiedError_DoNotSleepAndRetryImmed
 	this.So(time.Since(started), should.BeLessThan, time.Millisecond*10)
 }
 
+func (this *Fixture) TestBackoffDelay_NeverOverflowsOrDropsToZero() {
+	subject := New(this,
+		Options.Backoff(time.Second*5),
+		Options.MaxBackoff(time.Minute*5),
+		Options.JitterFactor(0.0),
+	).(handler)
+
+	this.So(subject.backoffDelay(0), should.Equal, time.Second*5)
+	this.So(subject.backoffDelay(1), should.Equal, time.Second*10)
+	this.So(subject.backoffDelay(6), should.Equal, time.Minute*5) // 5s << 6 = 320s, capped
+	for _, attempt := range []int{31, 32, 62, 63, 64, 200, 1 << 20} {
+		this.So(subject.backoffDelay(attempt), should.Equal, time.Minute*5)
+	}
+}
 func (this *Fixture) LongTestExponentialBackoff() {
 	this.handleError = errors.New("failed")
 	this.noErrorAfterAttempt = 4

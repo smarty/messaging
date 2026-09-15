@@ -131,8 +131,8 @@
 <h2 id="background">1. Background</h2>
 
 <p>
-The hobbes environment shows event-delivery delays of many hours. An investigation of
-<code>billing-context</code>, the <code>harness/v2</code> pipeline, and this library found
+A pre-production environment shows event-delivery delays of many hours. An investigation of
+a publishing service, its delivery pipeline, and this library found
 that a publisher can stall <em>silently</em>. The service stays healthy in every visible way
 while events sit undispatched. This library has three blind spots that make such a stall
 invisible:
@@ -214,7 +214,7 @@ regardless.
 
 <div class="callout">
 <strong>Evidence first.</strong> These fixes are visibility and detection hardening. They are
-worth doing on their own merits, but confirm the hobbes diagnosis (broker alarms, heartbeat
+worth doing on their own merits, but confirm the field diagnosis (broker alarms, heartbeat
 configuration, stranded <code>Messages</code> rows) in parallel. None of these fixes
 <em>unblocks</em> a broker that is out of memory or disk.
 </div>
@@ -309,8 +309,8 @@ seconds by reading the deadline as three full intervals.)</em>
     ConnectionBlocked(reason string)
     ConnectionUnblocked()
 }</code></pre>
-      Existing monitor implementations (for example <code>rmqMonitor</code> in
-      <code>billing-context</code>) keep compiling unchanged. A service opts in by adding the two
+      Existing monitor implementations in consuming services
+      keep compiling unchanged. A service opts in by adding the two
       methods.</li>
 </ul>
 
@@ -323,7 +323,7 @@ notifications today. This fix only stops discarding them.
 <table class="accomplish">
   <tr><th>Accomplishes</th><td>An alarm-blocked broker becomes visible the moment it blocks: a greppable
       <code>[WARN]</code> log line with the broker's stated reason, plus an optional monitor hook a
-      service can wire to metrics and alerting (klaxon). The hobbes-style "hours of silence"
+      service can wire to metrics and alerting. The observed "hours of silence"
       becomes a one-line diagnosis. Blind spot 2 closes.</td></tr>
   <tr><th>Does not accomplish</th><td>It does not unstick the publish. The broker still holds the
       connection until its alarm clears. Detection and paging are the goal; capacity on the broker
@@ -555,15 +555,15 @@ in which a <code>connection.blocked</code> frame could be silently dropped.</em>
       first, migration steps (import rewrite, adapter fake method), <code>FailureThreshold</code>,
       and the <code>Options.Heartbeat(0)</code> escape hatch.</li>
   <li>Tag and release <code>v4.0.0</code> (release performed by Mike, not by Claude).</li>
-  <li>In <code>billing-context</code>: bump <code>go.mod</code>; add
-      <code>ConnectionBlocked</code>/<code>ConnectionUnblocked</code> to <code>rmqMonitor</code>
-      (<code>main/api/monitor.go</code>) backed by a new gauge
-      (<code>amqp_connection_blocked</code>) and a klaxon failure record; alert on the gauge.</li>
-  <li>In <code>subscription-context</code> (both <code>api</code> and <code>counter</code>): bump
-      <code>go.mod</code>; wire the same monitor methods into <code>rmqMonitor</code>.</li>
+  <li>In the publishing service: bump <code>go.mod</code>; add
+      <code>ConnectionBlocked</code>/<code>ConnectionUnblocked</code> to its monitor
+      backed by a new gauge
+      (<code>amqp_connection_blocked</code>) and an alerting failure record; alert on the gauge.</li>
+  <li>In the consuming service (both its api and counter processes): bump
+      <code>go.mod</code>; wire the same monitor methods into its monitor.</li>
   <li>Before each service rollout: confirm its <code>httpstatus</code> failure threshold tolerates a
       brief broker blip (T1).</li>
-  <li>Deploy to hobbes first and observe: heartbeat visible in the RabbitMQ management UI per
+  <li>Deploy to a pre-production environment first and observe: heartbeat visible in the RabbitMQ management UI per
       connection; a forced memory alarm (<code>rabbitmqctl set_vm_memory_high_watermark 0.0000001</code>
       in a test window) produces the <code>[WARN]</code> blocked log and the gauge within seconds.</li>
 </ul>

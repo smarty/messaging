@@ -32,6 +32,15 @@ func newConnection(inner messaging.Connection, config configuration) messaging.C
 	return &defaultConnection{Connection: inner, config: config}
 
 }
+
+// Closed forwards the transport's liveness report when it offers one, so a
+// consumer's connection pool can see through this decorator. An embedded
+// interface does not promote methods it does not declare, so without this
+// the report would be lost here.
+func (this *defaultConnection) Closed() bool {
+	reporter, ok := this.Connection.(interface{ Closed() bool })
+	return ok && reporter.Closed()
+}
 func (this *defaultConnection) Reader(ctx context.Context) (messaging.Reader, error) {
 	if reader, err := this.Connection.Reader(ctx); err != nil {
 		return nil, err
