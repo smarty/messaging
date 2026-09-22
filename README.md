@@ -338,7 +338,9 @@ What happens at each bound:
 
 - **Commit timeout.** The library logs a `WARN`, closes the connection that owns the channel (the only way
   to make a pending AMQP call return), and returns the matching sentinel: `ErrCommitTimeout`,
-  `ErrPublishTimeout`, `ErrAcknowledgeTimeout`, or `ErrCloseTimeout`. The `batch.Writer` and
+  `ErrPublishTimeout`, `ErrAcknowledgeTimeout`, or `ErrCloseTimeout`. A timed-out commit means "unknown", not
+  "not published": a quorum queue that regains quorum later commits what the channel already handed it, and
+  the retry publishes it again. Consumers must be idempotent. The `batch.Writer` and
   the `transactional` handler reconnect on the next call. The close takes every channel on that
   connection with it, so give a transactional writer its own connection if a consumer shares one.
 - **Handoff timeout.** The outbox `Commit` moves the messages the processor has not yet accepted to a
@@ -576,6 +578,52 @@ The suite runs under a one-second global timeout. Tests that wait use single-dig
 against fakes that block until released. Tests use [`gunit`](https://github.com/smarty/gunit) fixtures
 with `should` assertions. Each fixture implements the package's own interfaces as its fakes, so most
 packages need no external services to test.
+
+### Integration tests
+
+The `integration` package runs against a real RabbitMQ cluster and is excluded from `make test` by the
+`integration` build tag. It proves the behaviors a fake cannot: a transactional commit returns the
+broker's 404 for a missing exchange, message TTL is honored in milliseconds, a connection the broker
+forces closed reaches the monitor and the log, a deleted queue ends the stream with a named reason, and
+the status probe passes on a healthy broker and fails definitively on a missing probe exchange.
+
+`make test.integration.ghost` reproduces the September 2026 incident as a timeline. The Makefile
+declares nothing itself and the tests stop nothing themselves: three Go tests each observe one phase,
+and the Makefile stops and starts cluster nodes between them. Phase one proves a transactional publish
+to a quorum queue commits. The Makefile then stops two of the three nodes so the queue is in minority.
+Phase two proves the publish times out within `BrokerTimeout`, severs, and is reported, and that a
+status probe on that exchange fails within the bound. The Makefile restarts the nodes in reverse order.
+Phase three proves publishing resumes without a restart, and shows the severed transaction's message
+arriving after recovery, which is why consumers must be idempotent. The phases share a queue name
+through `INTEGRATION_GHOST_QUEUE` and skip when it is unset.
+
+`make test.integration.alarm` reproduces a broker resource alarm the same way. Phase one proves a
+transactional publish commits. The Makefile then sets node 1's memory watermark to zero, which raises
+the alarm at once: the broker blocks every connection that publishes and stops reading from its socket.
+Phase two proves the block reaches the log and the monitor, a commit behind a small publish times out
+within `BrokerTimeout` and severs, a batch too large for the socket buffers times out in the write itself
+and reports zero written, a status probe fails within the bound, and a connection that only consumes is
+unaffected. The Makefile restores the watermark. Phase three proves publishing resumes and shows that
+frames the blocked connections had already written may be published once the alarm clears, so a publish
+timeout, like a commit timeout, means "unknown". The phases share a queue name through
+`INTEGRATION_ALARM_QUEUE` and skip when it is unset.
+
+```sh
+make test.integration.local   # starts the cluster with docker or podman compose, runs everything, stops it
+make test.integration         # the single-process tests, against a cluster you already started
+make test.integration.ghost   # the incident timeline, against a cluster you already started
+make test.integration.alarm   # the resource-alarm timeline, against a cluster you already started
+```
+
+`doc/docker-compose.integration.yml` runs three nodes that form a cluster from a static peer list, with
+node one on `5678` and its management API on `15678`, chosen not to collide with sibling repositories'
+compose stacks. The health check verifies the listeners, not just the node, and runs as the `rabbitmq`
+user because under podman the container's root cannot read the Erlang cookie. Point the tests elsewhere
+with `INTEGRATION_RABBITMQ_ADDR` and `INTEGRATION_RABBITMQ_MANAGEMENT`. No test runs a container
+command; only the Makefile does.
+
+CI runs the integration suite when a tag is pushed, not on every branch push, from
+`.github/workflows/integration.yml`.
 
 Design work for larger changes lives in `doc/work-sessions/`. Each is a self-contained HTML proposal
 with an implementation checklist. `CLAUDE.md` describes the architecture and conventions for automated
