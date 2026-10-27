@@ -216,11 +216,12 @@ func (this *DispatchProcessorFixture) TestWhenListening_ReadPendingDispatchesFro
 
 	this.listen(time.Millisecond * 50)
 
-	this.So(this.writeCount, should.Equal, 1)
+	// No batch-count assertions: the processor may wake on the first row
+	// before startup has sent the rest, so one, two, or three batches are all
+	// correct. The accumulated dispatches prove each row went out once.
 	this.So(this.writeContext, should.NotBeNil)
 	this.So(this.writeDispatches, should.Equal, expected)
 
-	this.So(this.confirmCount, should.Equal, 1)
 	this.So(this.confirmContext, should.NotBeNil)
 	this.So(this.confirmDispatches, should.Equal, expected)
 }
