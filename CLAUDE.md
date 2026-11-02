@@ -111,7 +111,10 @@ disabled by accident. Keep that property when adding options. See `doc/release-n
   `workerConfig.Now` exists so tests can control measured durations.
 - **Per-package `monitor` and `logger` interfaces** are unexported and defined in each package's
   `contracts.go`. Adding a method to a `monitor` interface breaks every implementer and is a major-version
-  change. Prefer a new sentinel error through an existing callback (as `ErrCommitTimeout` does), or log-only.
+  change. Prefer a new sentinel error through an existing callback (as `ErrCommitTimeout` does), log-only,
+  or an optional **exported** extension interface found by type assertion (`streaming.DeliveryAgeMonitor`,
+  `sqlmq.StartupRecoveryMonitor`, `sqlmq.HandoffMonitor`). Export it so implementers can pin the signature
+  at compile time; resolve it once (in `apply` or the constructor), not per callback.
 - **Log line format** is `[LEVEL] Sentence.` with bracketed values, e.g. `[WARN] Unable to commit channel transaction [%s].`
   Levels used: `INFO` for expected conditions (shutdown, recovery counts), `WARN` for anything that needs a
   human eventually.
