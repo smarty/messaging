@@ -40,3 +40,20 @@ type monitor interface {
 	// abandoned unacknowledged.
 	ShutdownForced(streamName string)
 }
+
+// DeliveryAgeMonitor is an optional extension of the monitor given to
+// Options.Monitor. When that monitor also implements it, each worker reports how
+// long its deliveries waited between being stamped (when sqlmq stored them, or
+// when the transport published them) and reaching the handler. It is exported so
+// implementers can assert at compile time that their method matches; a mismatch
+// would otherwise be silent.
+type DeliveryAgeMonitor interface {
+	// DeliveriesAged fires once per batch, just before Handler.Handle, with the
+	// age of each delivery handed to the handler. Deliveries without a
+	// timestamp are skipped, and a batch with none fires nothing. Ages compare
+	// the producer's clock with the consumer's, so skew between hosts can make
+	// one negative. The AMQP transport carries timestamps in whole seconds, so
+	// an age can read up to a second high. The slice is reused for the next
+	// batch: do not retain it.
+	DeliveriesAged(streamName string, ages ...time.Duration)
+}

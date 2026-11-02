@@ -244,6 +244,69 @@ func (this *WorkerFixture) TestWhenBatchDelivered_ReportHandledAndAcknowledgedTo
 
 	this.So(this.monitor.Calls(), should.Equal, []string{"handled:queue:2:1ms", "acknowledged:queue:3:<nil>"})
 }
+func (this *WorkerFixture) TestWhenDeliveriesCarryTimestamps_ReportTheirAgesBeforeHandling() {
+	this.readError = io.EOF
+	this.now = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	this.channelBuffer <- messaging.Delivery{Message: 1, Timestamp: this.now.Add(-time.Second * 5)}
+	this.channelBuffer <- messaging.Delivery{Message: 2, Timestamp: this.now.Add(-time.Second * 2)}
+
+	this.worker.Listen()
+
+	this.So(this.monitor.Calls(), should.Equal, []string{
+		"aged:queue:[5.001s 2.001s]", // measured when handling starts, one clock tick after this.now
+		"handled:queue:2:1ms",
+		"acknowledged:queue:2:<nil>",
+	})
+}
+func (this *WorkerFixture) TestWhenDeliveriesLackTimestampsOrAreNotHandled_LeaveThemOutOfTheAges() {
+	this.readError = io.EOF
+	this.now = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	this.channelBuffer <- messaging.Delivery{Message: 1, Timestamp: this.now.Add(-time.Second)}
+	this.channelBuffer <- messaging.Delivery{Message: 2}                                // no timestamp
+	this.channelBuffer <- messaging.Delivery{Timestamp: this.now.Add(-time.Second * 9)} // acknowledged, not handled
+
+	this.worker.Listen()
+
+	this.So(this.monitor.Calls(), should.Contain, "aged:queue:[1.001s]")
+}
+func (this *WorkerFixture) TestWhenNoDeliveryCarriesATimestamp_ReportNoAges() {
+	this.readError = io.EOF
+	this.channelBuffer <- messaging.Delivery{Message: 1}
+
+	this.worker.Listen()
+
+	this.So(this.monitor.Calls(), should.Equal, []string{"handled:queue:1:1ms", "acknowledged:queue:1:<nil>"})
+}
+func (this *WorkerFixture) TestWhenHandlingDeliveries_AgeEveryDeliveryHandedToTheHandler() {
+	this.readError = io.EOF
+	this.subscription.handleDelivery = true
+	this.initializeWorker()
+	this.now = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	this.channelBuffer <- messaging.Delivery{Timestamp: this.now.Add(-time.Second)} // no Message, but the delivery itself is handled
+
+	this.worker.Listen()
+
+	this.So(this.monitor.Calls(), should.Contain, "aged:queue:[1.001s]")
+}
+func (this *WorkerFixture) TestWhenMonitorDoesNotReportAges_HandleAsBefore() {
+	this.readError = io.EOF
+	worker := newWorker(workerConfig{
+		Stream:       this,
+		Subscription: this.subscription,
+		Handler:      this.handler,
+		SoftContext:  this.softContext,
+		HardContext:  this.hardContext,
+		Logger:       &this.log,
+		Monitor:      nop{},
+		Now:          time.Now,
+	}).(*defaultWorker)
+	worker.channelBuffer <- messaging.Delivery{Message: 1, Timestamp: time.Now()}
+
+	worker.Listen()
+
+	this.So(worker.ageMonitor, should.BeNil)
+	this.So(this.handleMessages, should.Equal, []any{1})
+}
 func (this *WorkerFixture) TestWhenHandlerPanicEscapes_ReaderIsReleasedAndPanicPropagatesWithAnErrorLog() {
 	this.handler = panickingHandler{}
 	this.readBlocks = true // the stream parks like a live queue with no traffic
@@ -389,3 +452,26 @@ type panickingHandler struct{}
 func (panickingHandler) Handle(context.Context, ...any) { panic("handler failed") }
 
 type hardContextMarker struct{}
+
+func TestReportAgesDoesNotAllocate(t *testing.T) {
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	worker := newWorker(workerConfig{
+		Subscription: Subscription{streamName: "queue", bufferCapacity: 4, batchCapacity: 4},
+		HardContext:  context.Background(),
+		Monitor:      discardingAgeMonitor{},
+		Now:          time.Now,
+	}).(*defaultWorker)
+	for range 4 {
+		worker.unacknowledged = append(worker.unacknowledged, messaging.Delivery{Message: 1, Timestamp: now.Add(-time.Second)})
+	}
+
+	allocations := testing.AllocsPerRun(100, func() { worker.reportAges(now) })
+
+	if allocations != 0 {
+		t.Errorf("reportAges allocated [%v] times per batch; want 0", allocations)
+	}
+}
+
+type discardingAgeMonitor struct{ nop }
+
+func (discardingAgeMonitor) DeliveriesAged(string, ...time.Duration) {}
