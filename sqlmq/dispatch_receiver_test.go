@@ -39,6 +39,9 @@ type DispatchReceiverFixture struct {
 	storeContext context.Context
 	storeWrites  []messaging.Dispatch
 	storeError   error
+
+	handoffsDeferred       []int
+	handoffCapacityReached int
 }
 
 func (this *DispatchReceiverFixture) Setup() {
@@ -56,6 +59,7 @@ func (this *DispatchReceiverFixture) initializeDispatchWriter() {
 		Options.HandoffTimeout(time.Millisecond*5),
 		Options.DeferredHandoffCapacity(this.deferredCapacity),
 		Options.Logger(this),
+		Options.Monitor(this),
 	)(&config)
 	config.MessageStore = this
 	this.writer = newDispatchReceiver(this.ctx, this, config)
@@ -155,6 +159,45 @@ func (this *DispatchReceiverFixture) TestWhenHandoffPartiallyCompletes_DeferOnly
 	this.So(receiveDispatch(this.channel), should.Equal, messaging.Dispatch{MessageID: 1})
 	this.So(receiveDispatch(this.channel), should.Equal, messaging.Dispatch{MessageID: 2})
 	this.So(receiveDispatch(this.channel), should.Equal, messaging.Dispatch{MessageID: 3})
+}
+
+func (this *DispatchReceiverFixture) TestWhenHandoffCompletes_ReportNothingToTheMonitor() {
+	_, _ = this.writer.Write(nil, messaging.Dispatch{MessageID: 1})
+
+	_ = this.writer.Commit()
+
+	this.So(this.handoffsDeferred, should.BeEmpty)
+	this.So(this.handoffCapacityReached, should.Equal, 0)
+}
+
+func (this *DispatchReceiverFixture) TestWhenHandoffPartiallyCompletes_ReportTheDeferredRemainderToTheMonitor() {
+	this.channel = make(chan messaging.Dispatch, 2)
+	this.initializeDispatchWriter()
+	_, _ = this.writer.Write(nil, messaging.Dispatch{MessageID: 1}, messaging.Dispatch{MessageID: 2}, messaging.Dispatch{MessageID: 3})
+
+	_ = this.writer.Commit()
+
+	this.So(this.handoffsDeferred, should.Equal, []int{1})
+	this.So(this.handoffCapacityReached, should.Equal, 0)
+}
+
+func (this *DispatchReceiverFixture) TestWhenDeferredCapacityReached_ReportItToTheMonitor() {
+	this.deferredCapacity = 1
+	this.channel = make(chan messaging.Dispatch, 1)
+	this.channel <- messaging.Dispatch{} // full
+	this.initializeDispatchWriter()
+	_, _ = this.writer.Write(nil, messaging.Dispatch{MessageID: 1}, messaging.Dispatch{MessageID: 2})
+	go func() {
+		time.Sleep(time.Millisecond * 10)
+		for i := 0; i < 3; i++ {
+			receiveDispatch(this.channel)
+		}
+	}()
+
+	_ = this.writer.Commit()
+
+	this.So(this.handoffCapacityReached, should.Equal, 1)
+	this.So(this.handoffsDeferred, should.BeEmpty)
 }
 
 func (this *DispatchReceiverFixture) TestWhenDeferredCapacityReached_BlockUntilProcessorAcceptsRemainder() {
@@ -261,6 +304,15 @@ func (this *DispatchReceiverFixture) TestWhenClosing_Nop() {
 func (this *DispatchReceiverFixture) Printf(format string, args ...any) {
 	_, _ = fmt.Fprintf(&this.log, format+"\n", args...)
 }
+
+func (this *DispatchReceiverFixture) MessageReceived(int)  {}
+func (this *DispatchReceiverFixture) MessageStored(int)    {}
+func (this *DispatchReceiverFixture) MessagePublished(int) {}
+func (this *DispatchReceiverFixture) MessageConfirmed(int) {}
+func (this *DispatchReceiverFixture) HandoffDeferred(messageCount int) {
+	this.handoffsDeferred = append(this.handoffsDeferred, messageCount)
+}
+func (this *DispatchReceiverFixture) HandoffCapacityReached() { this.handoffCapacityReached++ }
 
 func (this *DispatchReceiverFixture) Commit() error   { this.commitCalls++; return this.commitError }
 func (this *DispatchReceiverFixture) Rollback() error { return this.rollbackError }

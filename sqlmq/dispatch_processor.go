@@ -18,6 +18,7 @@ type dispatchProcessor struct {
 	deferred  *deferredHandoffs
 	logger    logger
 	monitor   monitor
+	recovery  StartupRecoveryMonitor
 
 	buffer   []messaging.Dispatch
 	latestID uint64
@@ -36,6 +37,7 @@ func newDispatchProcessor(config configuration) messaging.ListenCloser {
 		deferred:  config.Deferred,
 		logger:    config.Logger,
 		monitor:   config.Monitor,
+		recovery:  config.RecoveryMonitor,
 	}
 }
 
@@ -66,6 +68,7 @@ func (this *dispatchProcessor) readPending() bool {
 	dispatches, err := this.store.Load(this.ctx, this.latestID)
 	if len(dispatches) > 0 {
 		this.logger.Printf("[INFO] Startup recovery found [%d] undispatched message(s) in durable storage.", len(dispatches))
+		this.recovery.StartupRecovered(len(dispatches))
 	}
 
 	for _, dispatch := range dispatches {

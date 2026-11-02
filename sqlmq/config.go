@@ -24,6 +24,8 @@ type configuration struct {
 	HandoffTimeout      time.Duration
 	Logger              logger
 	Monitor             monitor
+	RecoveryMonitor     StartupRecoveryMonitor
+	HandoffMonitor      HandoffMonitor
 
 	DeferredHandoffCapacity int
 	Deferred                *deferredHandoffs
@@ -145,7 +147,21 @@ func (singleton) apply(options ...option) option {
 		}
 
 		this.Deferred = newDeferredHandoffs(this.Context, this.Channel, this.DeferredHandoffCapacity)
+		this.RecoveryMonitor, this.HandoffMonitor = optionalMonitors(this.Monitor)
 	}
+}
+
+// optionalMonitors resolves the optional monitor extensions once, so callers
+// neither repeat the type assertion nor check for nil.
+func optionalMonitors(value monitor) (recovery StartupRecoveryMonitor, handoff HandoffMonitor) {
+	recovery, handoff = nop{}, nop{}
+	if found, ok := value.(StartupRecoveryMonitor); ok {
+		recovery = found
+	}
+	if found, ok := value.(HandoffMonitor); ok {
+		handoff = found
+	}
+	return recovery, handoff
 }
 func (singleton) defaults(options ...option) []option {
 	var defaultContext = context.Background()
@@ -183,3 +199,7 @@ func (nop) MessageReceived(_ int)  {}
 func (nop) MessageStored(_ int)    {}
 func (nop) MessagePublished(_ int) {}
 func (nop) MessageConfirmed(_ int) {}
+
+func (nop) StartupRecovered(_ int)  {}
+func (nop) HandoffDeferred(_ int)   {}
+func (nop) HandoffCapacityReached() {}
