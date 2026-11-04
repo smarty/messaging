@@ -70,3 +70,17 @@ if errors.As(err, &timeout) && timeout.Timeout() {
 
 Their declared type is still `error`. They still compare with `==` and
 `errors.Is`. Only `%T` shows a different type.
+
+## Also in this release
+
+These changes reached master after v4.1.1. None changes library code.
+
+- An `integration` package tests against a real three-node RabbitMQ cluster.
+  It sits behind the `integration` build tag, so `make test` skips it. CI runs
+  it when a tag is pushed. See "Integration tests" in the README.
+- Two timeline tests reproduce a quorum queue in minority and a broker memory
+  alarm. Both show that a commit or publish timeout means "unknown", not "not
+  published". A message the broker already held can arrive after recovery, and
+  the retry publishes it again. Consumers must be idempotent. The README and
+  the v4.1.0 notes now say so.
+- A flaky `sqlmq` dispatch-processor test is fixed.
