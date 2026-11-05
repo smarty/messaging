@@ -16,6 +16,7 @@ type dispatchReceiver struct {
 	store          messageStore
 	logger         logger
 	monitor        monitor
+	handoffs       HandoffMonitor
 	handoffTimeout time.Duration
 	deferred       *deferredHandoffs
 
@@ -30,6 +31,7 @@ func newDispatchReceiver(ctx context.Context, tx adapter.Transaction, config con
 		store:          config.MessageStore,
 		logger:         config.Logger,
 		monitor:        config.Monitor,
+		handoffs:       config.HandoffMonitor,
 		handoffTimeout: config.HandoffTimeout,
 		deferred:       config.Deferred,
 	}
@@ -71,10 +73,12 @@ func (this *dispatchReceiver) Commit() error {
 	if this.deferred.TryDefer(remaining) {
 		this.logger.Printf("[WARN] Committed [%d] message(s) to durable storage, but the dispatch processor did not accept [%d] of them within [%s]. The handoff continues in the background.",
 			len(this.buffer), len(remaining), this.handoffTimeout)
+		this.handoffs.HandoffDeferred(len(remaining))
 		return nil
 	}
 	this.logger.Printf("[WARN] Deferred handoff capacity [%d] reached; waiting for the dispatch processor to accept [%d] message(s).",
 		this.deferred.capacity, len(remaining))
+	this.handoffs.HandoffCapacityReached()
 	if remaining = this.handoff(remaining, 0, nil); len(remaining) > 0 { // no timer, no caller context: only the process lifetime ends this wait
 		this.logger.Printf("[INFO] Context ended during handoff; [%d] committed message(s) remain in durable storage for the next startup.", len(remaining))
 	}

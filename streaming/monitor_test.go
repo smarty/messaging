@@ -38,3 +38,6 @@ func (this *capturingMonitor) BatchAcknowledged(streamName string, count int, er
 func (this *capturingMonitor) ShutdownForced(streamName string) {
 	this.record("forced:%s", streamName)
 }
+func (this *capturingMonitor) DeliveriesAged(streamName string, ages ...time.Duration) {
+	this.record("aged:%s:%v", streamName, ages)
+}

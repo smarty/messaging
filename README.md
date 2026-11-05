@@ -382,7 +382,10 @@ the contracts, but they discard the signal. At a minimum, emit these:
 
 Count a commit as a success when `err == nil`, as a timeout when
 `errors.Is(err, rabbitmq.ErrCommitTimeout)`, and as a failure otherwise. Keep the timeout counter
-separate, because a single callback cannot tell a timeout from a broker refusal.
+separate, because a single callback cannot tell a timeout from a broker refusal. The four broker-timeout
+sentinels also report `Timeout() == true`, the `net.Error` convention, so a monitor in a package that
+does not import `rabbitmq` can recognize them with `errors.As(err, &timeout)` against
+`interface{ Timeout() bool }`.
 
 | Callback                                        | Metric                                        | Type      |
 |-------------------------------------------------|-----------------------------------------------|-----------|
@@ -395,6 +398,34 @@ separate, because a single callback cannot tell a timeout from a broker refusal.
 The `retry`, `transactional`, `sqltx`, and `serialization` packages have their own small monitors
 (`HandleAttempted`, `TransactionStarted/Committed/RolledBack`, `MessageEncoded/Decoded`). Count
 `HandleAttempted` with a non-nil result: a rising rate means handlers are failing and retrying.
+
+### Optional monitor extensions
+
+A monitor can also implement these exported interfaces. The library finds them with a type assertion on
+the monitor given to `Options.Monitor`, so a monitor without them keeps compiling and working.
+
+| Interface                      | Method                                   | Fires                                                                  | Metric                                        |
+|--------------------------------|------------------------------------------|------------------------------------------------------------------------|-----------------------------------------------|
+| `streaming.DeliveryAgeMonitor` | `DeliveriesAged(stream, ages...)`        | once per batch, before `Handle`, with each handled delivery's age      | `consumer_message_age_milliseconds{stream}`   |
+| `sqlmq.StartupRecoveryMonitor` | `StartupRecovered(count)`                | after each startup load that finds undispatched messages               | `sqlmq_startup_recovered`                     |
+| `sqlmq.HandoffMonitor`         | `HandoffDeferred(count)`                 | when a handoff outlives `HandoffTimeout` and moves to the background   | `sqlmq_handoffs_deferred`                     |
+| `sqlmq.HandoffMonitor`         | `HandoffCapacityReached()`               | when a deferral would exceed `DeferredHandoffCapacity`                 | `sqlmq_handoff_capacity_reached`              |
+
+An age is measured from `Delivery.Timestamp`: the time `sqlmq` stored the message, or the time the
+transport published it. Deliveries without a timestamp are skipped. AMQP carries timestamps in whole
+seconds, so an age can read up to a second high; choose histogram buckets of a second or more. The
+`ages` slice is reused for the next batch, so do not retain it.
+
+Pin each extension at compile time. A method whose signature drifts would otherwise never be called, and
+nothing would say so:
+
+```go
+var (
+	_ streaming.DeliveryAgeMonitor = (*myStreamingMonitor)(nil)
+	_ sqlmq.StartupRecoveryMonitor = (*myOutboxMonitor)(nil)
+	_ sqlmq.HandoffMonitor         = (*myOutboxMonitor)(nil)
+)
+```
 
 ### Per-stream metrics without dynamic labels
 
@@ -632,11 +663,12 @@ contributors. See `CONTRIBUTING.md` before opening a pull request.
 ## Versioning and release notes
 
 The module path is `github.com/smarty/messaging/v4`. Adding a method to any package's `monitor`
-interface breaks every implementer and is a major-version change. Additive options and new sentinel
-errors are minor versions.
+interface breaks every implementer and is a major-version change. Additive options, new sentinel
+errors, and optional exported monitor extensions (found with a type assertion) are minor versions.
 
 | Release | Notes                                                                                                                                                             |
 |---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| v4.2.0  | [`doc/release-notes-v4.2.0.md`](doc/release-notes-v4.2.0.md): delivery ages, outbox recovery and handoff callbacks, `Timeout()` on the broker-timeout sentinels.  |
 | v4.1.0  | [`doc/release-notes-v4.1.0.md`](doc/release-notes-v4.1.0.md): bounded commit, deferred outbox handoff, shutdown-safe startup read.                                |
 | v4.0.0  | [`doc/release-notes-v4.0.0.md`](doc/release-notes-v4.0.0.md): honest status checker, client heartbeat, blocked-connection notifications. Migration steps from v3. |
 

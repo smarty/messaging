@@ -18,12 +18,14 @@ type defaultWorker struct {
 	handler     messaging.Handler
 	logger      logger
 	monitor     monitor
+	ageMonitor  DeliveryAgeMonitor // nil when the monitor does not implement it
 	now         func() time.Time
 	streamName  string
 
 	channelBuffer   chan messaging.Delivery
 	currentBatch    []any
 	unacknowledged  []messaging.Delivery
+	ages            []time.Duration
 	handleDelivery  bool
 	contextDelivery bool
 	bufferTimeout   time.Duration
@@ -33,6 +35,7 @@ type defaultWorker struct {
 
 func newWorker(config workerConfig) messaging.Listener {
 	readContext, cancelRead := context.WithCancel(config.HardContext)
+	ageMonitor, _ := config.Monitor.(DeliveryAgeMonitor)
 	return &defaultWorker{
 		stream:      config.Stream,
 		softContext: config.SoftContext,
@@ -42,12 +45,14 @@ func newWorker(config workerConfig) messaging.Listener {
 		handler:     config.Handler,
 		logger:      config.Logger,
 		monitor:     config.Monitor,
+		ageMonitor:  ageMonitor,
 		now:         config.Now,
 		streamName:  config.Subscription.streamName,
 
 		channelBuffer:   make(chan messaging.Delivery, config.Subscription.bufferCapacity),
 		currentBatch:    make([]any, 0, config.Subscription.batchCapacity),
 		unacknowledged:  make([]messaging.Delivery, 0, config.Subscription.batchCapacity),
+		ages:            make([]time.Duration, 0, config.Subscription.batchCapacity),
 		handleDelivery:  config.Subscription.handleDelivery,
 		contextDelivery: config.Subscription.deliveryToContext,
 		bufferTimeout:   config.Subscription.bufferTimeout,
@@ -161,10 +166,30 @@ func (this *defaultWorker) deliverBatch() bool {
 }
 func (this *defaultWorker) handleBatch() {
 	started := this.now()
+	this.reportAges(started)
 	defer func() { // deferred so a batch that panics is still measured
 		this.monitor.BatchHandled(this.streamName, len(this.currentBatch), this.now().Sub(started))
 	}()
 	this.handler.Handle(this.deliveryContext(), this.currentBatch...)
+}
+
+// reportAges gives an optional DeliveryAgeMonitor the age of every delivery the
+// handler is about to receive, reusing one slice so the hot path does not allocate.
+func (this *defaultWorker) reportAges(now time.Time) {
+	if this.ageMonitor == nil {
+		return
+	}
+
+	this.ages = this.ages[0:0]
+	for _, delivery := range this.unacknowledged {
+		if delivery.Timestamp.IsZero() || (delivery.Message == nil && !this.handleDelivery) {
+			continue // nothing to measure from, or not handed to the handler (see addToBatch)
+		}
+		this.ages = append(this.ages, now.Sub(delivery.Timestamp))
+	}
+	if len(this.ages) > 0 {
+		this.ageMonitor.DeliveriesAged(this.streamName, this.ages...)
+	}
 }
 func (this *defaultWorker) deliveryContext() context.Context {
 	if this.contextDelivery {

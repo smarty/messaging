@@ -50,6 +50,8 @@ type DispatchProcessorFixture struct {
 	loadError         error
 
 	closeCount int
+
+	recovered []int
 }
 
 func (this *DispatchProcessorFixture) Setup() {
@@ -67,6 +69,7 @@ func (this *DispatchProcessorFixture) initializeDispatchProcessor() {
 		Options.RetryTimeout(this.sleepTimeout),
 		Options.StorageHandle(&sql.DB{}),
 		Options.Logger(this),
+		Options.Monitor(this),
 	)
 }
 func (this *DispatchProcessorFixture) listen(sleep time.Duration) {
@@ -209,6 +212,18 @@ func (this *DispatchProcessorFixture) TestWhenStartupReadFindsNoRows_LogNothing(
 
 	this.So(this.log.String(), should.NotContainSubstring, "Startup recovery found")
 }
+func (this *DispatchProcessorFixture) TestWhenStartupReadFindsRows_ReportTheCountToTheMonitor() {
+	this.loadResult = []messaging.Dispatch{{MessageID: 1}, {MessageID: 2}}
+
+	this.listen(time.Millisecond * 5)
+
+	this.So(this.recovered, should.Equal, []int{2})
+}
+func (this *DispatchProcessorFixture) TestWhenStartupReadFindsNoRows_ReportNothingToTheMonitor() {
+	this.listen(time.Millisecond * 5)
+
+	this.So(this.recovered, should.BeEmpty)
+}
 
 func (this *DispatchProcessorFixture) TestWhenListening_ReadPendingDispatchesFromStorage() {
 	expected := []messaging.Dispatch{{MessageID: 1}, {MessageID: 2}, {MessageID: 3}}
@@ -245,6 +260,14 @@ func (this *DispatchProcessorFixture) SkipTestWhenInitializeOperationDoesNotGetA
 
 func (this *DispatchProcessorFixture) Printf(format string, args ...any) {
 	_, _ = fmt.Fprintf(&this.log, format+"\n", args...)
+}
+
+func (this *DispatchProcessorFixture) MessageReceived(int)  {}
+func (this *DispatchProcessorFixture) MessageStored(int)    {}
+func (this *DispatchProcessorFixture) MessagePublished(int) {}
+func (this *DispatchProcessorFixture) MessageConfirmed(int) {}
+func (this *DispatchProcessorFixture) StartupRecovered(messageCount int) {
+	this.recovered = append(this.recovered, messageCount)
 }
 
 func (this *DispatchProcessorFixture) Write(ctx context.Context, dispatches ...messaging.Dispatch) (int, error) {
